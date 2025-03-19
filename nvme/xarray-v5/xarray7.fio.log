@@ -1,0 +1,94 @@
+test1: (g=0): rw=randread, bs=(R) 4096B-4096B, (W) 4096B-4096B, (T) 4096B-4096B, ioengine=libaio, iodepth=2
+test2: (g=0): rw=randread, bs=(R) 4096B-4096B, (W) 4096B-4096B, (T) 4096B-4096B, ioengine=libaio, iodepth=2
+test3: (g=0): rw=randread, bs=(R) 4096B-4096B, (W) 4096B-4096B, (T) 4096B-4096B, ioengine=libaio, iodepth=2
+test4: (g=0): rw=randread, bs=(R) 4096B-4096B, (W) 4096B-4096B, (T) 4096B-4096B, ioengine=libaio, iodepth=2
+test5: (g=0): rw=randread, bs=(R) 4096B-4096B, (W) 4096B-4096B, (T) 4096B-4096B, ioengine=libaio, iodepth=2
+test6: (g=0): rw=randread, bs=(R) 4096B-4096B, (W) 4096B-4096B, (T) 4096B-4096B, ioengine=libaio, iodepth=2
+test7: (g=0): rw=randread, bs=(R) 4096B-4096B, (W) 4096B-4096B, (T) 4096B-4096B, ioengine=libaio, iodepth=2
+test8: (g=0): rw=randread, bs=(R) 4096B-4096B, (W) 4096B-4096B, (T) 4096B-4096B, ioengine=libaio, iodepth=2
+test9: (g=0): rw=randread, bs=(R) 4096B-4096B, (W) 4096B-4096B, (T) 4096B-4096B, ioengine=libaio, iodepth=2
+test10: (g=0): rw=randread, bs=(R) 4096B-4096B, (W) 4096B-4096B, (T) 4096B-4096B, ioengine=libaio, iodepth=2
+test11: (g=0): rw=randread, bs=(R) 4096B-4096B, (W) 4096B-4096B, (T) 4096B-4096B, ioengine=libaio, iodepth=2
+test12: (g=0): rw=randread, bs=(R) 4096B-4096B, (W) 4096B-4096B, (T) 4096B-4096B, ioengine=libaio, iodepth=2
+test13: (g=0): rw=randread, bs=(R) 4096B-4096B, (W) 4096B-4096B, (T) 4096B-4096B, ioengine=libaio, iodepth=2
+test14: (g=0): rw=randread, bs=(R) 4096B-4096B, (W) 4096B-4096B, (T) 4096B-4096B, ioengine=libaio, iodepth=2
+test15: (g=0): rw=randread, bs=(R) 4096B-4096B, (W) 4096B-4096B, (T) 4096B-4096B, ioengine=libaio, iodepth=2
+test16: (g=0): rw=randread, bs=(R) 4096B-4096B, (W) 4096B-4096B, (T) 4096B-4096B, ioengine=libaio, iodepth=2
+test17: (g=0): rw=randread, bs=(R) 4096B-4096B, (W) 4096B-4096B, (T) 4096B-4096B, ioengine=libaio, iodepth=2
+test18: (g=0): rw=randread, bs=(R) 4096B-4096B, (W) 4096B-4096B, (T) 4096B-4096B, ioengine=libaio, iodepth=2
+test19: (g=0): rw=randread, bs=(R) 4096B-4096B, (W) 4096B-4096B, (T) 4096B-4096B, ioengine=libaio, iodepth=2
+test20: (g=0): rw=randread, bs=(R) 4096B-4096B, (W) 4096B-4096B, (T) 4096B-4096B, ioengine=libaio, iodepth=2
+test21: (g=0): rw=randread, bs=(R) 4096B-4096B, (W) 4096B-4096B, (T) 4096B-4096B, ioengine=libaio, iodepth=2
+test22: (g=0): rw=randread, bs=(R) 4096B-4096B, (W) 4096B-4096B, (T) 4096B-4096B, ioengine=libaio, iodepth=2
+test23: (g=0): rw=randread, bs=(R) 4096B-4096B, (W) 4096B-4096B, (T) 4096B-4096B, ioengine=libaio, iodepth=2
+test24: (g=0): rw=randread, bs=(R) 4096B-4096B, (W) 4096B-4096B, (T) 4096B-4096B, ioengine=libaio, iodepth=2
+test25: (g=0): rw=randread, bs=(R) 4096B-4096B, (W) 4096B-4096B, (T) 4096B-4096B, ioengine=libaio, iodepth=2
+test26: (g=0): rw=randread, bs=(R) 4096B-4096B, (W) 4096B-4096B, (T) 4096B-4096B, ioengine=libaio, iodepth=2
+test27: (g=0): rw=randread, bs=(R) 4096B-4096B, (W) 4096B-4096B, (T) 4096B-4096B, ioengine=libaio, iodepth=2
+test28: (g=0): rw=randread, bs=(R) 4096B-4096B, (W) 4096B-4096B, (T) 4096B-4096B, ioengine=libaio, iodepth=2
+test29: (g=0): rw=randread, bs=(R) 4096B-4096B, (W) 4096B-4096B, (T) 4096B-4096B, ioengine=libaio, iodepth=2
+test30: (g=0): rw=randread, bs=(R) 4096B-4096B, (W) 4096B-4096B, (T) 4096B-4096B, ioengine=libaio, iodepth=2
+test31: (g=0): rw=randread, bs=(R) 4096B-4096B, (W) 4096B-4096B, (T) 4096B-4096B, ioengine=libaio, iodepth=2
+test32: (g=0): rw=randread, bs=(R) 4096B-4096B, (W) 4096B-4096B, (T) 4096B-4096B, ioengine=libaio, iodepth=2
+fio-3.8-5-g464b
+Starting 32 processes
+
+test1: (groupid=0, jobs=32): err= 0: pid=23612: Wed Aug  5 18:54:46 2020
+   read: IOPS=1884k, BW=7360MiB/s (7718MB/s)(431GiB/60001msec)
+    slat (usec): min=2, max=3113, avg= 4.95, stdev= 1.54
+    clat (usec): min=8, max=22114, avg=28.22, stdev= 5.07
+     lat (usec): min=20, max=22128, avg=33.26, stdev= 5.43
+    clat percentiles (nsec):
+     |  1.00th=[24448],  5.00th=[24960], 10.00th=[25472], 20.00th=[25984],
+     | 30.00th=[26496], 40.00th=[27008], 50.00th=[27520], 60.00th=[27776],
+     | 70.00th=[28288], 80.00th=[29056], 90.00th=[30336], 95.00th=[38144],
+     | 99.00th=[42752], 99.50th=[44288], 99.90th=[55040], 99.95th=[58624],
+     | 99.99th=[79360]
+   bw (  KiB/s): min=154656, max=257872, per=3.12%, avg=235399.15, stdev=12554.15, samples=3809
+   iops        : min=38664, max=64468, avg=58849.75, stdev=3138.53, samples=3809
+  lat (usec)   : 10=0.01%, 20=0.01%, 50=99.78%, 100=0.22%, 250=0.01%
+  lat (usec)   : 500=0.01%, 750=0.01%, 1000=0.01%
+  lat (msec)   : 2=0.01%, 4=0.01%, 50=0.01%
+  cpu          : usr=8.37%, sys=36.20%, ctx=56528318, majf=0, minf=474
+  IO depths    : 1=0.1%, 2=100.0%, 4=0.0%, 8=0.0%, 16=0.0%, 32=0.0%, >=64=0.0%
+     submit    : 0=0.0%, 4=100.0%, 8=0.0%, 16=0.0%, 32=0.0%, 64=0.0%, >=64=0.0%
+     complete  : 0=0.0%, 4=100.0%, 8=0.0%, 16=0.0%, 32=0.0%, 64=0.0%, >=64=0.0%
+     issued rwts: total=113056154,0,0,0 short=0,0,0,0 dropped=0,0,0,0
+     latency   : target=0, window=0, percentile=100.00%, depth=2
+
+Run status group 0 (all jobs):
+   READ: bw=7360MiB/s (7718MB/s), 7360MiB/s-7360MiB/s (7718MB/s-7718MB/s), io=431GiB (463GB), run=60001-60001msec
+
+Disk stats (read/write):
+  nvme2n1: ios=0/0, merge=0/0, ticks=0/0, in_queue=0, util=0.00%
+  nvme2n2: ios=0/0, merge=0/0, ticks=0/0, in_queue=0, util=0.00%
+  nvme2n3: ios=0/0, merge=0/0, ticks=0/0, in_queue=0, util=0.00%
+  nvme2n4: ios=0/0, merge=0/0, ticks=0/0, in_queue=0, util=0.00%
+  nvme2n5: ios=0/0, merge=0/0, ticks=0/0, in_queue=0, util=0.00%
+  nvme2n6: ios=0/0, merge=0/0, ticks=0/0, in_queue=0, util=0.00%
+  nvme2n7: ios=0/0, merge=0/0, ticks=0/0, in_queue=0, util=0.00%
+  nvme2n8: ios=0/0, merge=0/0, ticks=0/0, in_queue=0, util=0.00%
+  nvme2n9: ios=0/0, merge=0/0, ticks=0/0, in_queue=0, util=0.00%
+  nvme2n10: ios=0/0, merge=0/0, ticks=0/0, in_queue=0, util=0.00%
+  nvme2n11: ios=0/0, merge=0/0, ticks=0/0, in_queue=0, util=0.00%
+  nvme2n12: ios=0/0, merge=0/0, ticks=0/0, in_queue=0, util=0.00%
+  nvme2n13: ios=0/0, merge=0/0, ticks=0/0, in_queue=0, util=0.00%
+  nvme2n14: ios=0/0, merge=0/0, ticks=0/0, in_queue=0, util=0.00%
+  nvme2n15: ios=0/0, merge=0/0, ticks=0/0, in_queue=0, util=0.00%
+  nvme2n16: ios=0/0, merge=0/0, ticks=0/0, in_queue=0, util=0.00%
+  nvme2n113: ios=0/0, merge=0/0, ticks=0/0, in_queue=0, util=0.00%
+  nvme2n114: ios=0/0, merge=0/0, ticks=0/0, in_queue=0, util=0.00%
+  nvme2n115: ios=0/0, merge=0/0, ticks=0/0, in_queue=0, util=0.00%
+  nvme2n116: ios=0/0, merge=0/0, ticks=0/0, in_queue=0, util=0.00%
+  nvme2n117: ios=0/0, merge=0/0, ticks=0/0, in_queue=0, util=0.00%
+  nvme2n118: ios=0/0, merge=0/0, ticks=0/0, in_queue=0, util=0.00%
+  nvme2n119: ios=0/0, merge=0/0, ticks=0/0, in_queue=0, util=0.00%
+  nvme2n120: ios=0/0, merge=0/0, ticks=0/0, in_queue=0, util=0.00%
+  nvme2n121: ios=0/0, merge=0/0, ticks=0/0, in_queue=0, util=0.00%
+  nvme2n122: ios=0/0, merge=0/0, ticks=0/0, in_queue=0, util=0.00%
+  nvme2n123: ios=0/0, merge=0/0, ticks=0/0, in_queue=0, util=0.00%
+  nvme2n124: ios=0/0, merge=0/0, ticks=0/0, in_queue=0, util=0.00%
+  nvme2n125: ios=0/0, merge=0/0, ticks=0/0, in_queue=0, util=0.00%
+  nvme2n126: ios=0/0, merge=0/0, ticks=0/0, in_queue=0, util=0.00%
+  nvme2n127: ios=0/0, merge=0/0, ticks=0/0, in_queue=0, util=0.00%
+  nvme2n128: ios=0/0, merge=0/0, ticks=0/0, in_queue=0, util=0.00%

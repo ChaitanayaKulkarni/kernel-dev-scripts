@@ -1,0 +1,101 @@
+From 86791808964f88328c50e9f0b974495d096225c3 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Sun, 12 Dec 2021 22:45:07 -0800
+Subject: [PATCH V2 0/2] nvme-core: make gencounter feature tunable
+
+Hi,
+
+The recent commit uses a combination of command id and a gencounter
+to calculate the command id so that we can call out buggy controllers
+for spurious completions and that also avoids use after free.
+This commit adds various if statements and bitwise operations
+such as &, <<, >>, & along with comparison operations to validate the  
+gencounter and print out the errors.
+ 
+This feature is required to catch the buggy controller, but in the  
+production environment where controller is validated and known to be
+stable this achieves nothing but adds additional code and runtime CPU  
+instructions for the PCIe controller.
+Worst case scenario when NVMeOF setup is using passthru backend then
+these instructions gets duplicated on the host and on the target side
+for each controller.
+ 
+This patch-series makes the gencounter feature configurable by   
+defining a new KConfig macro CONFIG_NVME_DEBUG_USE_CID_GENCTR and adding
+a new KConfig section Debug with subsection for enabling the  
+gencounter debug feature. We move the current tag + gencounter code when
+CONFIG_NVME_DEBUG_USE_CID_GENCTR is defined and keep the original code
+where we use tag based command id where
+CONFIG_NVME_DEBUG_USE_CID_GENCTR is not defined.
+The newly added Debug section is kept under NVMe Driver section under
+host side.
+ 
+In this way we achieve:-
+1. Removing the entire gencounter code at the compile-time and keeping the  
+   fastpath as lean as possible when the controller is known to be stable.
+2. Retaining the gencounter behavior by enabling the debug feature.
+3. Letting user decide which debug features to enable instead of forcing
+   any.
+4. Avoid measurable differences in fio performance numbers. see below.
+
+* fio BW/iops/slat cid gencounter on avg IOPS = 75k, BW = 295MiB :-
+read: IOPS=75.3k, BW=294MiB/s
+read: IOPS=75.8k, BW=296MiB/s 
+read: IOPS=75.2k, BW=294MiB/s 
+read: IOPS=76.0k, BW=297MiB/s 
+read: IOPS=75.4k, BW=294MiB/s 
+read: IOPS=76.0k, BW=297MiB/s 
+read: IOPS=75.5k, BW=295MiB/s 
+read: IOPS=75.4k, BW=294MiB/s 
+
+Submission latency avg = 6698 nsec :-
+slat (nsec): avg=5057.99
+slat (nsec): avg=7434.15
+slat (nsec): avg=6310.50
+slat (nsec): avg=8083.82
+slat (nsec): avg=7297.77
+slat (nsec): avg=6003.77
+slat (nsec): avg=6657.75
+slat (nsec): avg=6745.34
+
+* fio BW/iops/slat cid gencounter off IOPS avg = 76k, BW = 297MiB :-
+read: IOPS=77.7k, BW=304MiB/s
+read: IOPS=76.5k, BW=299MiB/s 
+read: IOPS=74.1k, BW=290MiB/s 
+read: IOPS=75.8k, BW=296MiB/s 
+read: IOPS=75.9k, BW=297MiB/s 
+read: IOPS=75.2k, BW=294MiB/s 
+read: IOPS=77.6k, BW=303MiB/s 
+read: IOPS=76.8k, BW=300MiB/s 
+
+Submission latency avg = 5030 nsec :-
+
+slat (nsec): avg=3859.20
+slat (nsec): avg=4669.78
+slat (nsec): avg=3778.51
+slat (nsec): avg=8436.18
+slat (nsec): avg=5653.83
+slat (nsec): avg=5286.60
+slat (nsec): avg=4176.05
+slat (nsec): avg=4385.19
+
+-ck                    
+
+* Changes from V1 :-
+
+1. Move NVME_QUIRK_SKIP_CID_GEN check and gencounter increase
+   code into nvme_increase_cid_genctr().
+2. Drop patch number 2 from V1.
+
+Chaitanya Kulkarni (2):
+  nvme-core: make cid gencounter configurable
+  nvme: add KConfig options for debug features
+
+ drivers/nvme/host/Kconfig | 10 ++++++++++
+ drivers/nvme/host/core.c  |  4 +---
+ drivers/nvme/host/nvme.h  | 40 +++++++++++++++++++++++++++++++++++++++
+ 3 files changed, 51 insertions(+), 3 deletions(-)
+
+-- 
+2.29.0
+

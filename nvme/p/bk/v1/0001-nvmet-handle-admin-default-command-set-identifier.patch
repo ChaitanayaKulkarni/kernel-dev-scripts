@@ -1,0 +1,44 @@
+From 62ee22fcdcfc6f06bd2f5fc83210c1392f7d85f1 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Thu, 7 Apr 2022 12:11:37 -0700
+Subject: [PATCH 1/2] nvmet: handle admin default command set identifier
+
+The NVMeOF in kernel host when configuring non-mdts limits uses
+idnetify controller cns value to NVME_ID_CNS_CS_CTRL and csi value to
+NVME_CSI_NVM. In target code we only handle case for NVME_ID_CNS_CS_CTRL
+and NVME_CSI_ZNS when CONFIG_BLK_DEV_ZONED is set.
+
+Handle missing case for CONFIG_BLK_DEV_ZONED and !CONFIG_BLK_DEV_ZONED
+so it can handle NVME_ID_CNS_CS_CTRL with NVME_CSI_NVM.
+
+This is needed to mask out the errors reported by the blktest nvme/012.
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/target/admin-cmd.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/drivers/nvme/target/admin-cmd.c b/drivers/nvme/target/admin-cmd.c
+index 397daaf51f1b..e5eea2f0ac9c 100644
+--- a/drivers/nvme/target/admin-cmd.c
++++ b/drivers/nvme/target/admin-cmd.c
+@@ -718,9 +718,16 @@ static void nvmet_execute_identify(struct nvmet_req *req)
+ 			switch (req->cmd->identify.csi) {
+ 			case NVME_CSI_ZNS:
+ 				return nvmet_execute_identify_cns_cs_ctrl(req);
++			case NVME_CSI_NVM:
++				return nvmet_execute_identify_ctrl(req);
+ 			default:
+ 				break;
+ 			}
++		} else {
++			switch (req->cmd->identify.csi) {
++			case NVME_CSI_NVM:
++				return nvmet_execute_identify_ctrl(req);
++			}
+ 		}
+ 		break;
+ 	case NVME_ID_CNS_NS_ACTIVE_LIST:
+-- 
+2.29.0
+

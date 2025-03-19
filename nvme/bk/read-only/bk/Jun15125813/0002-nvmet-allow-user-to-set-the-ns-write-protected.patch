@@ -1,0 +1,119 @@
+From efeff7b8ac69a688a49563148ab62f6b1b9d7fcd Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Mon, 14 Jun 2021 21:16:55 -0700
+Subject: [PATCH 2/4] nvmet: allow user to set the ns write protected
+
+User may want to export readonly ns to host in order to export
+read-only snapshots. Right now we don't have configfs attribute to
+allow user to mark readonly & export ns.
+
+Add a configfs attribute "write_protect" such that user can set the ns
+and export ns readonly when it is not enabled.
+
+Also, when user is setting the ns write protected from configfs we set
+ns write protect state to NVME_NS_WRITE_PROTECT_PERMANENT and don't
+allow user to change the value for the ns-write-protect feature.
+
+We also update the id->nwpc to indicate the support for namespace
+write protect permanent state.
+
+For Replay Protected Memory Block Support clear the bit 1 of the field
+Namesapce Write Protection Authentication Control to indicate Set
+Features command which attenpts to set the namespace write protection
+state to permanent write protect will fail.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/admin-cmd.c |  9 ++++++++-
+ drivers/nvme/target/configfs.c  | 34 +++++++++++++++++++++++++++++++++
+ 2 files changed, 42 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/nvme/target/admin-cmd.c b/drivers/nvme/target/admin-cmd.c
+index 40bc1603f9d9..0eaba5e1a12f 100644
+--- a/drivers/nvme/target/admin-cmd.c
++++ b/drivers/nvme/target/admin-cmd.c
+@@ -443,7 +443,8 @@ static void nvmet_execute_identify_ctrl(struct nvmet_req *req)
+ 	id->psd[0].entry_lat = cpu_to_le32(0x10);
+ 	id->psd[0].exit_lat = cpu_to_le32(0x4);
+ 
+-	id->nwpc = 1 << 0; /* write protect and no write protect */
++	/* write protect permanent, write protect and no write protect */
++	id->nwpc = 1 << 2 | 1 << 0;
+ 
+ 	status = nvmet_copy_to_sgl(req, 0, id, sizeof(*id));
+ 
+@@ -692,6 +693,11 @@ static u16 nvmet_set_feat_write_protect(struct nvmet_req *req)
+ 		return status;
+ 
+ 	mutex_lock(&subsys->lock);
++	if (req->ns->write_protect == NVME_NS_WRITE_PROTECT_PERMANENT) {
++		req->error_loc = offsetof(struct nvme_common_command, nsid);
++		goto out;
++	}
++
+ 	switch (write_protect) {
+ 	case NVME_NS_WRITE_PROTECT:
+ 		status = nvmet_write_protect_flush_sync(req);
+@@ -710,6 +716,7 @@ static u16 nvmet_set_feat_write_protect(struct nvmet_req *req)
+ 
+ 	if (!status)
+ 		nvmet_ns_changed(subsys, req->ns->nsid);
++out:
+ 	mutex_unlock(&subsys->lock);
+ 	return status;
+ }
+diff --git a/drivers/nvme/target/configfs.c b/drivers/nvme/target/configfs.c
+index 273555127188..3f1f3a38cd1b 100644
+--- a/drivers/nvme/target/configfs.c
++++ b/drivers/nvme/target/configfs.c
+@@ -593,6 +593,39 @@ static ssize_t nvmet_ns_revalidate_size_store(struct config_item *item,
+ 
+ CONFIGFS_ATTR_WO(nvmet_ns_, revalidate_size);
+ 
++static ssize_t nvmet_ns_write_protect_show(struct config_item *item, char *page)
++{
++	return sprintf(page, "%d\n", to_nvmet_ns(item)->write_protect);
++}
++
++static ssize_t nvmet_ns_write_protect_store(struct config_item *item,
++		const char *page, size_t count)
++{
++	struct nvmet_ns *ns = to_nvmet_ns(item);
++	bool val;
++
++	if (strtobool(page, &val))
++		return -EINVAL;
++
++	mutex_lock(&ns->subsys->lock);
++	if (ns->enabled) {
++		pr_err("disable ns before setting write_protect value.\n");
++		mutex_unlock(&ns->subsys->lock);
++		return -EINVAL;
++	}
++
++	if (val)
++		ns->write_protect = NVME_NS_WRITE_PROTECT_PERMANENT;
++	else
++		ns->write_protect = NVME_NS_NO_WRITE_PROTECT;
++
++	mutex_unlock(&ns->subsys->lock);
++	return count;
++}
++
++CONFIGFS_ATTR(nvmet_ns_, write_protect);
++
++
+ static struct configfs_attribute *nvmet_ns_attrs[] = {
+ 	&nvmet_ns_attr_device_path,
+ 	&nvmet_ns_attr_device_nguid,
+@@ -601,6 +634,7 @@ static struct configfs_attribute *nvmet_ns_attrs[] = {
+ 	&nvmet_ns_attr_enable,
+ 	&nvmet_ns_attr_buffered_io,
+ 	&nvmet_ns_attr_revalidate_size,
++	&nvmet_ns_attr_write_protect,
+ #ifdef CONFIG_PCI_P2PDMA
+ 	&nvmet_ns_attr_p2pmem,
+ #endif
+-- 
+2.22.1
+

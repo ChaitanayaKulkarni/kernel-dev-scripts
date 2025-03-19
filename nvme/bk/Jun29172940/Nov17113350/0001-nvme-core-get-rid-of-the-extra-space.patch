@@ -1,0 +1,30 @@
+From 5d51b2971843c0f6592ccb48737eb40bee88415f Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Mon, 16 Nov 2020 15:32:24 -0800
+Subject: [PATCH] nvme-core: get rid of the extra space
+
+Remove the extra space in the nvme_free_cels() when calling
+xa_for_each loop which is not a common practice
+(except drivers/infiniband/core/ not sure why).
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/host/core.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index 9a270e49df17..1fb35d3d6f7d 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -4378,7 +4378,7 @@ static void nvme_free_cels(struct nvme_ctrl *ctrl)
+ 	struct nvme_effects_log	*cel;
+ 	unsigned long i;
+ 
+-	xa_for_each (&ctrl->cels, i, cel) {
++	xa_for_each(&ctrl->cels, i, cel) {
+ 		xa_erase(&ctrl->cels, i);
+ 		kfree(cel);
+ 	}
+-- 
+2.22.1
+

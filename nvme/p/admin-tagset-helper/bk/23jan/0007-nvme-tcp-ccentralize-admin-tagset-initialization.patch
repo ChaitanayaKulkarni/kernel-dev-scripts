@@ -1,0 +1,36 @@
+From 32efc3d46dc97a1406f7ee3f3170be47b6963f0d Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Sat, 22 Jan 2022 22:41:11 -0800
+Subject: [PATCH 07/11] nvme-tcp: use helper admin tagset initialization
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/host/tcp.c | 11 ++---------
+ 1 file changed, 2 insertions(+), 9 deletions(-)
+
+diff --git a/drivers/nvme/host/tcp.c b/drivers/nvme/host/tcp.c
+index 6cbcc8b4daaf..905bd57a14e1 100644
+--- a/drivers/nvme/host/tcp.c
++++ b/drivers/nvme/host/tcp.c
+@@ -1613,16 +1613,9 @@ static struct blk_mq_tag_set *nvme_tcp_alloc_tagset(struct nvme_ctrl *nctrl,
+ 
+ 	if (admin) {
+ 		set = &ctrl->admin_tag_set;
+-		memset(set, 0, sizeof(*set));
+-		set->ops = &nvme_tcp_admin_mq_ops;
+-		set->queue_depth = NVME_AQ_MQ_TAG_DEPTH;
+-		set->reserved_tags = NVMF_RESERVED_TAGS;
+-		set->numa_node = nctrl->numa_node;
+-		set->flags = BLK_MQ_F_BLOCKING;
++		nvme_ctrl_init_admin_tagset(set, ctrl, ctrl->ctrl.numa_node,
++				&nvme_tcp_admin_mq_ops, BLK_MQ_F_BLOCKING);
+ 		set->cmd_size = sizeof(struct nvme_tcp_request);
+-		set->driver_data = ctrl;
+-		set->nr_hw_queues = 1;
+-		set->timeout = NVME_ADMIN_TIMEOUT;
+ 	} else {
+ 		set = &ctrl->tag_set;
+ 		memset(set, 0, sizeof(*set));
+-- 
+2.29.0
+

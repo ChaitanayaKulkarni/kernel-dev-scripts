@@ -1,0 +1,192 @@
+From a65fa9d89f774fc515fcaeb460772d46ec4107a5 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Wed, 9 Feb 2022 02:03:25 -0800
+Subject: [PATCH] nvme: add and use req q init helper
+
+Add and use helper to remove duplicate code for request queue
+initialization and error handling for all transports.
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/host/fabrics.c |  9 +++++++++
+ drivers/nvme/host/fabrics.h |  1 +
+ drivers/nvme/host/fc.c      | 20 ++++++++------------
+ drivers/nvme/host/rdma.c    | 18 ++++++------------
+ drivers/nvme/host/tcp.c     | 18 ++++++------------
+ drivers/nvme/target/loop.c  |  6 ++----
+ 6 files changed, 32 insertions(+), 40 deletions(-)
+
+diff --git a/drivers/nvme/host/fabrics.c b/drivers/nvme/host/fabrics.c
+index ee79a6d639b4..334f949f9919 100644
+--- a/drivers/nvme/host/fabrics.c
++++ b/drivers/nvme/host/fabrics.c
+@@ -33,6 +33,15 @@ static struct nvmf_host *__nvmf_host_find(const char *hostnqn)
+ 	return NULL;
+ }
+ 
++int init_req_q(struct request_queue **q, struct blk_mq_tag_set *ts)
++{
++	*q = blk_mq_init_queue(ts);
++	if (IS_ERR(*q))
++		return PTR_ERR(*q);
++	return 0;
++}
++EXPORT_SYMBOL_GPL(init_req_q);
++
+ static struct nvmf_host *nvmf_host_add(const char *hostnqn)
+ {
+ 	struct nvmf_host *host;
+diff --git a/drivers/nvme/host/fabrics.h b/drivers/nvme/host/fabrics.h
+index c3203ff1c654..3031509b0f09 100644
+--- a/drivers/nvme/host/fabrics.h
++++ b/drivers/nvme/host/fabrics.h
+@@ -198,5 +198,6 @@ int nvmf_get_address(struct nvme_ctrl *ctrl, char *buf, int size);
+ bool nvmf_should_reconnect(struct nvme_ctrl *ctrl);
+ bool nvmf_ip_options_match(struct nvme_ctrl *ctrl,
+ 		struct nvmf_ctrl_options *opts);
++int init_req_q(struct request_queue **q, struct blk_mq_tag_set *ts);
+ 
+ #endif /* _NVME_FABRICS_H */
+diff --git a/drivers/nvme/host/fc.c b/drivers/nvme/host/fc.c
+index 71b3108c22f0..9e467131ef8a 100644
+--- a/drivers/nvme/host/fc.c
++++ b/drivers/nvme/host/fc.c
+@@ -2916,11 +2916,9 @@ nvme_fc_create_io_queues(struct nvme_fc_ctrl *ctrl)
+ 
+ 	ctrl->ctrl.tagset = &ctrl->tag_set;
+ 
+-	ctrl->ctrl.connect_q = blk_mq_init_queue(&ctrl->tag_set);
+-	if (IS_ERR(ctrl->ctrl.connect_q)) {
+-		ret = PTR_ERR(ctrl->ctrl.connect_q);
++	ret = init_req_q(&(ctrl->ctrl.connect_q), &ctrl->tag_set);
++	if (ret)
+ 		goto out_free_tag_set;
+-	}
+ 
+ 	ret = nvme_fc_create_hw_io_queues(ctrl, ctrl->ctrl.sqsize + 1);
+ 	if (ret)
+@@ -3549,17 +3547,15 @@ nvme_fc_init_ctrl(struct device *dev, struct nvmf_ctrl_options *opts,
+ 		goto out_free_queues;
+ 	ctrl->ctrl.admin_tagset = &ctrl->admin_tag_set;
+ 
+-	ctrl->ctrl.fabrics_q = blk_mq_init_queue(&ctrl->admin_tag_set);
+-	if (IS_ERR(ctrl->ctrl.fabrics_q)) {
+-		ret = PTR_ERR(ctrl->ctrl.fabrics_q);
++
++	ret = init_req_q(&(ctrl->ctrl.fabrics_q), &ctrl->admin_tag_set);
++	if (ret)
+ 		goto out_free_admin_tag_set;
+-	}
+ 
+-	ctrl->ctrl.admin_q = blk_mq_init_queue(&ctrl->admin_tag_set);
+-	if (IS_ERR(ctrl->ctrl.admin_q)) {
+-		ret = PTR_ERR(ctrl->ctrl.admin_q);
++
++	ret = init_req_q(&(ctrl->ctrl.admin_q), &ctrl->admin_tag_set);
++	if (ret)
+ 		goto out_cleanup_fabrics_q;
+-	}
+ 
+ 	/*
+ 	 * Would have been nice to init io queues tag set as well.
+diff --git a/drivers/nvme/host/rdma.c b/drivers/nvme/host/rdma.c
+index 850f84d204d0..f8fceadffaec 100644
+--- a/drivers/nvme/host/rdma.c
++++ b/drivers/nvme/host/rdma.c
+@@ -891,17 +891,13 @@ static int nvme_rdma_configure_admin_queue(struct nvme_rdma_ctrl *ctrl,
+ 			goto out_free_async_qe;
+ 		}
+ 
+-		ctrl->ctrl.fabrics_q = blk_mq_init_queue(&ctrl->admin_tag_set);
+-		if (IS_ERR(ctrl->ctrl.fabrics_q)) {
+-			error = PTR_ERR(ctrl->ctrl.fabrics_q);
++		error = init_req_q(&(ctrl->ctrl.fabrics_q), &ctrl->admin_tag_set);
++		if (error)
+ 			goto out_free_tagset;
+-		}
+ 
+-		ctrl->ctrl.admin_q = blk_mq_init_queue(&ctrl->admin_tag_set);
+-		if (IS_ERR(ctrl->ctrl.admin_q)) {
+-			error = PTR_ERR(ctrl->ctrl.admin_q);
++		error = init_req_q(&(ctrl->ctrl.admin_q), &ctrl->admin_tag_set);
++		if (error)
+ 			goto out_cleanup_fabrics_q;
+-		}
+ 	}
+ 
+ 	error = nvme_rdma_start_queue(ctrl, 0);
+@@ -978,11 +974,9 @@ static int nvme_rdma_configure_io_queues(struct nvme_rdma_ctrl *ctrl, bool new)
+ 			goto out_free_io_queues;
+ 		}
+ 
+-		ctrl->ctrl.connect_q = blk_mq_init_queue(&ctrl->tag_set);
+-		if (IS_ERR(ctrl->ctrl.connect_q)) {
+-			ret = PTR_ERR(ctrl->ctrl.connect_q);
++		ret = init_req_q(&(ctrl->ctrl.connect_q), &ctrl->tag_set);
++		if (ret)
+ 			goto out_free_tag_set;
+-		}
+ 	}
+ 
+ 	ret = nvme_rdma_start_io_queues(ctrl);
+diff --git a/drivers/nvme/host/tcp.c b/drivers/nvme/host/tcp.c
+index 4ceb28675fdf..6d37c46c7c60 100644
+--- a/drivers/nvme/host/tcp.c
++++ b/drivers/nvme/host/tcp.c
+@@ -1825,11 +1825,9 @@ static int nvme_tcp_configure_io_queues(struct nvme_ctrl *ctrl, bool new)
+ 			goto out_free_io_queues;
+ 		}
+ 
+-		ctrl->connect_q = blk_mq_init_queue(ctrl->tagset);
+-		if (IS_ERR(ctrl->connect_q)) {
+-			ret = PTR_ERR(ctrl->connect_q);
++		ret = init_req_q(&(ctrl->connect_q), ctrl->tagset);
++		if (ret)
+ 			goto out_free_tag_set;
+-		}
+ 	}
+ 
+ 	ret = nvme_tcp_start_io_queues(ctrl);
+@@ -1896,17 +1894,13 @@ static int nvme_tcp_configure_admin_queue(struct nvme_ctrl *ctrl, bool new)
+ 			goto out_free_queue;
+ 		}
+ 
+-		ctrl->fabrics_q = blk_mq_init_queue(ctrl->admin_tagset);
+-		if (IS_ERR(ctrl->fabrics_q)) {
+-			error = PTR_ERR(ctrl->fabrics_q);
++		error = init_req_q(&(ctrl->fabrics_q), ctrl->admin_tagset);
++		if (error)
+ 			goto out_free_tagset;
+-		}
+ 
+-		ctrl->admin_q = blk_mq_init_queue(ctrl->admin_tagset);
+-		if (IS_ERR(ctrl->admin_q)) {
+-			error = PTR_ERR(ctrl->admin_q);
++		error = init_req_q(&(ctrl->admin_q), ctrl->admin_tagset);
++		if (error)
+ 			goto out_cleanup_fabrics_q;
+-		}
+ 	}
+ 
+ 	error = nvme_tcp_start_queue(ctrl, 0);
+diff --git a/drivers/nvme/target/loop.c b/drivers/nvme/target/loop.c
+index eb1094254c82..1b74784b7a8e 100644
+--- a/drivers/nvme/target/loop.c
++++ b/drivers/nvme/target/loop.c
+@@ -543,11 +543,9 @@ static int nvme_loop_create_io_queues(struct nvme_loop_ctrl *ctrl)
+ 	if (ret)
+ 		goto out_destroy_queues;
+ 
+-	ctrl->ctrl.connect_q = blk_mq_init_queue(&ctrl->tag_set);
+-	if (IS_ERR(ctrl->ctrl.connect_q)) {
+-		ret = PTR_ERR(ctrl->ctrl.connect_q);
++	ret = init_req_q(&(ctrl->ctrl.connect_q), &ctrl->tag_set);
++	if (ret)
+ 		goto out_free_tagset;
+-	}
+ 
+ 	ret = nvme_loop_connect_io_queues(ctrl);
+ 	if (ret)
+-- 
+2.29.0
+

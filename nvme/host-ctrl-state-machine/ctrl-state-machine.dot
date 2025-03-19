@@ -1,0 +1,27 @@
+/*
+ * NVMe Host Controller State transition diagram
+ * dot -Tps nvme-ctrl-state-machine.dot -o nvme-ctrl-state-machine.pdf
+ */
+digraph NVMe_Controller_State_Machine {
+NEW -> LIVE
+NEW -> CONNECTING
+NEW -> RESETTING
+CONNECTING -> LIVE
+CONNECTING -> DELETING
+LIVE -> RESETTING
+LIVE -> DELETING
+RESETTING -> CONNECTING
+RESETTING -> DELETING
+RESETTING -> LIVE
+DEAD -> DELETING_NOIO
+DELETING -> DELETING_NOIO
+DELETING -> DEAD
+
+NEW [shape=polygon,sides=5,peripheries=3,color=lightblue,style=filled]
+LIVE [color=green,style=filled]
+CONNECTING [color=yellow,style=filled]
+RESETTING [color=lightyellow,style=filled]
+DELETING [color=pink,style=filled]
+DEAD [color=red,style=filled]
+DELETING_NOIO [shape=polygon,sides=5,peripheries=3,color=maroon,style=filled]
+}

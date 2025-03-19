@@ -1,0 +1,47 @@
+From ac9c6c9e6817a735cd04668c6eb8785872719ee7 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Tue, 20 Jun 2023 23:03:15 -0700
+Subject: [PATCH 3/4] nvme-fabrics: don't repeat HCTX_TYPE_DEFAULT code
+
+In function nvmf_map_queues() setting up the HCTX_TYPE_DEFAULT map's
+nr_queues and queue offset values code is duplicated when read/write
+queues are spearate and shared.
+
+Remove common code from both cases & set those values before we process
+the separate or shared read/write queues case.
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/host/fabrics.c | 8 ++------
+ 1 file changed, 2 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/nvme/host/fabrics.c b/drivers/nvme/host/fabrics.c
+index 1bc0fd89a1f1..39c30b8b19d0 100644
+--- a/drivers/nvme/host/fabrics.c
++++ b/drivers/nvme/host/fabrics.c
+@@ -1053,20 +1053,16 @@ void nvmf_map_queues(struct blk_mq_tag_set *set, struct nvme_ctrl *ctrl,
+ {
+ 	struct nvmf_ctrl_options *opts = ctrl->opts;
+ 
++	set->map[HCTX_TYPE_DEFAULT].nr_queues = io_queues[HCTX_TYPE_DEFAULT];
++	set->map[HCTX_TYPE_DEFAULT].queue_offset = 0;
+ 	if (opts->nr_write_queues && io_queues[HCTX_TYPE_READ]) {
+ 		/* separate read/write queues */
+-		set->map[HCTX_TYPE_DEFAULT].nr_queues =
+-			io_queues[HCTX_TYPE_DEFAULT];
+-		set->map[HCTX_TYPE_DEFAULT].queue_offset = 0;
+ 		set->map[HCTX_TYPE_READ].nr_queues =
+ 			io_queues[HCTX_TYPE_READ];
+ 		set->map[HCTX_TYPE_READ].queue_offset =
+ 			io_queues[HCTX_TYPE_DEFAULT];
+ 	} else {
+ 		/* shared read/write queues */
+-		set->map[HCTX_TYPE_DEFAULT].nr_queues =
+-			io_queues[HCTX_TYPE_DEFAULT];
+-		set->map[HCTX_TYPE_DEFAULT].queue_offset = 0;
+ 		set->map[HCTX_TYPE_READ].nr_queues =
+ 			io_queues[HCTX_TYPE_DEFAULT];
+ 		set->map[HCTX_TYPE_READ].queue_offset = 0;
+-- 
+2.40.0
+

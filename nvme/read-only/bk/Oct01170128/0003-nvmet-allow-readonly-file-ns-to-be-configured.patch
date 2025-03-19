@@ -1,0 +1,33 @@
+From 425b256b85c41c3762e0281a6c332283f6ce9abb Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Wed, 30 Sep 2020 18:55:28 -0700
+Subject: [PATCH 3/3] nvmet: allow readonly file-ns to be configured
+
+Right now we open file-ns in read-write mode. This doesn't allow us to
+export the file which is marked read-only.
+
+Allow user to export the readonly file by considering the ns->readonly
+configfs attribute when opening the file. Use O_RDWR when ns->readonly
+is not set.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/io-cmd-file.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/nvme/target/io-cmd-file.c b/drivers/nvme/target/io-cmd-file.c
+index 0abbefd9925e..46f3ac3eae8e 100644
+--- a/drivers/nvme/target/io-cmd-file.c
++++ b/drivers/nvme/target/io-cmd-file.c
+@@ -41,7 +41,7 @@ void nvmet_file_ns_disable(struct nvmet_ns *ns)
+ 
+ int nvmet_file_ns_enable(struct nvmet_ns *ns)
+ {
+-	int flags = O_RDWR | O_LARGEFILE;
++	int flags = (ns->readonly ? O_RDONLY : O_RDWR) | O_LARGEFILE;
+ 	int ret;
+ 
+ 	if (!ns->buffered_io)
+-- 
+2.22.1
+

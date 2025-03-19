@@ -1,0 +1,96 @@
+From 1ead3fd7d8c95e06bf257be20dccfd0000831233 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Wed, 30 Sep 2020 16:35:05 -0700
+Subject: [PATCH V4 0/7] nvme-core: timeout related fixes and cleanup
+
+Hi,
+
+This patch series uses NVME_IO_TIMEOUT for the sync request submission
+and user request submission when the timeout is not specified by the
+caller and request queue data is set to NULL which is true for admin 
+queue.
+
+Also in this version, I've added timeout values setting for the NVMeOF
+passthru controller given that passthru VUCs (both admin and I/O VUCs)
+can differ in execution time than general-purpose admin and I/O command
+set following is the detailed scneario :-
+
+Consider NVMeOF target is setup in the passthru mode and both target and
+host modules are loaded with the default timeout values present
+in the nvme-core.
+
+1. User issues nvme cmd from the host to the target of nvme-cli where
+   timeout is taken from the controller log page  e.g. :-
+   # nvme io-passthru --timeout=XXX ...
+   OR
+   # nvme admin-passthru --timeout=XXX ...
+   The timeout value in the above examole is greater than the default
+   timeout value presend in host-core for both host/target.
+
+2. The newly added helper in this series nvme_default_timeout() will set
+   the timoeout for the host request and issues NVMe cmd over transport.
+
+3. In the absence of [1] target will set the timeout value which is
+   default timeout and that is smaller than the timeout set on the host
+   side.
+
+4. Due to lack of timeout value not passed over the transport leading
+   to samller timeout value for the request on the target than the host
+   side, target side command will timeout and host will not know the
+   exact reason given that it has provided right timeout value which is
+   greater than defualt timeout from host-core.
+
+Regards,
+Chaitanya
+
+[1] nvmet: add passthru admin timeout value attr
+    nvmet: add passthru io timeout value attr
+
+* Changes from V3:-
+
+1. Rebase and retest on nvme-5.10.
+2. Update the cover-letter with detailed scenario why NVMeOF target
+   passthru is needed.
+3. Wrap the line under 80 char for the last patch.
+
+* Changes from V2:-
+
+1. Introduce nvme_defalt_timeout() helper and use it in host/core.c.
+2. Use nvme_default_timeout() in the lightnvme.c
+
+* Changes from V1:-
+
+1. Instead of using qid to decide IO or ADMIN timeout use request
+   queue's queuedata whch we only set for non admin queue
+   __nvme_submit_sync_cmd().
+2. Add second patch to set IO timeout for nvme_submit_user_cmd().
+3. Set the NVMeOF passthru ctrl timeout values with default values from
+   nvme-core module.
+4. Add admin and I/O timeout configfs attributes for NVMeOF passthru
+   controller.
+
+Chaitanya Kulkarni (7):
+  nvme-core: use I/O timeout in submit sync cmd
+  nvme-core: use I/O timeout in nvme_submit_user_cmd
+  lightnvm: use I/O timeout in nvm submit user cmd
+  nvmet: set default timeout for passthru requests
+  nvmet: add passthru admin timeout value attr
+  nvmet: add passthru io timeout value attr
+  nvme: use consistent macro name for timeout
+
+ drivers/nvme/host/core.c       |  7 ++--
+ drivers/nvme/host/fc.c         |  2 +-
+ drivers/nvme/host/lightnvm.c   |  2 +-
+ drivers/nvme/host/nvme.h       | 17 ++++++++-
+ drivers/nvme/host/pci.c        |  8 ++--
+ drivers/nvme/host/rdma.c       |  2 +-
+ drivers/nvme/host/tcp.c        |  2 +-
+ drivers/nvme/target/configfs.c | 68 ++++++++++++++++++++++++++++++++++
+ drivers/nvme/target/loop.c     |  2 +-
+ drivers/nvme/target/nvmet.h    |  2 +
+ drivers/nvme/target/passthru.c | 11 ++++++
+ 11 files changed, 110 insertions(+), 13 deletions(-)
+
+-- 
+2.22.1
+

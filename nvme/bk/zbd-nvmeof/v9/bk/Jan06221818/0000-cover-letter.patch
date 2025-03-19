@@ -1,0 +1,36 @@
+From 4be3f3a73658804f55d502661c33b15e205bf880 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Wed, 6 Jan 2021 22:18:07 -0800
+Subject: [PATCH V9 0/9] *** SUBJECT HERE ***
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+*** BLURB HERE ***
+
+Chaitanya Kulkarni (9):
+  nvmet: add NVM command set identifier support
+  nvmet: add ZBD over ZNS backend support
+  nvmet: add bio get helper for different backends
+  nvmet: add bio init helper for different backends
+  nvmet: add bio put helper for different backends
+  nvmet: add common I/O length check helper
+  nvmet: call nvmet_bio_done() for zone append
+  nvme-core: check ctrl css before setting up zns
+  nvme-core: add a helper to print css related error
+
+ drivers/nvme/host/core.c          |  12 +-
+ drivers/nvme/target/Makefile      |   1 +
+ drivers/nvme/target/admin-cmd.c   |  67 ++++--
+ drivers/nvme/target/core.c        |  16 +-
+ drivers/nvme/target/io-cmd-bdev.c |  59 +++---
+ drivers/nvme/target/io-cmd-file.c |   7 +-
+ drivers/nvme/target/nvmet.h       |  87 ++++++++
+ drivers/nvme/target/passthru.c    |  11 +-
+ drivers/nvme/target/zns.c         | 328 ++++++++++++++++++++++++++++++
+ 9 files changed, 528 insertions(+), 60 deletions(-)
+ create mode 100644 drivers/nvme/target/zns.c
+
+-- 
+2.22.1
+

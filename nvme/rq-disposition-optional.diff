@@ -1,0 +1,135 @@
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index f586a4808e6e..832715676fd1 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -337,13 +337,6 @@ static void nvme_log_error(struct request *req)
+ 			   nr->status & NVME_SC_DNR  ? "DNR "  : "");
+ }
+ 
+-enum nvme_disposition {
+-	COMPLETE,
+-	RETRY,
+-	FAILOVER,
+-	AUTHENTICATE,
+-};
+-
+ static inline enum nvme_disposition nvme_decide_disposition(struct request *req)
+ {
+ 	if (likely(nvme_req(req)->status == 0))
+@@ -393,14 +386,16 @@ static inline void nvme_end_req(struct request *req)
+ void nvme_complete_rq(struct request *req)
+ {
+ 	struct nvme_ctrl *ctrl = nvme_req(req)->ctrl;
++	enum nvme_disposition disposition;
+ 
+-	trace_nvme_complete_rq(req);
+ 	nvme_cleanup_cmd(req);
+ 
+ 	if (ctrl->kas)
+ 		ctrl->comp_seen = true;
+ 
+-	switch (nvme_decide_disposition(req)) {
++	disposition = nvme_decide_disposition(req);
++	trace_nvme_complete_rq(req, disposition);
++	switch (disposition) {
+ 	case COMPLETE:
+ 		nvme_end_req(req);
+ 		return;
+@@ -424,7 +419,7 @@ EXPORT_SYMBOL_GPL(nvme_complete_rq);
+ 
+ void nvme_complete_batch_req(struct request *req)
+ {
+-	trace_nvme_complete_rq(req);
++	trace_nvme_complete_rq(req, COMPLETE);
+ 	nvme_cleanup_cmd(req);
+ 	nvme_end_req_zoned(req);
+ }
+diff --git a/drivers/nvme/host/nvme.h b/drivers/nvme/host/nvme.h
+index f0a84e390a55..56e16bdd59ff 100644
+--- a/drivers/nvme/host/nvme.h
++++ b/drivers/nvme/host/nvme.h
+@@ -1119,4 +1119,12 @@ static inline const unsigned char *nvme_opcode_str(int qid, u8 opcode, u8 fctype
+ 	return qid ? nvme_get_opcode_str(opcode) :
+ 		nvme_get_admin_opcode_str(opcode);
+ }
++
++enum nvme_disposition {
++	COMPLETE,
++	RETRY,
++	FAILOVER,
++	AUTHENTICATE,
++};
++
+ #endif /* _NVME_H */
+diff --git a/drivers/nvme/host/trace.c b/drivers/nvme/host/trace.c
+index 1c36fcedea20..ec32faa5080e 100644
+--- a/drivers/nvme/host/trace.c
++++ b/drivers/nvme/host/trace.c
+@@ -343,6 +343,18 @@ const char *nvme_trace_parse_fabrics_cmd(struct trace_seq *p,
+ 	}
+ }
+ 
++const char *nvme_get_disposition(enum nvme_disposition disp)
++{
++	const char *disp_str[] = {
++		"",
++		" dispostion=RETRY",
++		" disposition=FAILOVER",
++		" disposition=AUTHENTICATE",
++	};
++
++	return disp > AUTHENTICATE ? "unknown" : disp_str[disp];
++}
++
+ const char *nvme_trace_disk_name(struct trace_seq *p, char *name)
+ {
+ 	const char *ret = trace_seq_buffer_ptr(p);
+diff --git a/drivers/nvme/host/trace.h b/drivers/nvme/host/trace.h
+index 4fb5922ffdac..f8b33f59ff76 100644
+--- a/drivers/nvme/host/trace.h
++++ b/drivers/nvme/host/trace.h
+@@ -22,6 +22,7 @@ const char *nvme_trace_parse_nvm_cmd(struct trace_seq *p, u8 opcode,
+ 		u8 *cdw10);
+ const char *nvme_trace_parse_fabrics_cmd(struct trace_seq *p, u8 fctype,
+ 		u8 *spc);
++const char *nvme_get_disposition(enum nvme_disposition disp);
+ 
+ #define parse_nvme_cmd(qid, opcode, fctype, cdw10)			\
+ 	((opcode) == nvme_fabrics_command ?				\
+@@ -83,8 +84,8 @@ TRACE_EVENT(nvme_setup_cmd,
+ );
+ 
+ TRACE_EVENT(nvme_complete_rq,
+-	    TP_PROTO(struct request *req),
+-	    TP_ARGS(req),
++	    TP_PROTO(struct request *req, u8 disposition),
++	    TP_ARGS(req, disposition),
+ 	    TP_STRUCT__entry(
+ 		__array(char, disk, DISK_NAME_LEN)
+ 		__field(int, ctrl_id)
+@@ -93,6 +94,7 @@ TRACE_EVENT(nvme_complete_rq,
+ 		__field(u64, result)
+ 		__field(u8, retries)
+ 		__field(u8, flags)
++		__field(u8, disposition)
+ 		__field(u16, status)
+ 	    ),
+ 	    TP_fast_assign(
+@@ -102,13 +104,15 @@ TRACE_EVENT(nvme_complete_rq,
+ 		__entry->result = le64_to_cpu(nvme_req(req)->result.u64);
+ 		__entry->retries = nvme_req(req)->retries;
+ 		__entry->flags = nvme_req(req)->flags;
++		__entry->disposition = disposition;
+ 		__entry->status = nvme_req(req)->status;
+ 		__assign_disk_name(__entry->disk, req->q->disk);
+ 	    ),
+-	    TP_printk("nvme%d: %sqid=%d, cmdid=%u, res=%#llx, retries=%u, flags=0x%x, status=%#x",
++	    TP_printk("nvme%d: %sqid=%d, cmdid=%u, res=%#llx, retries=%u, flags=0x%x, status=%#x%s",
+ 		      __entry->ctrl_id, __print_disk_name(__entry->disk),
+ 		      __entry->qid, __entry->cid, __entry->result,
+-		      __entry->retries, __entry->flags, __entry->status)
++		      __entry->retries, __entry->flags, __entry->status,
++		      nvme_get_disposition(__entry->disposition))
+ 
+ );
+ 

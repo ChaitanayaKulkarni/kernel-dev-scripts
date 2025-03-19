@@ -1,0 +1,32 @@
+From a15fffa5253afae7508e2730bb319a4b3a7ab1f3 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Wed, 27 Nov 2019 01:14:19 -0800
+Subject: [PATCH 0/3] nvmet: make model/ctrl-id configurable, configfs fix
+
+Hi,
+
+This is a small patch series which allows user to configure the model
+and controller ID. Also, patch #3 has a fix for missing sscanf check
+in the nvmet_subsys_attr_serial_store().
+
+The changelog is present in the respective patches.
+
+Regards,
+Chaitanya
+
+Chaitanya Kulkarni (2):
+  nvmet: make ctrl-id configurable
+  nvmet: check sscanf value for subsys serial attr
+
+Mark Ruijter (1):
+  nvmet: make ctrl model configurable
+
+ drivers/nvme/target/admin-cmd.c |  12 ++-
+ drivers/nvme/target/configfs.c  | 125 +++++++++++++++++++++++++++++++-
+ drivers/nvme/target/core.c      |   6 +-
+ drivers/nvme/target/nvmet.h     |   6 ++
+ 4 files changed, 143 insertions(+), 6 deletions(-)
+
+-- 
+2.22.1
+

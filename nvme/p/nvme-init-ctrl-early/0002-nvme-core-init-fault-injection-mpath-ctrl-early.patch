@@ -1,0 +1,38 @@
+From d7240009e752dd7fecd0170f9c87777e5e8fe5e3 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Mon, 31 Jul 2023 20:27:26 -0700
+Subject: [PATCH 2/3] nvme-core: init fault injection & mpath ctrl early
+
+In order to avoid any initialization after cdev_device_add() move fault
+injection and multipath ctrl initialization before cdev_device_add().
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/host/core.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index a732a862d6bf..555ec4af5b80 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -4465,6 +4465,8 @@ int nvme_init_ctrl(struct nvme_ctrl *ctrl, struct device *dev,
+ 	if (ret)
+ 		goto out_release_instance;
+ 
++	nvme_fault_inject_init(&ctrl->fault_inject, dev_name(ctrl->device));
++	nvme_mpath_init_ctrl(ctrl);
+ 	nvme_get_ctrl(ctrl);
+ 	cdev_init(&ctrl->cdev, &nvme_dev_fops);
+ 	ctrl->cdev.owner = ops->module;
+@@ -4480,8 +4482,6 @@ int nvme_init_ctrl(struct nvme_ctrl *ctrl, struct device *dev,
+ 	dev_pm_qos_update_user_latency_tolerance(ctrl->device,
+ 		min(default_ps_max_latency_us, (unsigned long)S32_MAX));
+ 
+-	nvme_fault_inject_init(&ctrl->fault_inject, dev_name(ctrl->device));
+-	nvme_mpath_init_ctrl(ctrl);
+ 	return 0;
+ 
+ out_free_name:
+-- 
+2.40.0
+

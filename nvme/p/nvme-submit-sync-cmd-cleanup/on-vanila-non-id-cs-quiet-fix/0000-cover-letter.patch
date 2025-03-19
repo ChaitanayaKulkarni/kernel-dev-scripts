@@ -1,0 +1,47 @@
+From f04bb1674a7f69ca78c9c94031a11f2814839b67 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Fri, 8 Apr 2022 13:39:18 -0700
+Subject: [PATCH 0/6] nvme: optimize parameters library func
+
+Hi,
+
+Over the time we have added several parameters to the
+__nvme_submit_sync_cmd() :
+1. request queue
+2. nvme_command
+3. nvme_result
+4. buffer
+5. bufferlen
+6. timeout
+7. qid
+8. at_head
+9. blk_mq_req_flags_t
+
+Having 9 parameters to the function library function is not a good
+idea when it comes to code-readability. That also needs us to have
+an extra wrapper function nvme_submit_sync_cmd().
+
+This is an attempt to remove timeout, qid, at_head, blk_mq_req_flags_t
+from the function parameter list since these can be easily derive from
+the nvme_command.
+
+-ck
+
+Chaitanya Kulkarni (6):
+  nvme-core: remove unused timeout parameter
+  nvme-core: fix qid param blk_mq_alloc_request_hctx
+  nvme-core: remove qid parameter
+  nvme-core: remove flags parameter
+  nvme-core: remove at_head parameter
+  nvme-core: remove __nvme_submit_sync_cmd() wrapper
+
+ drivers/nvme/host/core.c    | 85 +++++++++++++++++++++++--------------
+ drivers/nvme/host/fabrics.c | 19 +++------
+ drivers/nvme/host/nvme.h    |  6 +--
+ drivers/nvme/host/pci.c     | 10 ++---
+ drivers/nvme/host/zns.c     |  7 +--
+ 5 files changed, 69 insertions(+), 58 deletions(-)
+
+-- 
+2.29.0
+

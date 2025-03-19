@@ -1,0 +1,92 @@
+From f1725e7cf006b036279d403d202420f58bc3ec1e Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Sun, 14 Mar 2021 22:24:47 -0700
+Subject: [PATCH V13 3/4] nvmet: add nvmet_req_bio put helper for backends
+
+With the addition of the ZBD backend now we have three different backends
+with inline bio optimization. That leads to duplicate code for
+freeing the bio in all three backends: generic bdev, passsthru, and
+generic zns.
+
+Add a helper function to avoid duplicate code and update the respective
+backends.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Reviewed-by: Damien Le Moal <damien.lemoal@wdc.com>
+---
+ drivers/nvme/target/io-cmd-bdev.c | 3 +--
+ drivers/nvme/target/nvmet.h       | 7 +++++++
+ drivers/nvme/target/passthru.c    | 3 +--
+ drivers/nvme/target/zns.c         | 6 ++----
+ 4 files changed, 11 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/nvme/target/io-cmd-bdev.c b/drivers/nvme/target/io-cmd-bdev.c
+index 1e54e7478735..509a053d1f40 100644
+--- a/drivers/nvme/target/io-cmd-bdev.c
++++ b/drivers/nvme/target/io-cmd-bdev.c
+@@ -172,8 +172,7 @@ static void nvmet_bio_done(struct bio *bio)
+ 	struct nvmet_req *req = bio->bi_private;
+ 
+ 	nvmet_req_complete(req, blk_to_nvme_status(req, bio->bi_status));
+-	if (bio != &req->b.inline_bio)
+-		bio_put(bio);
++	nvmet_req_bio_put(req, bio);
+ }
+ 
+ #ifdef CONFIG_BLK_DEV_INTEGRITY
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index 5e6514565f8c..cf542bf5df31 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -664,4 +664,11 @@ static inline sector_t nvmet_lba_to_sect(struct nvmet_ns *ns, __le64 lba)
+ 	return le64_to_cpu(lba) << (ns->blksize_shift - SECTOR_SHIFT);
+ }
+ 
++static inline void nvmet_req_bio_put(struct nvmet_req *req, struct bio *bio)
++{
++	if (bio != &req->b.inline_bio)
++		bio_put(bio);
++}
++
++
+ #endif /* _NVMET_H */
+diff --git a/drivers/nvme/target/passthru.c b/drivers/nvme/target/passthru.c
+index 2798944899b7..e1487bb2240a 100644
+--- a/drivers/nvme/target/passthru.c
++++ b/drivers/nvme/target/passthru.c
+@@ -206,8 +206,7 @@ static int nvmet_passthru_map_sg(struct nvmet_req *req, struct request *rq)
+ 	for_each_sg(req->sg, sg, req->sg_cnt, i) {
+ 		if (bio_add_pc_page(rq->q, bio, sg_page(sg), sg->length,
+ 				    sg->offset) < sg->length) {
+-			if (bio != &req->p.inline_bio)
+-				bio_put(bio);
++			nvmet_req_bio_put(req, bio);
+ 			return -EINVAL;
+ 		}
+ 	}
+diff --git a/drivers/nvme/target/zns.c b/drivers/nvme/target/zns.c
+index 308198dd580b..328ef95a5812 100644
+--- a/drivers/nvme/target/zns.c
++++ b/drivers/nvme/target/zns.c
+@@ -411,8 +411,7 @@ static void nvmet_bdev_zone_append_bio_done(struct bio *bio)
+ 	req->cqe->result.u64 = nvmet_sect_to_lba(req->ns,
+ 						 bio->bi_iter.bi_sector);
+ 	nvmet_req_complete(req, blk_to_nvme_status(req, bio->bi_status));
+-	if (bio != &req->b.inline_bio)
+-		bio_put(bio);
++	nvmet_req_bio_put(req, bio);
+ }
+ 
+ void nvmet_bdev_execute_zone_append(struct nvmet_req *req)
+@@ -471,7 +470,6 @@ void nvmet_bdev_execute_zone_append(struct nvmet_req *req)
+ 	return;
+ 
+ out_bio_put:
+-	if (bio != &req->b.inline_bio)
+-		bio_put(bio);
+ 	nvmet_req_complete(req, ret < 0 ? NVME_SC_INTERNAL : status);
++	nvmet_req_bio_put(req, bio);
+ }
+-- 
+2.22.1
+

@@ -1,0 +1,24 @@
+From 8c3423029f019d7a348c9766bcc5b56b003ceb81 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Mon, 18 May 2020 22:54:09 -0700
+Subject: [PATCH V4 0/3] *** SUBJECT HERE ***
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+*** BLURB HERE ***
+
+Chaitanya Kulkarni (3):
+  nvmet: add helper to revalidate bdev and file ns
+  nvmet: generate AEN for ns revalidate size change
+  nvmet: revalidate-ns & generate AEN from configfs
+
+ drivers/nvme/target/admin-cmd.c |  5 +----
+ drivers/nvme/target/configfs.c  | 26 ++++++++++++++++++++++++++
+ drivers/nvme/target/core.c      | 13 +++++++++++++
+ drivers/nvme/target/nvmet.h     |  1 +
+ 4 files changed, 41 insertions(+), 4 deletions(-)
+
+-- 
+2.22.1
+

@@ -1,0 +1,159 @@
+diff --git a/drivers/nvme/target/configfs.c b/drivers/nvme/target/configfs.c
+index 98613a4..538a591 100644
+--- a/drivers/nvme/target/configfs.c
++++ b/drivers/nvme/target/configfs.c
+@@ -545,6 +545,39 @@ static ssize_t nvmet_ns_buffered_io_store(struct 
+config_item *item,
+
+  CONFIGFS_ATTR(nvmet_ns_, buffered_io);
+
++static ssize_t nvmet_ns_backend_show(struct config_item *item, char *page)
++{
++	struct nvmet_ns *ns = to_nvmet_ns(item);
++	int ret;
++
++	/* ns->backend value is valid only when we have valid ns->bdev set */
++	if (ns->bdev)
++		ret = sprintf(page, "%s\n", ns->backend ? "file" : "block");
++	else
++		ret = sprintf(page, "ns is either not enabled or not bdev.\n");
++
++	return ret;
++}
++
++static ssize_t nvmet_ns_backend_store(struct config_item *item,
++		const char *page, size_t count)
++{
++	struct nvmet_ns *ns = to_nvmet_ns(item);
++
++	mutex_lock(&ns->subsys->lock);
++	if (ns->enabled) {
++		pr_err("disable ns before setting backend value.\n");
++		mutex_unlock(&ns->subsys->lock);
++		return -EINVAL;
++	}
++
++	ns->backend = strncasecmp(page, "file", 4) == 0 ? true : false;
++	mutex_unlock(&ns->subsys->lock);
++	return count;
++}
++
++CONFIGFS_ATTR(nvmet_ns_, backend);
++
+  static struct configfs_attribute *nvmet_ns_attrs[] = {
+  	&nvmet_ns_attr_device_path,
+  	&nvmet_ns_attr_device_nguid,
+@@ -552,6 +585,7 @@ static ssize_t nvmet_ns_buffered_io_store(struct 
+config_item *item,
+  	&nvmet_ns_attr_ana_grpid,
+  	&nvmet_ns_attr_enable,
+  	&nvmet_ns_attr_buffered_io,
++	&nvmet_ns_attr_backend,
+  #ifdef CONFIG_PCI_P2PDMA
+  	&nvmet_ns_attr_p2pmem,
+  #endif
+diff --git a/drivers/nvme/target/core.c b/drivers/nvme/target/core.c
+index 28438b8..fb9676d 100644
+--- a/drivers/nvme/target/core.c
++++ b/drivers/nvme/target/core.c
+@@ -653,6 +653,7 @@ struct nvmet_ns *nvmet_ns_alloc(struct nvmet_subsys 
+*subsys, u32 nsid)
+
+  	uuid_gen(&ns->uuid);
+  	ns->buffered_io = false;
++	ns->backend = false;
+
+  	return ns;
+  }
+diff --git a/drivers/nvme/target/io-cmd-bdev.c 
+b/drivers/nvme/target/io-cmd-bdev.c
+index b6fca0e..0179675 100644
+--- a/drivers/nvme/target/io-cmd-bdev.c
++++ b/drivers/nvme/target/io-cmd-bdev.c
+@@ -64,7 +64,7 @@ int nvmet_bdev_ns_enable(struct nvmet_ns *ns)
+  	}
+  	ns->size = i_size_read(ns->bdev->bd_inode);
+  	ns->blksize_shift = blksize_bits(bdev_logical_block_size(ns->bdev));
+-	return 0;
++	return ns->backend ? -ENOTBLK : 0;
+  }
+
+  void nvmet_bdev_ns_disable(struct nvmet_ns *ns)
+diff --git a/drivers/nvme/target/io-cmd-file.c 
+b/drivers/nvme/target/io-cmd-file.c
+index caebfce..ec258a4 100644
+--- a/drivers/nvme/target/io-cmd-file.c
++++ b/drivers/nvme/target/io-cmd-file.c
+@@ -25,6 +25,10 @@ void nvmet_file_ns_disable(struct nvmet_ns *ns)
+  		fput(ns->file);
+  		ns->file = NULL;
+  	}
++
++	/* when using vfs layer we have opend bdev see target.core.c */
++	if (ns->backend)
++		nvmet_bdev_ns_disable(ns);
+  }
+
+  int nvmet_file_ns_enable(struct nvmet_ns *ns)
+@@ -33,6 +37,11 @@ int nvmet_file_ns_enable(struct nvmet_ns *ns)
+  	struct kstat stat;
+  	int ret;
+
++	if (!ns->bdev && ns->backend) {
++		pr_info("backend value only applies to block device\n");
++		return -EINVAL;
++	}
++
+  	if (!ns->buffered_io)
+  		flags |= O_DIRECT;
+
+@@ -43,19 +52,22 @@ int nvmet_file_ns_enable(struct nvmet_ns *ns)
+  		return PTR_ERR(ns->file);
+  	}
+
+-	ret = vfs_getattr(&ns->file->f_path,
+-			&stat, STATX_SIZE, AT_STATX_FORCE_SYNC);
+-	if (ret)
+-		goto err;
+-
+-	ns->size = stat.size;
+-	/*
+-	 * i_blkbits can be greater than the universally accepted upper bound,
+-	 * so make sure we export a sane namespace lba_shift.
+-	 */
+-	ns->blksize_shift = min_t(u8,
+-			file_inode(ns->file)->i_blkbits, 12);
+-
++	if (!ns->backend) {
++		ret = vfs_getattr(&ns->file->f_path,
++				  &stat, STATX_SIZE, AT_STATX_FORCE_SYNC);
++		if (ret) {
++			pr_err("failed to stat device file %s\n",
++					ns->device_path);
++			goto err;
++		}
++		/*
++		 * i_blkbits can be greater than the universally accepted upper
++		 * bound, so make sure we export a sane namespace lba_shift.
++		 */
++		ns->size = stat.size;
++		ns->blksize_shift = min_t(u8,
++				file_inode(ns->file)->i_blkbits, 12);
++	}
+  	ns->bvec_cache = kmem_cache_create("nvmet-bvec",
+  			NVMET_MAX_MPOOL_BVEC * sizeof(struct bio_vec),
+  			0, SLAB_HWCACHE_ALIGN, NULL);
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index 46df45e..b7f7b97 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -63,6 +63,7 @@ struct nvmet_ns {
+  	u32			anagrpid;
+
+  	bool			buffered_io;
++	bool			backend;
+  	bool			enabled;
+  	struct nvmet_subsys	*subsys;
+  	const char		*device_path;
+-- 
+1.8.3.1

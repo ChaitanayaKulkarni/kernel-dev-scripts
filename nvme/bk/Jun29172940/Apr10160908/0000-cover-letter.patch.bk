@@ -1,0 +1,129 @@
+From cb5086881a32b4507189a3c3d2ffb5f4c05b9d0b Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Tue, 7 Apr 2020 21:05:39 -0700
+Subject: [PATCH V2 0/2] nvmet: add revalidate support
+
+Hi,
+
+This patch series adds support for the NVMeOF target bdev-ns and 
+file-ns size re-validation.
+
+The first patch adds bdev/file backend, revalidation helpers. It
+was posted by Anthony Iliopoulos. I've fixed the comments posted on V1
+by keeping the authorship of the patch.
+
+The 2nd patch is needed since the change of size detection on the target
+should generate the AEN to the host. Right now there is no generic
+mechanism that allows us to add callbacks for the block and file backend 
+so that we will get the notification (if anyone knows please let me know,
+I'll be happy rework this series). So this just adds a lightweight global
+maintenance thread that checks for the size change and generates AEN when 
+needed. On loading the nvmet module, now it will start the global maintenance
+thread with the default parameters. Different users may require different
+tunables based ontheir needs for the ns size revalidation and how their
+system performs. Instead offorcing a particular the implementation I've
+added different tunables for maintenancethread like configfs tunables for
+adjusting maintenance thread scheduling policyalong with scheduling priority,
+sleep timeout for the thread and allowing namespaceto participate in the
+size revalidation oo not. For each namespace user also candecide whether
+it wants to participate in the revalidation process. I'm open to using
+a different thread model.
+
+
+I'm open to use different thread model.
+
+Without second Patch:-
+-------------------
+1. Build null_blk based XFS file system :-
+[ 3854.406993] XFS (nullb0): Unmounting Filesystem
+[ 3865.803947] null_blk: module loaded
+[ 3869.870398] XFS (nullb0): Mounting V5 Filesystem
+[ 3869.873697] XFS (nullb0): Ending clean mount
+[ 3869.873826] xfs filesystem being mounted at /mnt/backend supports timestamps until 2038 (0x7fffffff)
+2. Add nvmet file backed namespaces and connect to host with nvme_loop.ko.
+[ 3889.258370] nvmet: adding nsid 1 to subsystem fs
+[ 3890.276583] nvmet: creating controller 1 for subsystem fs for NQN nqn.2014-08.org.nvmexpress:uuid:f67d5ee8-b2df-44a3-81f2-c827705db7e2.
+[ 3890.277202] nvme nvme1: creating 64 I/O queues.
+[ 3890.293196] nvme nvme1: new ctrl: "fs"
+[ 3890.295363] nvme1n1: detected capacity change from 0 to 10737418240
+# dmesg -c 
+# dmesg -c 
+3. Verify the backend file information :-
+# cat /sys/kernel/config/nvmet/subsystems/fs/namespaces/1/device_path
+/mnt/backend/nvme1n1
+# file /mnt/backend/nvme1n1
+/mnt/backend/nvme1n1: data
+# ls -lrth /mnt/backend/nvme1n1
+-rw-r--r--. 1 root root 10G Apr  7 20:51 /mnt/backend/nvme1n1
+4. Change the size of the backend file :-
+# truncate -s 5G /mnt/backend/nvme1n1
+# dmesg -c 
+# dmesg -c 
+5. Check the host size block device size.
+# lsblk | grep nvme1n1
+nvme1n1           259:11   0   10G  0 disk <-----------------------
+#
+
+With the second patch:-
+--------------------
+1. Build null_blk based XFS file system :-
+[ 3979.363104] null_blk: module loaded
+[ 3983.418615] XFS (nullb0): Mounting V5 Filesystem
+[ 3983.421752] XFS (nullb0): Ending clean mount
+[ 3983.421887] xfs filesystem being mounted at /mnt/backend supports timestamps until 2038 (0x7fffffff)
+2. Add nvmet file backed namespaces and connect to host with nvme_loop.ko.
+[ 4002.801019] nvmet: adding nsid 1 to subsystem fs
+[ 4003.818375] nvmet: creating controller 1 for subsystem fs for NQN nqn.2014-08.org.nvmexpress:uuid:3c1d7670-7f65-41b5-b488-9249220b76e8.
+[ 4003.819076] nvme nvme1: creating 64 I/O queues.
+[ 4003.834461] nvme nvme1: new ctrl: "fs"
+[ 4003.837448] nvme1n1: detected capacity change from 0 to 10737418240
+# dmesg -c 
+3. Verify the backend file information :-
+# cat /sys/kernel/config/nvmet/subsystems/fs/namespaces/1/device_path
+/mnt/backend/nvme1n1
+# file /mnt/backend/nvme1n1
+/mnt/backend/nvme1n1: data
+# ls -lrth /mnt/backend/nvme1n1
+-rw-r--r--. 1 root root 10G Apr  7 20:53 /mnt/backend/nvme1n1
+4. Change the size of the backend file :-
+# truncate -s 5G /mnt/backend/nvme1n1
+# dmesg -c 
+[ 4041.181065] nvme nvme1: rescanning namespaces.
+[ 4041.529446] nvme1n1: detected capacity change from 10737418240 to 5368709120
+# lsblk | grep nvme1n1
+5. Check the host size block device size.
+nvme1n1           259:12   0    5G  0 disk <-----------------------
+# 
+
+Regards,
+Chaitanya
+
+Changes from V1 :-
+
+1. Just use ns->size = i_size_read(ns->bdev->bd_inode) in the
+   nvmet_bdev_ns_revalidate().
+2. Remove !file check and use fill line for vfs_getattr() call in
+   nvmet_file_ns_revalidate().
+3. Add wrapper nvmet_ns_revalidate().
+4. Add 2nd patch to introduce per namespace thread to monitor the size by
+   calling nvmet_ns_revalidate() and generate AEN when size change is
+   detected.  
+5. Change return type of the nvmet_[bdev|file]ns_revalidate() from void
+   to bool.
+
+Anthony Iliopoulos (1):
+  nvmet: add ns revalidation support
+
+Chaitanya Kulkarni (1):
+  nvmet: add per ns thread to generate AEN
+
+ drivers/nvme/target/admin-cmd.c   |  2 ++
+ drivers/nvme/target/core.c        | 34 +++++++++++++++++++++++++++++++
+ drivers/nvme/target/io-cmd-bdev.c | 12 +++++++++++
+ drivers/nvme/target/io-cmd-file.c | 16 +++++++++++++++
+ drivers/nvme/target/nvmet.h       |  4 ++++
+ 5 files changed, 68 insertions(+)
+
+-- 
+2.22.1
+

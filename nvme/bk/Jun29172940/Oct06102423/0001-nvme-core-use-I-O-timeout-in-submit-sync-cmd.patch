@@ -1,0 +1,65 @@
+From c56a85c397cc1d0aebbbbb7e26582af384ec4712 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Sat, 12 Sep 2020 21:48:54 -0700
+Subject: [PATCH V4 1/7] nvme-core: use I/O timeout in submit sync cmd
+
+In the function __nvme_submit_sync_cmd() it uses ADMIN_TIMEOUT when
+caller doesn't specify value for the timeout variable. This function is
+also called from the NVMe commands contexts (nvme_pr_command()/
+nvme_ns_report_zones()) where NVME_IO_TIMEOUT can be used instead of
+ADMIN_TIMEOUT.
+
+For now we don't set the request queue's queuedata for admin command.
+
+Introduce a helper nvme_default_timeout() and when timeout is not set
+for the block layer request  based on the request queue's queuedata,
+set Admin timeout else I/O timeout.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/host/core.c |  2 +-
+ drivers/nvme/host/nvme.h | 15 +++++++++++++++
+ 2 files changed, 16 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index 611bd43c454c..a3340fb20965 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -897,7 +897,7 @@ int __nvme_submit_sync_cmd(struct request_queue *q, struct nvme_command *cmd,
+ 	if (IS_ERR(req))
+ 		return PTR_ERR(req);
+ 
+-	req->timeout = timeout ? timeout : ADMIN_TIMEOUT;
++	nvme_default_timeout(req, timeout);
+ 
+ 	if (buffer && bufflen) {
+ 		ret = blk_rq_map_kern(q, req, buffer, bufflen, GFP_KERNEL);
+diff --git a/drivers/nvme/host/nvme.h b/drivers/nvme/host/nvme.h
+index e7c88b40f5bb..955055ece321 100644
+--- a/drivers/nvme/host/nvme.h
++++ b/drivers/nvme/host/nvme.h
+@@ -638,6 +638,21 @@ struct nvme_ns *nvme_get_ns_from_disk(struct gendisk *disk,
+ 		struct nvme_ns_head **head, int *srcu_idx);
+ void nvme_put_ns_from_disk(struct nvme_ns_head *head, int idx);
+ 
++static inline void nvme_default_timeout(struct request *req,
++					unsigned int timeout)
++{
++	void *queuedata = req->q->queuedata;
++
++	/*
++	 * For now admin request queue's queue data == NULL, if that assumption
++	 * changes it should reflect here.
++	 */
++	if (!timeout)
++		timeout = queuedata ? NVME_IO_TIMEOUT : ADMIN_TIMEOUT;
++
++	req->timeout = timeout;
++}
++
+ extern const struct attribute_group *nvme_ns_id_attr_groups[];
+ extern const struct block_device_operations nvme_ns_head_ops;
+ 
+-- 
+2.22.1
+

@@ -1,0 +1,71 @@
+From 6ac24712df88629da393d6214c5e9c93823f862a Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Thu, 6 Aug 2020 13:02:23 -0700
+Subject: [PATCH 01/10] nvmet: add ns tear down label for pt-cmd handling
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+In the current implementation before submitting the passthru cmd we
+may come across error e.g. getting ns from passthru controller,
+allocating a request from passthru controller, etc. For all the failure
+cases it only uses single goto label fail_out.
+
+In the target code, we follow the pattern to have a separate label for
+each error out the case when setting up multiple things before the actual
+action.
+
+This patch follows the same pattern and renames generic fail_out label
+to out_put_ns and updates the error out cases in the
+nvmet_passthru_execute_cmd() where it is needed.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/passthru.c | 9 +++++----
+ 1 file changed, 5 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/nvme/target/passthru.c b/drivers/nvme/target/passthru.c
+index 89d91dc999a6..e7dbca12785d 100644
+--- a/drivers/nvme/target/passthru.c
++++ b/drivers/nvme/target/passthru.c
+@@ -230,7 +230,7 @@ static void nvmet_passthru_execute_cmd(struct nvmet_req *req)
+ 		if (unlikely(!ns)) {
+ 			pr_err("failed to get passthru ns nsid:%u\n", nsid);
+ 			status = NVME_SC_INVALID_NS | NVME_SC_DNR;
+-			goto fail_out;
++			goto out;
+ 		}
+ 
+ 		q = ns->queue;
+@@ -240,14 +240,14 @@ static void nvmet_passthru_execute_cmd(struct nvmet_req *req)
+ 	if (IS_ERR(rq)) {
+ 		rq = NULL;
+ 		status = NVME_SC_INTERNAL;
+-		goto fail_out;
++		goto out_put_ns;
+ 	}
+ 
+ 	if (req->sg_cnt) {
+ 		ret = nvmet_passthru_map_sg(req, rq);
+ 		if (unlikely(ret)) {
+ 			status = NVME_SC_INTERNAL;
+-			goto fail_out;
++			goto out_put_ns;
+ 		}
+ 	}
+ 
+@@ -274,9 +274,10 @@ static void nvmet_passthru_execute_cmd(struct nvmet_req *req)
+ 
+ 	return;
+ 
+-fail_out:
++out_put_ns:
+ 	if (ns)
+ 		nvme_put_ns(ns);
++out:
+ 	nvmet_req_complete(req, status);
+ 	blk_put_request(rq);
+ }
+-- 
+2.22.1
+

@@ -1,0 +1,174 @@
+From b01cff135f8d7018d1c66872f276c73be9e8f2ec Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Tue, 19 Nov 2019 21:05:26 -0800
+Subject: [PATCH V3 1/3] nvmet: make ctrl-id configurable
+
+This patch adds a new target subsys attribute which allows user to
+optionally specify target controller IDs which then used in the
+nvmet_execute_identify_ctrl() to fill up the nvme_id_ctrl structure.
+
+For example, when using a cluster setup with two nodes, with a dual
+ported NVMe drive and exporting the drive from both the nodes,
+The connection to the host fails due to the same controller ID and
+results in the following error message:-
+
+"nvme nvmeX: Duplicate cntlid XXX with nvmeX, rejecting"
+
+With this patch now user can partition the controller IDs for each
+subsystem by setting up the cntlid_min and cntlid_max. These values
+will be used at the time of the controller ID creation. By partitioning
+the ctrl-ids for each subsystem results in the unique ctrl-id space
+which avoids the collision.
+
+When new attribute is not specified target will fall back to original
+cntlid calculation method.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+Changes from V2:-
+1. Reduce the size of the lock for sscanf for cntlid_min and cntlid_max.
+2. Remove the common show and store function for cntlid.
+3. Move cntlid_min and cntlid_max check into the store function. 
+4. Update the patch description.
+5. Add check for valid cntlid_[min|max] parameter into into configfs
+   respective load and store function.
+
+Changes from V1:-
+1. Add cntlid max and min configfs attributes.
+2. Use simple if .. else statements instead of ternary operators.
+---
+ drivers/nvme/target/configfs.c | 72 ++++++++++++++++++++++++++++++++++
+ drivers/nvme/target/core.c     |  8 +++-
+ drivers/nvme/target/nvmet.h    |  2 +
+ 3 files changed, 80 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/nvme/target/configfs.c b/drivers/nvme/target/configfs.c
+index 98613a45bd3b..772a74a7d969 100644
+--- a/drivers/nvme/target/configfs.c
++++ b/drivers/nvme/target/configfs.c
+@@ -862,10 +862,82 @@ static ssize_t nvmet_subsys_attr_serial_store(struct config_item *item,
+ }
+ CONFIGFS_ATTR(nvmet_subsys_, attr_serial);
+ 
++static ssize_t nvmet_subsys_attr_cntlid_min_show(struct config_item *item,
++						 char *page)
++{
++	return snprintf(page, PAGE_SIZE, "%u\n", to_subsys(item)->cntlid_min);
++}
++
++static ssize_t nvmet_subsys_attr_cntlid_min_store(struct config_item *item,
++						  const char *page, size_t cnt)
++{
++	int ret = -EINVAL;
++	u16 cntlid_min;
++
++	if (sscanf(page, "%hu\n", &cntlid_min) != 1)
++		return ret;
++
++	if (cntlid_min == 0) {
++		pr_info("specified cntlid_min = 0 is not allowed\n");
++		return ret;
++	}
++
++	down_write(&nvmet_config_sem);
++	if (cntlid_min >= to_subsys(item)->cntlid_max) {
++		pr_info("specified cntlid_min is >= current cntlid_max\n");
++		goto out;
++	}
++
++	ret = 0;
++	to_subsys(item)->cntlid_min = cntlid_min;
++out:
++	up_write(&nvmet_config_sem);
++
++	return ret ? ret : cnt;
++}
++CONFIGFS_ATTR(nvmet_subsys_, attr_cntlid_min);
++
++static ssize_t nvmet_subsys_attr_cntlid_max_show(struct config_item *item,
++						 char *page)
++{
++	return snprintf(page, PAGE_SIZE, "%u\n", to_subsys(item)->cntlid_max);
++}
++
++static ssize_t nvmet_subsys_attr_cntlid_max_store(struct config_item *item,
++						  const char *page, size_t cnt)
++{
++	int ret = -EINVAL;
++	u16 cntlid_max;
++
++	if (sscanf(page, "%hu\n", &cntlid_max) != 1)
++		return ret;
++
++	if (cntlid_max == 0) {
++		pr_info("specified cntlid_max = 0 is not allowed\n");
++		return ret;
++	}
++
++	down_write(&nvmet_config_sem);
++	if (cntlid_max <= to_subsys(item)->cntlid_min) {
++		pr_info("specified cntlid_max is <= current cntlid_min\n");
++		goto out;
++	}
++
++	ret = 0;
++	to_subsys(item)->cntlid_max = cntlid_max;
++out:
++	up_write(&nvmet_config_sem);
++
++	return ret ? ret : cnt;
++}
++CONFIGFS_ATTR(nvmet_subsys_, attr_cntlid_max);
++
+ static struct configfs_attribute *nvmet_subsys_attrs[] = {
+ 	&nvmet_subsys_attr_attr_allow_any_host,
+ 	&nvmet_subsys_attr_attr_version,
+ 	&nvmet_subsys_attr_attr_serial,
++	&nvmet_subsys_attr_attr_cntlid_min,
++	&nvmet_subsys_attr_attr_cntlid_max,
+ 	NULL,
+ };
+ 
+diff --git a/drivers/nvme/target/core.c b/drivers/nvme/target/core.c
+index 28438b833c1b..990ad4c7bdfd 100644
+--- a/drivers/nvme/target/core.c
++++ b/drivers/nvme/target/core.c
+@@ -1267,8 +1267,11 @@ u16 nvmet_alloc_ctrl(const char *subsysnqn, const char *hostnqn,
+ 	if (!ctrl->sqs)
+ 		goto out_free_cqs;
+ 
++	if (subsys->cntlid_min > subsys->cntlid_max)
++		goto out_free_cqs;
++
+ 	ret = ida_simple_get(&cntlid_ida,
+-			     NVME_CNTLID_MIN, NVME_CNTLID_MAX,
++			     subsys->cntlid_min, subsys->cntlid_max,
+ 			     GFP_KERNEL);
+ 	if (ret < 0) {
+ 		status = NVME_SC_CONNECT_CTRL_BUSY | NVME_SC_DNR;
+@@ -1416,7 +1419,8 @@ struct nvmet_subsys *nvmet_subsys_alloc(const char *subsysnqn,
+ 		kfree(subsys);
+ 		return ERR_PTR(-ENOMEM);
+ 	}
+-
++	subsys->cntlid_min = NVME_CNTLID_MIN;
++	subsys->cntlid_max = NVME_CNTLID_MAX;
+ 	kref_init(&subsys->ref);
+ 
+ 	mutex_init(&subsys->lock);
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index 46df45e837c9..6492d12e626a 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -211,6 +211,8 @@ struct nvmet_subsys {
+ 	struct list_head	namespaces;
+ 	unsigned int		nr_namespaces;
+ 	unsigned int		max_nsid;
++	u16			cntlid_min;
++	u16			cntlid_max;
+ 
+ 	struct list_head	ctrls;
+ 
+-- 
+2.22.1
+

@@ -1,0 +1,23 @@
+From 4ac73f835b68c379e072e0757a08f1abd772ae3c Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Wed, 2 Oct 2019 00:52:07 -0700
+Subject: [PATCH 0/5] nvmet: add polling support for bdev and file ns
+
+*** BLURB HERE ***
+
+Chaitanya Kulkarni (5):
+  nvmet: add new members for bdev-polling
+  nvmet: add a workqueue to support polling
+  nvmet: implement polling for bdev-ns
+  nvmet: add new members for file-polling
+  nvmet: implement polling for file-ns
+
+ drivers/nvme/target/core.c        | 20 ++++++++++++-------
+ drivers/nvme/target/io-cmd-bdev.c | 32 ++++++++++++++++++++++++++++++-
+ drivers/nvme/target/io-cmd-file.c | 32 ++++++++++++++++++++++++++++---
+ drivers/nvme/target/nvmet.h       |  9 ++++++++-
+ 4 files changed, 81 insertions(+), 12 deletions(-)
+
+-- 
+2.22.1
+

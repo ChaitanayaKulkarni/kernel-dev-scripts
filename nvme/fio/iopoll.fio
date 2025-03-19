@@ -1,0 +1,12 @@
+[VERIFYPOLL]
+size=500m
+numjobs=64
+iodepth=32
+bs=4k
+runtime=1m
+ioengine=pvsync2
+hipri
+rw=read 
+direct=1
+group_reporting=1
+loops=1

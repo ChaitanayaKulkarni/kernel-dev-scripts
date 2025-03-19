@@ -1,0 +1,43 @@
+nvmet-passthru: Introduce NVMet passthru Kconfig option
+
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+
+This patch updates KConfig file for the NVMeOF target where we add new
+option so that user can selectively enable/disable passthru code.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+[logang@deltatee.com: fixed some of the wording in the help message]
+Signed-off-by: Logan Gunthorpe <logang@deltatee.com>
+Reviewed-by: Sagi Grimberg <sagi@grimberg.me>
+---
+ drivers/nvme/target/Kconfig | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/drivers/nvme/target/Kconfig b/drivers/nvme/target/Kconfig
+index d7f48c0fb311..1ef775fa0048 100644
+--- a/drivers/nvme/target/Kconfig
++++ b/drivers/nvme/target/Kconfig
+@@ -15,6 +15,18 @@ config NVME_TARGET
+ 	  To configure the NVMe target you probably want to use the nvmetcli
+ 	  tool from http://git.infradead.org/users/hch/nvmetcli.git.
+ 
++config NVME_TARGET_PASSTHRU
++	bool "NVMe Target Passthrough support"
++	depends on NVME_CORE
++	depends on NVME_TARGET
++	help
++	  This enables target side NVMe passthru controller support for the
++	  NVMe Over Fabrics protocol. It allows for hosts to manage and
++	  directly access an actual NVMe controller residing on the target
++	  side, incuding executing Vendor Unique Commands.
++
++	  If unsure, say N.
++
+ config NVME_TARGET_LOOP
+ 	tristate "NVMe loopback device support"
+ 	depends on NVME_TARGET
+-- 
+2.20.1
+
+
+

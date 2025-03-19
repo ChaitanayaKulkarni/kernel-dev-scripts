@@ -1,0 +1,31 @@
+From 036df95c0d9cb38f51690b69b2478a5e47924497 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Thu, 3 Sep 2020 18:46:12 -0700
+Subject: [PATCH 0/3] nvme: fix module ref count Oops
+
+Hi,
+
+As per the comment on the latest version of the passthru cleanup and 
+fixes V2 this patch seires isolates refcount bug-fix patches.
+
+The patch series is formatted in to bottom up manner with first two
+patches are the prep patches to create require infrastructure to fix
+the module refcount bug and third patch actually fixes the bug.
+
+Regards,
+Chaitanya
+
+Chaitanya Kulkarni (3):
+  nvme: decouple nvme_ctrl_get_by_path()
+  nvme: move get/put ctrl into dev open/release
+  nvme-core: fix nvme module ref count Oops
+
+ drivers/nvme/host/core.c       | 29 ++++++++++++++++++++---------
+ drivers/nvme/host/nvme.h       |  2 +-
+ drivers/nvme/target/nvmet.h    |  1 +
+ drivers/nvme/target/passthru.c | 24 +++++++++++++++---------
+ 4 files changed, 37 insertions(+), 19 deletions(-)
+
+-- 
+2.22.1
+

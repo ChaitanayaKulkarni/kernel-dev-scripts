@@ -1,0 +1,56 @@
+From 3b43c8b62138d04a2bc27402fd7d57d4f223148c Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Wed, 16 Sep 2020 17:09:37 -0700
+Subject: [PATCH V3 0/3] nvme: fix module ref count Oops
+
+Hi,
+
+I found the module ref count patch in the git without the ctrl get/put in
+the nvme_dev_open/nvme_dev_release() with latest pull.
+
+commit dfa76f46dad568ed81368c3cb810d95f820debc5 (origin/nvme-5.9)
+Author: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date:   Tue Sep 15 20:53:25 2020 -0700
+
+    nvme-core: fix nvme module ref count Oops
+
+In this series, the first patch which adds the ctrl get/put in
+nvme_dev_open/release() which can be folded onto the git HEAD on
+nvme-5.9 or applied separately deesn't matter.
+
+The last two patches are Christoph's suggestion added on the top
+host-core module count fix to decouple :-
+
+ a. code for modue_get/put() in the passthru.
+ b. lifting the file opening from the nvme-core.
+
+Regards,
+Chaitanya
+
+Changes from V2:-
+
+1. Add a patch to get/put ctrl reference in the nvme_dev_open/release().
+2. Use Chritoph's suggestion to split the 2nd patch from V2 into :-
+   a. module_get/put() in passthru enable/disable path.
+   b. lifting the file open/close code from host/core for char device.  
+3. Update patch subject.
+
+Changes from V1: -
+
+1. Move last patch to get the module refcount to start of the series.
+2. De-couple the module refcount get/put from nvme_dev_open() and
+   nvme_dev_release().
+
+Chaitanya Kulkarni (3):
+  nvme-core: get/put ctrl in nvme_dev_open/release()
+  nvmet: get transport reference for passthru ctrl
+  nvme: lift file open code from nvme_ctrl_get_by_path
+
+ drivers/nvme/host/core.c       | 27 +++++++--------------------
+ drivers/nvme/host/nvme.h       |  2 +-
+ drivers/nvme/target/passthru.c | 29 ++++++++++++++++++-----------
+ 3 files changed, 26 insertions(+), 32 deletions(-)
+
+-- 
+2.22.1
+

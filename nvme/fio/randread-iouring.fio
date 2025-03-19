@@ -1,0 +1,14 @@
+[RANDREAD]
+ioengine=io_uring
+direct=1
+rw=randread
+norandommap
+randrepeat=0
+runtime=20
+iodepth=1
+numjobs=48
+bs=4k
+time_based
+overwrite=0
+size=400m
+group_reporting

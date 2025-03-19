@@ -1,0 +1,437 @@
+From 572e82e84868016b48810a72a0f34e381eba9be0 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Sat, 5 Sep 2020 22:05:35 -0700
+Subject: [PATCH] debug
+
+---
+ drivers/nvme/host/core.c       | 32 +++++++++++++++++++++++++++++++-
+ drivers/nvme/host/zns.c        | 18 +++++++++++++++++-
+ drivers/nvme/target/passthru.c | 16 ++++++++++++++++
+ fs/block_dev.c                 | 23 ++++++++++++++++++++++-
+ 4 files changed, 86 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index 5702a3843746..423b753c7f77 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -1013,6 +1013,7 @@ static void nvme_update_formats(struct nvme_ctrl *ctrl, u32 *effects)
+ 
+ 	down_read(&ctrl->namespaces_rwsem);
+ 	list_for_each_entry(ns, &ctrl->namespaces, list)
++		pr_info("%s %d\n", __func__, __LINE__);
+ 		if (_nvme_revalidate_disk(ns->disk))
+ 			nvme_set_queue_dying(ns);
+ 		else if (blk_queue_is_zoned(ns->disk->queue)) {
+@@ -1771,11 +1772,14 @@ static int nvme_open(struct block_device *bdev, fmode_t mode)
+ 	if (WARN_ON_ONCE(ns->head->disk))
+ 		goto fail;
+ #endif
++	pr_info("%s %d\n", __func__, __LINE__);
+ 	if (!kref_get_unless_zero(&ns->kref))
+ 		goto fail;
++	pr_info("%s %d\n", __func__, __LINE__);
+ 	if (!try_module_get(ns->ctrl->ops->module))
+ 		goto fail_put_ns;
+ 
++	pr_info("%s %d\n", __func__, __LINE__);
+ 	return 0;
+ 
+ fail_put_ns:
+@@ -1788,6 +1792,7 @@ static void nvme_release(struct gendisk *disk, fmode_t mode)
+ {
+ 	struct nvme_ns *ns = disk->private_data;
+ 
++	pr_info("%s %d\n", __func__, __LINE__);
+ 	module_put(ns->ctrl->ops->module);
+ 	nvme_put_ns(ns);
+ }
+@@ -2080,8 +2085,10 @@ static int __nvme_revalidate_disk(struct gendisk *disk, struct nvme_id_ns *id)
+ 
+ 	switch (ns->head->ids.csi) {
+ 	case NVME_CSI_NVM:
++		pr_info("%s %d\n", __func__, __LINE__);
+ 		break;
+ 	case NVME_CSI_ZNS:
++		pr_info("%s %d\n", __func__, __LINE__);
+ 		ret = nvme_update_zone_info(disk, ns, lbaf);
+ 		if (ret) {
+ 			dev_warn(ctrl->device,
+@@ -2148,6 +2155,7 @@ static int _nvme_revalidate_disk(struct gendisk *disk)
+ 	struct nvme_ns_ids ids;
+ 	int ret = 0;
+ 
++	pr_info("%s %d\n", __func__, __LINE__);
+ 	if (test_bit(NVME_NS_DEAD, &ns->flags)) {
+ 		set_capacity(disk, 0);
+ 		return -ENODEV;
+@@ -2173,6 +2181,7 @@ static int _nvme_revalidate_disk(struct gendisk *disk)
+ 		goto free_id;
+ 	}
+ 
++	pr_info("%s %d\n", __func__, __LINE__);
+ 	ret = __nvme_revalidate_disk(disk, id);
+ free_id:
+ 	kfree(id);
+@@ -2192,19 +2201,24 @@ static int nvme_revalidate_disk(struct gendisk *disk)
+ {
+ 	int ret;
+ 
++	dump_stack();
++	pr_info("%s %d\n", __func__, __LINE__);
+ 	ret = _nvme_revalidate_disk(disk);
+ 	if (ret)
+ 		return ret;
+ 
+ #ifdef CONFIG_BLK_DEV_ZONED
++	pr_info("%s %d\n", __func__, __LINE__);
+ 	if (blk_queue_is_zoned(disk->queue)) {
+ 		struct nvme_ns *ns = disk->private_data;
+ 		struct nvme_ctrl *ctrl = ns->ctrl;
+ 
++		pr_info("%s %d\n", __func__, __LINE__);
+ 		ret = blk_revalidate_disk_zones(disk, NULL);
+ 		if (!ret)
+ 			blk_queue_max_zone_append_sectors(disk->queue,
+ 							  ctrl->max_zone_append);
++		pr_info("%s %d\n", __func__, __LINE__);
+ 	}
+ #endif
+ 	return ret;
+@@ -3952,8 +3966,10 @@ static void nvme_alloc_ns(struct nvme_ctrl *ctrl, unsigned nsid)
+ 	memcpy(disk->disk_name, disk_name, DISK_NAME_LEN);
+ 	ns->disk = disk;
+ 
++	pr_info("%s %d->>>>\n", __func__, __LINE__);
+ 	if (__nvme_revalidate_disk(disk, id))
+ 		goto out_put_disk;
++	pr_info("%s %d<<<<<-\n", __func__, __LINE__);
+ 
+ 	if ((ctrl->quirks & NVME_QUIRK_LIGHTNVM) && id->vs[0] == 0x1) {
+ 		ret = nvme_nvm_register(ns, disk_name, node);
+@@ -3969,7 +3985,9 @@ static void nvme_alloc_ns(struct nvme_ctrl *ctrl, unsigned nsid)
+ 
+ 	nvme_get_ctrl(ctrl);
+ 
++	pr_info("%s %d\n", __func__, __LINE__);
+ 	device_add_disk(ctrl->device, ns->disk, nvme_ns_id_attr_groups);
++	pr_info("%s %d\n", __func__, __LINE__);
+ 
+ 	nvme_mpath_add_disk(ns, id);
+ 	nvme_fault_inject_init(&ns->fault_inject, ns->disk->disk_name);
+@@ -4041,13 +4059,17 @@ static void nvme_validate_ns(struct nvme_ctrl *ctrl, unsigned nsid)
+ {
+ 	struct nvme_ns *ns;
+ 
++	pr_info("%s %d>>>>\n", __func__, __LINE__);
+ 	ns = nvme_find_get_ns(ctrl, nsid);
+ 	if (ns) {
++		pr_info("%s %d>\n", __func__, __LINE__);
+ 		if (revalidate_disk(ns->disk))
+ 			nvme_ns_remove(ns);
++		pr_info("%s %d<\n", __func__, __LINE__);
+ 		nvme_put_ns(ns);
+ 	} else
+ 		nvme_alloc_ns(ctrl, nsid);
++	pr_info("%s %d<<<<<\n", __func__, __LINE__);
+ }
+ 
+ static void nvme_remove_invalid_namespaces(struct nvme_ctrl *ctrl,
+@@ -4092,9 +4114,11 @@ static int nvme_scan_ns_list(struct nvme_ctrl *ctrl)
+ 
+ 			if (!nsid)	/* end of the list? */
+ 				goto out;
++			pr_info("%s %d\n", __func__, __LINE__);
+ 			nvme_validate_ns(ctrl, nsid);
+ 			while (++prev < nsid)
+ 				nvme_ns_remove_by_nsid(ctrl, prev);
++			pr_info("%s %d\n", __func__, __LINE__);
+ 		}
+ 	}
+  out:
+@@ -4114,8 +4138,10 @@ static void nvme_scan_ns_sequential(struct nvme_ctrl *ctrl)
+ 	nn = le32_to_cpu(id->nn);
+ 	kfree(id);
+ 
++	pr_info("%s %d\n", __func__, __LINE__);
+ 	for (i = 1; i <= nn; i++)
+ 		nvme_validate_ns(ctrl, i);
++	pr_info("%s %d\n", __func__, __LINE__);
+ 
+ 	nvme_remove_invalid_namespaces(ctrl, nn);
+ }
+@@ -4160,8 +4186,12 @@ static void nvme_scan_work(struct work_struct *work)
+ 	}
+ 
+ 	mutex_lock(&ctrl->scan_lock);
+-	if (nvme_scan_ns_list(ctrl) != 0)
++	pr_info("%s %d\n", __func__, __LINE__);
++	if (nvme_scan_ns_list(ctrl) != 0) {
++		pr_info("%s %d\n", __func__, __LINE__);
+ 		nvme_scan_ns_sequential(ctrl);
++	}
++	pr_info("%s %d\n", __func__, __LINE__);
+ 	mutex_unlock(&ctrl->scan_lock);
+ 
+ 	down_write(&ctrl->namespaces_rwsem);
+diff --git a/drivers/nvme/host/zns.c b/drivers/nvme/host/zns.c
+index 57cfd78731fb..950dc14ff54f 100644
+--- a/drivers/nvme/host/zns.c
++++ b/drivers/nvme/host/zns.c
+@@ -13,6 +13,7 @@ static int nvme_set_max_append(struct nvme_ctrl *ctrl)
+ 	struct nvme_id_ctrl_zns *id;
+ 	int status;
+ 
++	pr_info("%s %d\n", __func__, __LINE__);
+ 	id = kzalloc(sizeof(*id), GFP_KERNEL);
+ 	if (!id)
+ 		return -ENOMEM;
+@@ -24,6 +25,7 @@ static int nvme_set_max_append(struct nvme_ctrl *ctrl)
+ 	status = nvme_submit_sync_cmd(ctrl->admin_q, &c, id, sizeof(*id));
+ 	if (status) {
+ 		kfree(id);
++		pr_info("############ %s %d\n", __func__, __LINE__);
+ 		return status;
+ 	}
+ 
+@@ -44,6 +46,7 @@ int nvme_update_zone_info(struct gendisk *disk, struct nvme_ns *ns,
+ 	struct nvme_id_ns_zns *id;
+ 	int status;
+ 
++	pr_info("%s %d\n", __func__, __LINE__);
+ 	/* Driver requires zone append support */
+ 	if (!(le32_to_cpu(log->iocs[nvme_cmd_zone_append]) &
+ 			NVME_CMD_EFFECTS_CSUPP)) {
+@@ -56,14 +59,17 @@ int nvme_update_zone_info(struct gendisk *disk, struct nvme_ns *ns,
+ 	/* Lazily query controller append limit for the first zoned namespace */
+ 	if (!ns->ctrl->max_zone_append) {
+ 		status = nvme_set_max_append(ns->ctrl);
+-		if (status)
++		if (status) {
++			pr_info("################ %s %d\n", __func__, __LINE__);
+ 			return status;
++		}
+ 	}
+ 
+ 	id = kzalloc(sizeof(*id), GFP_KERNEL);
+ 	if (!id)
+ 		return -ENOMEM;
+ 
++	pr_info("%s %d\n", __func__, __LINE__);
+ 	c.identify.opcode = nvme_admin_identify;
+ 	c.identify.nsid = cpu_to_le32(ns->head->ns_id);
+ 	c.identify.cns = NVME_ID_CNS_CS_NS;
+@@ -73,6 +79,7 @@ int nvme_update_zone_info(struct gendisk *disk, struct nvme_ns *ns,
+ 	if (status)
+ 		goto free_data;
+ 
++	pr_info("%s %d\n", __func__, __LINE__);
+ 	/*
+ 	 * We currently do not handle devices requiring any of the zoned
+ 	 * operation characteristics.
+@@ -84,6 +91,7 @@ int nvme_update_zone_info(struct gendisk *disk, struct nvme_ns *ns,
+ 		status = -EINVAL;
+ 		goto free_data;
+ 	}
++	pr_info("%s %d\n", __func__, __LINE__);
+ 
+ 	ns->zsze = nvme_lba_to_sect(ns, le64_to_cpu(id->lbafe[lbaf].zsze));
+ 	if (!is_power_of_2(ns->zsze)) {
+@@ -93,11 +101,13 @@ int nvme_update_zone_info(struct gendisk *disk, struct nvme_ns *ns,
+ 		status = -EINVAL;
+ 		goto free_data;
+ 	}
++	pr_info("%s %d\n", __func__, __LINE__);
+ 
+ 	q->limits.zoned = BLK_ZONED_HM;
+ 	blk_queue_flag_set(QUEUE_FLAG_ZONE_RESETALL, q);
+ 	blk_queue_max_open_zones(q, le32_to_cpu(id->mor) + 1);
+ 	blk_queue_max_active_zones(q, le32_to_cpu(id->mar) + 1);
++	pr_info("%s %d\n", __func__, __LINE__);
+ free_data:
+ 	kfree(id);
+ 	return status;
+@@ -113,6 +123,7 @@ static void *nvme_zns_alloc_report_buffer(struct nvme_ns *ns,
+ 	const size_t min_bufsize = sizeof(struct nvme_zone_report) +
+ 				   sizeof(struct nvme_zone_descriptor);
+ 
++	pr_info("%s %d\n", __func__, __LINE__);
+ 	nr_zones = min_t(unsigned int, nr_zones,
+ 			 get_capacity(ns->disk) >> ilog2(ns->zsze));
+ 
+@@ -140,6 +151,7 @@ static int __nvme_ns_report_zones(struct nvme_ns *ns, sector_t sector,
+ 	struct nvme_command c = { };
+ 	int ret;
+ 
++	pr_info("%s %d\n", __func__, __LINE__);
+ 	c.zmr.opcode = nvme_cmd_zone_mgmt_recv;
+ 	c.zmr.nsid = cpu_to_le32(ns->head->ns_id);
+ 	c.zmr.slba = cpu_to_le64(nvme_sect_to_lba(ns, sector));
+@@ -162,6 +174,7 @@ static int nvme_zone_parse_entry(struct nvme_ns *ns,
+ {
+ 	struct blk_zone zone = { };
+ 
++	pr_info("%s %d\n", __func__, __LINE__);
+ 	if ((entry->zt & 0xf) != NVME_ZONE_TYPE_SEQWRITE_REQ) {
+ 		dev_err(ns->ctrl->device, "invalid zone type %#x\n",
+ 				entry->zt);
+@@ -186,6 +199,7 @@ static int nvme_ns_report_zones(struct nvme_ns *ns, sector_t sector,
+ 	unsigned int nz, i;
+ 	size_t buflen;
+ 
++	pr_info("%s %d\n", __func__, __LINE__);
+ 	report = nvme_zns_alloc_report_buffer(ns, nr_zones, &buflen);
+ 	if (!report)
+ 		return -ENOMEM;
+@@ -228,6 +242,7 @@ int nvme_report_zones(struct gendisk *disk, sector_t sector,
+ 	struct nvme_ns *ns;
+ 	int srcu_idx, ret;
+ 
++	pr_info("%s %d\n", __func__, __LINE__);
+ 	ns = nvme_get_ns_from_disk(disk, &head, &srcu_idx);
+ 	if (unlikely(!ns))
+ 		return -EWOULDBLOCK;
+@@ -244,6 +259,7 @@ int nvme_report_zones(struct gendisk *disk, sector_t sector,
+ blk_status_t nvme_setup_zone_mgmt_send(struct nvme_ns *ns, struct request *req,
+ 		struct nvme_command *c, enum nvme_zone_mgmt_action action)
+ {
++	pr_info("%s %d\n", __func__, __LINE__);
+ 	c->zms.opcode = nvme_cmd_zone_mgmt_send;
+ 	c->zms.nsid = cpu_to_le32(ns->head->ns_id);
+ 	c->zms.slba = cpu_to_le64(nvme_sect_to_lba(ns, blk_rq_pos(req)));
+diff --git a/drivers/nvme/target/passthru.c b/drivers/nvme/target/passthru.c
+index 8bd7f656e240..f19fe319ed90 100644
+--- a/drivers/nvme/target/passthru.c
++++ b/drivers/nvme/target/passthru.c
+@@ -456,10 +456,26 @@ u16 nvmet_parse_passthru_admin_cmd(struct nvmet_req *req)
+ 			req->execute = nvmet_passthru_execute_cmd;
+ 			req->p.use_workqueue = true;
+ 			return NVME_SC_SUCCESS;
++		case NVME_ID_CNS_CS_CTRL:
++			switch (req->cmd->identify.csi) {
++			case NVME_CSI_ZNS:
++				req->execute = nvmet_passthru_execute_cmd;
++				req->p.use_workqueue = true;
++				return NVME_SC_SUCCESS;
++			}
++			return NVME_SC_INVALID_OPCODE | NVME_SC_DNR;
+ 		case NVME_ID_CNS_NS:
+ 			req->execute = nvmet_passthru_execute_cmd;
+ 			req->p.use_workqueue = true;
+ 			return NVME_SC_SUCCESS;
++		case NVME_ID_CNS_CS_NS:
++			switch (req->cmd->identify.csi) {
++			case NVME_CSI_ZNS:
++				req->execute = nvmet_passthru_execute_cmd;
++				req->p.use_workqueue = true;
++				return NVME_SC_SUCCESS;
++			}
++			return NVME_SC_INVALID_OPCODE | NVME_SC_DNR;
+ 		default:
+ 			return nvmet_setup_passthru_command(req);
+ 		}
+diff --git a/fs/block_dev.c b/fs/block_dev.c
+index 8ae833e00443..56b609def4ae 100644
+--- a/fs/block_dev.c
++++ b/fs/block_dev.c
+@@ -1388,6 +1388,7 @@ int bdev_disk_changed(struct block_device *bdev, bool invalidate)
+ 
+ 	lockdep_assert_held(&bdev->bd_mutex);
+ 
++	pr_info("%s %d\n", __func__, __LINE__);
+ rescan:
+ 	ret = blk_drop_partitions(bdev);
+ 	if (ret)
+@@ -1401,13 +1402,20 @@ int bdev_disk_changed(struct block_device *bdev, bool invalidate)
+ 	 * below to get the sane behavior for most device while not breaking
+ 	 * userspace for this particular setup.
+ 	 */
++	pr_info("%s %d\n", __func__, __LINE__);
+ 	if (invalidate) {
++		pr_info("%s %d\n", __func__, __LINE__);
+ 		if (disk_part_scan_enabled(disk) ||
+ 		    !(disk->flags & GENHD_FL_REMOVABLE))
+ 			set_capacity(disk, 0);
++		pr_info("%s %d\n", __func__, __LINE__);
+ 	} else {
+-		if (disk->fops->revalidate_disk)
++		pr_info("%s %d\n", __func__, __LINE__);
++		if (disk->fops->revalidate_disk) {
++			pr_info("%s %d\n", __func__, __LINE__);
+ 			disk->fops->revalidate_disk(disk);
++		}
++		pr_info("%s %d\n", __func__, __LINE__);
+ 	}
+ 
+ 	check_disk_size_change(disk, bdev, !invalidate);
+@@ -1491,6 +1499,7 @@ static int __blkdev_get(struct block_device *bdev, fmode_t mode, void *holder,
+ 	disk_block_events(disk);
+ 	mutex_lock_nested(&bdev->bd_mutex, for_part);
+ 	if (!bdev->bd_openers) {
++		pr_info("%s %d\n", __func__, __LINE__);
+ 		first_open = true;
+ 		bdev->bd_disk = disk;
+ 		bdev->bd_contains = bdev;
+@@ -1502,6 +1511,7 @@ static int __blkdev_get(struct block_device *bdev, fmode_t mode, void *holder,
+ 			if (!bdev->bd_part)
+ 				goto out_clear;
+ 
++		pr_info("%s %d\n", __func__, __LINE__);
+ 			ret = 0;
+ 			if (disk->fops->open) {
+ 				ret = disk->fops->open(bdev, mode);
+@@ -1524,17 +1534,21 @@ static int __blkdev_get(struct block_device *bdev, fmode_t mode, void *holder,
+ 			 * The latter is necessary to prevent ghost
+ 			 * partitions on a removed medium.
+ 			 */
++			pr_info("%s %d\n", __func__, __LINE__);
+ 			if (bdev->bd_invalidated &&
+ 			    (!ret || ret == -ENOMEDIUM))
+ 				bdev_disk_changed(bdev, ret == -ENOMEDIUM);
++			pr_info("%s %d\n", __func__, __LINE__);
+ 
+ 			if (ret)
+ 				goto out_clear;
++			pr_info("%s %d\n", __func__, __LINE__);
+ 		} else {
+ 			BUG_ON(for_part);
+ 			ret = __blkdev_get(whole, mode, NULL, 1);
+ 			if (ret)
+ 				goto out_clear;
++			pr_info("%s %d\n", __func__, __LINE__);
+ 			bdev->bd_contains = bdgrab(whole);
+ 			bdev->bd_part = disk_get_part(disk, partno);
+ 			if (!(disk->flags & GENHD_FL_UP) ||
+@@ -1542,23 +1556,30 @@ static int __blkdev_get(struct block_device *bdev, fmode_t mode, void *holder,
+ 				ret = -ENXIO;
+ 				goto out_clear;
+ 			}
++			pr_info("%s %d\n", __func__, __LINE__);
+ 			bd_set_size(bdev, (loff_t)bdev->bd_part->nr_sects << 9);
+ 			set_init_blocksize(bdev);
+ 		}
++			pr_info("%s %d\n", __func__, __LINE__);
+ 
+ 		if (bdev->bd_bdi == &noop_backing_dev_info)
+ 			bdev->bd_bdi = bdi_get(disk->queue->backing_dev_info);
+ 	} else {
++		pr_info("%s %d\n", __func__, __LINE__);
+ 		if (bdev->bd_contains == bdev) {
++			pr_info("%s %d\n", __func__, __LINE__);
+ 			ret = 0;
+ 			if (bdev->bd_disk->fops->open)
+ 				ret = bdev->bd_disk->fops->open(bdev, mode);
+ 			/* the same as first opener case, read comment there */
++			pr_info("%s %d\n", __func__, __LINE__);
+ 			if (bdev->bd_invalidated &&
+ 			    (!ret || ret == -ENOMEDIUM))
+ 				bdev_disk_changed(bdev, ret == -ENOMEDIUM);
++			pr_info("%s %d\n", __func__, __LINE__);
+ 			if (ret)
+ 				goto out_unlock_bdev;
++			pr_info("%s %d\n", __func__, __LINE__);
+ 		}
+ 	}
+ 	bdev->bd_openers++;
+-- 
+2.22.1
+

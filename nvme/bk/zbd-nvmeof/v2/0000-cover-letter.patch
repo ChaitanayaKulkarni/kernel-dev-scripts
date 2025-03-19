@@ -1,0 +1,85 @@
+From ca1dd4447f1077c5abace88da7ac28633b303e7e Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Sun, 29 Nov 2020 19:13:04 -0800
+Subject: [PATCH 0/9] nvmet: add genblk ZBD backend
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+Hi,
+
+NVMeOF Host is capable of handling the NVMe Protocol based Zoned Block
+Devices (ZBD) in the ZNS mode with the passthru backend. There is no
+support for a generic block device backend to handle the ZBD devices
+which are not NVMe devices.
+
+This adds support to export the ZBD drives (which are not NVMe drives)
+to host from the target with NVMeOF using the host side ZNS interface.
+
+The patch series is generated in bottom-top manner where, it first adds
+prep patch and ZNS command-specific handlers on the top of genblk and 
+updates the data structures, then one by one it wires up the admin cmds
+in the order host calls them in namespace initializing sequence. Once
+everything is ready, it wires-up the I/O command handlers. See below for 
+patch-series overview.
+
+I've tested the ZoneFS testcases with the null_blk memory backed NVMeOF
+namespace with nvme-loop transport. The same testcases are passing on the
+NVMeOF zbd-ns and are passing for null_blk without NVMeOF .
+
+Regards,
+Chaitanya
+
+Changes from V1:-
+
+1. Remove the nvmet-$(CONFIG_BLK_DEV_ZONED) += zns.o.
+2. Mark helpers inline.
+3. Fix typos in the comments and update the comments.
+4. Get rid of the curly brackets.
+5. Don't allow drives with last smaller zones.
+6. Calculate the zasl as a function of max_zone_append_sectors,
+   bio_max_pages so we don't have to split the bio.
+7. Add global subsys->zasl and update the zasl when new namespace
+   is enabled.
+8. Rmove the loop in the nvmet_bdev_execute_zone_mgmt_recv() and
+   move functionality in to the report zone callback.
+9. Add goto for default case in nvmet_bdev_execute_zone_mgmt_send().
+10, Allocate the zones buffer with zones size instead of bdev nr_zones.
+
+Chaitanya Kulkarni (9):
+  block: export __bio_iov_append_get_pages()
+	Prep patch needed for implementing Zone Append.
+  nvmet: add ZNS support for bdev-ns
+	Core Command handlers and various helpers for ZBD backend which
+	 will be called by target-core/target-admin etc.
+  nvmet: trim down id-desclist to use req->ns
+	Cleanup needed to avoid the code repetation for passing extra
+	function parameters for ZBD backend handlers.
+  nvmet: add NVME_CSI_ZNS in ns-desc for zbdev
+	Allows host to identify zoned namesapce.
+  nvmet: add cns-cs-ctrl in id-ctrl for ZNS bdev
+	Allows host to identify controller with the ZBD-ZNS.
+  nvmet: add cns-cs-ns in id-ctrl for ZNS bdev
+	Allows host to identify namespace with the ZBD-ZNS.
+  nvmet: add zns cmd effects to support zbdev
+	Allows host to support the ZNS commands when zoned-blkdev is
+	 selected.
+  nvmet: add zns bdev config support
+	Allows user to override any target namespace attributes for
+	 ZBD.
+  nvmet: add ZNS based I/O cmds handlers
+	Handlers for Zone-Mgmt-Send/Zone-Mgmt-Recv/Zone-Append.
+
+ block/bio.c                       |   3 +-
+ drivers/nvme/target/Makefile      |   2 +-
+ drivers/nvme/target/admin-cmd.c   |  38 ++-
+ drivers/nvme/target/io-cmd-bdev.c |  12 +
+ drivers/nvme/target/io-cmd-file.c |   2 +-
+ drivers/nvme/target/nvmet.h       |  19 ++
+ drivers/nvme/target/zns.c         | 463 ++++++++++++++++++++++++++++++
+ include/linux/bio.h               |   1 +
+ 8 files changed, 524 insertions(+), 16 deletions(-)
+ create mode 100644 drivers/nvme/target/zns.c
+
+-- 
+2.22.1
+

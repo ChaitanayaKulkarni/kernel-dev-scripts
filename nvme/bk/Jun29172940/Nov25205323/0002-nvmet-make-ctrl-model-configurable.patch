@@ -1,0 +1,194 @@
+From 188381b1f65754e8cca7c79c8aef665577e782f3 Mon Sep 17 00:00:00 2001
+From: Mark Ruijter <MRuijter@onestopsystems.com>
+Date: Thu, 21 Nov 2019 20:15:10 -0800
+Subject: [PATCH V3 2/2] nvmet: make ctrl model configurable
+
+From: Mark Ruijter <MRuijter@onestopsystems.com>
+
+This patch adds a new target subsys attribute which allows user to
+optionally specify model name which then used in the
+nvmet_execute_identify_ctrl() to fill up the nvme_id_ctrl structure.
+
+The default value for the model is set to "Linux" for backward
+compatibility.
+
+Signed-off-by: Mark Ruijter <MRuijter@onestopsystems.com>
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+Changes from V2:-
+
+1. Use if else pattern than ternary operators.
+2. Change the name nvmet_subsys_model() -> nvmet_model_number().
+3. Introduce nvmet_is_ascii() to filter the model characters.
+4. Change tmp -> tmp_model in nvmet_subsys_attr_model_store().
+
+Changes from V1:-
+
+1. Don't allocate memory for default subsys model,
+2. Use helper to get the default model string from ctrl->subsys in the
+   nvmet_execute_identify_ctrl() and nvmet_subsys_attr_model()_show.
+   Later is needed so that nvmetcli can display default value Linux
+   when the model is not set from the user.
+3. Get rid of the extra variable c in the nvmet_subsys_attr_model_store()
+   and replace for with while loop without loosing the code redability.
+---
+ drivers/nvme/target/admin-cmd.c | 12 ++++++--
+ drivers/nvme/target/configfs.c  | 50 +++++++++++++++++++++++++++++++++
+ drivers/nvme/target/core.c      |  2 ++
+ drivers/nvme/target/nvmet.h     |  4 +++
+ 4 files changed, 66 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/nvme/target/admin-cmd.c b/drivers/nvme/target/admin-cmd.c
+index 56c21b501185..613e715dc7d3 100644
+--- a/drivers/nvme/target/admin-cmd.c
++++ b/drivers/nvme/target/admin-cmd.c
+@@ -312,12 +312,20 @@ static void nvmet_execute_get_log_page(struct nvmet_req *req)
+ 	nvmet_req_complete(req, NVME_SC_INVALID_FIELD | NVME_SC_DNR);
+ }
+ 
++const char *nvmet_model_number(struct nvmet_subsys *subsys)
++{
++	if (subsys->model)
++		return subsys->model;
++
++	return NVMET_DEFAULT_CTRL_MODEL;
++}
++
+ static void nvmet_execute_identify_ctrl(struct nvmet_req *req)
+ {
++	const char *model = nvmet_model_number(req->sq->ctrl->subsys);
+ 	struct nvmet_ctrl *ctrl = req->sq->ctrl;
+ 	struct nvme_id_ctrl *id;
+ 	u16 status = 0;
+-	const char model[] = "Linux";
+ 
+ 	id = kzalloc(sizeof(*id), GFP_KERNEL);
+ 	if (!id) {
+@@ -332,7 +340,7 @@ static void nvmet_execute_identify_ctrl(struct nvmet_req *req)
+ 	memset(id->sn, ' ', sizeof(id->sn));
+ 	bin2hex(id->sn, &ctrl->subsys->serial,
+ 		min(sizeof(ctrl->subsys->serial), sizeof(id->sn) / 2));
+-	memcpy_and_pad(id->mn, sizeof(id->mn), model, sizeof(model) - 1, ' ');
++	memcpy_and_pad(id->mn, sizeof(id->mn), model, strlen(model), ' ');
+ 	memcpy_and_pad(id->fr, sizeof(id->fr),
+ 		       UTS_RELEASE, strlen(UTS_RELEASE), ' ');
+ 
+diff --git a/drivers/nvme/target/configfs.c b/drivers/nvme/target/configfs.c
+index 5316cdb1b271..00869b805c6b 100644
+--- a/drivers/nvme/target/configfs.c
++++ b/drivers/nvme/target/configfs.c
+@@ -925,12 +925,62 @@ static ssize_t nvmet_subsys_attr_cntlid_max_store(struct config_item *item,
+ }
+ CONFIGFS_ATTR(nvmet_subsys_, attr_cntlid_max);
+ 
++static ssize_t nvmet_subsys_attr_model_show(struct config_item *item,
++					    char *page)
++{
++	struct nvmet_subsys *subsys = to_subsys(item);
++
++	return snprintf(page, PAGE_SIZE, "%s\n",
++			nvmet_model_number(subsys));
++}
++
++/* See Section 1.5 of NVMe 1.4 */
++static bool nvmet_is_ascii(const char c)
++{
++	return c >= 0x20 && c <= 0x7e;
++}
++
++static ssize_t nvmet_subsys_attr_model_store(struct config_item *item,
++					     const char *page, size_t count)
++{
++	struct nvmet_subsys *subsys = to_subsys(item);
++	int ret = -EINVAL, pos = 0, len;
++	char *tmp_model;
++
++	down_write(&nvmet_config_sem);
++	len = strcspn(page, "\n");
++	if (!len)
++		goto out_unlock;
++
++	for (pos = 0; pos < len; pos++) {
++		if (!nvmet_is_ascii(page[pos]))
++			goto out_unlock;
++	}
++
++	tmp_model = kstrndup(page, len, GFP_KERNEL);
++	if (!tmp_model) {
++		ret = -ENOMEM;
++		goto out_unlock;
++	}
++
++	ret = count;
++	kfree(subsys->model);
++	subsys->model = tmp_model;
++
++out_unlock:
++	up_write(&nvmet_config_sem);
++	return ret;
++}
++
++CONFIGFS_ATTR(nvmet_subsys_, attr_model);
++
+ static struct configfs_attribute *nvmet_subsys_attrs[] = {
+ 	&nvmet_subsys_attr_attr_allow_any_host,
+ 	&nvmet_subsys_attr_attr_version,
+ 	&nvmet_subsys_attr_attr_serial,
+ 	&nvmet_subsys_attr_attr_cntlid_min,
+ 	&nvmet_subsys_attr_attr_cntlid_max,
++	&nvmet_subsys_attr_attr_model,
+ 	NULL,
+ };
+ 
+diff --git a/drivers/nvme/target/core.c b/drivers/nvme/target/core.c
+index 990ad4c7bdfd..a985ca7febd5 100644
+--- a/drivers/nvme/target/core.c
++++ b/drivers/nvme/target/core.c
+@@ -1419,6 +1419,7 @@ struct nvmet_subsys *nvmet_subsys_alloc(const char *subsysnqn,
+ 		kfree(subsys);
+ 		return ERR_PTR(-ENOMEM);
+ 	}
++	subsys->model = NULL;
+ 	subsys->cntlid_min = NVME_CNTLID_MIN;
+ 	subsys->cntlid_max = NVME_CNTLID_MAX;
+ 	kref_init(&subsys->ref);
+@@ -1439,6 +1440,7 @@ static void nvmet_subsys_free(struct kref *ref)
+ 	WARN_ON_ONCE(!list_empty(&subsys->namespaces));
+ 
+ 	kfree(subsys->subsysnqn);
++	kfree(subsys->model);
+ 	kfree(subsys);
+ }
+ 
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index 6492d12e626a..c54ce5f66f09 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -23,6 +23,7 @@
+ #define NVMET_ASYNC_EVENTS		4
+ #define NVMET_ERROR_LOG_SLOTS		128
+ #define NVMET_NO_ERROR_LOC		((u16)-1)
++#define NVMET_DEFAULT_CTRL_MODEL	"Linux"
+ 
+ /*
+  * Supported optional AENs:
+@@ -224,6 +225,7 @@ struct nvmet_subsys {
+ 	u64			ver;
+ 	u64			serial;
+ 	char			*subsysnqn;
++	char			*model;
+ 
+ 	struct config_group	group;
+ 
+@@ -489,6 +491,8 @@ u16 nvmet_bdev_flush(struct nvmet_req *req);
+ u16 nvmet_file_flush(struct nvmet_req *req);
+ void nvmet_ns_changed(struct nvmet_subsys *subsys, u32 nsid);
+ 
++const char *nvmet_model_number(struct nvmet_subsys *subsys);
++
+ static inline u32 nvmet_rw_len(struct nvmet_req *req)
+ {
+ 	return ((u32)le16_to_cpu(req->cmd->rw.length) + 1) <<
+-- 
+2.22.1
+

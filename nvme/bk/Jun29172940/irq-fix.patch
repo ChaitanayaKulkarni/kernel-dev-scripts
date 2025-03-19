@@ -1,0 +1,55 @@
+From 62925c05ca30e66d24924a1f3e7289ca9a05ab7a Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Mon, 3 Aug 2020 20:25:01 -0700
+Subject: [PATCH] nvme-core: irq_fix
+
+---
+ drivers/nvme/host/core.c | 10 ++++++----
+ 1 file changed, 6 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index 1292f680c0ea..4ac97f9bd9f6 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -2971,15 +2971,16 @@ int nvme_get_log(struct nvme_ctrl *ctrl, u32 nsid, u8 log_page, u8 lsp, u8 csi,
+ static struct nvme_cel *nvme_find_cel(struct nvme_ctrl *ctrl, u8 csi)
+ {
+ 	struct nvme_cel *cel, *ret = NULL;
++	unsigned long flags;
+ 
+-	spin_lock(&ctrl->lock);
++	spin_lock_irqsave(&ctrl->lock, flags);
+ 	list_for_each_entry(cel, &ctrl->cels, entry) {
+ 		if (cel->csi == csi) {
+ 			ret = cel;
+ 			break;
+ 		}
+ 	}
+-	spin_unlock(&ctrl->lock);
++	spin_unlock_irqrestore(&ctrl->lock, flags);
+ 
+ 	return ret;
+ }
+@@ -2988,6 +2989,7 @@ static int nvme_get_effects_log(struct nvme_ctrl *ctrl, u8 csi,
+ 				struct nvme_effects_log **log)
+ {
+ 	struct nvme_cel *cel = nvme_find_cel(ctrl, csi);
++	unsigned long flags;
+ 	int ret;
+ 
+ 	if (cel)
+@@ -3006,9 +3008,9 @@ static int nvme_get_effects_log(struct nvme_ctrl *ctrl, u8 csi,
+ 
+ 	cel->csi = csi;
+ 
+-	spin_lock(&ctrl->lock);
++	spin_lock_irqsave(&ctrl->lock, flags);
+ 	list_add_tail(&cel->entry, &ctrl->cels);
+-	spin_unlock(&ctrl->lock);
++	spin_unlock_irqrestore(&ctrl->lock, flags);
+ out:
+ 	*log = &cel->log;
+ 	return 0;
+-- 
+2.23.0
+

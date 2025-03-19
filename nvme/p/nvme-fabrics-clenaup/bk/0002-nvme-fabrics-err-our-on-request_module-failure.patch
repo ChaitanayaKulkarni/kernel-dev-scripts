@@ -1,0 +1,49 @@
+From 97c7687c904890dcdd952cad3b9bda7eb6765572 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Tue, 20 Jun 2023 23:10:39 -0700
+Subject: [PATCH 2/2] nvme-fabrics: err our on request_module failure
+
+In function nvmf_create_ctrl(), error out early when request_module()
+returns an error instead of assuming that everything is good.
+
+Also use this opportunity to get rid of the extra line that is added
+for the nvmf_create_ctrl() function prototype since entire line fits
+in 80 char.
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/host/fabrics.c | 11 +++++++----
+ 1 file changed, 7 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/nvme/host/fabrics.c b/drivers/nvme/host/fabrics.c
+index 19c8c5dfee02..e1f95dc497ab 100644
+--- a/drivers/nvme/host/fabrics.c
++++ b/drivers/nvme/host/fabrics.c
+@@ -1173,8 +1173,7 @@ EXPORT_SYMBOL_GPL(nvmf_free_options);
+ 				 NVMF_OPT_FAIL_FAST_TMO | NVMF_OPT_DHCHAP_SECRET |\
+ 				 NVMF_OPT_DHCHAP_CTRL_SECRET)
+ 
+-static struct nvme_ctrl *
+-nvmf_create_ctrl(struct device *dev, const char *buf)
++static struct nvme_ctrl *nvmf_create_ctrl(struct device *dev, const char *buf)
+ {
+ 	struct nvmf_ctrl_options *opts;
+ 	struct nvmf_transport_ops *ops;
+@@ -1189,8 +1188,12 @@ nvmf_create_ctrl(struct device *dev, const char *buf)
+ 	if (ret)
+ 		goto out_free_opts;
+ 
+-
+-	request_module("nvme-%s", opts->transport);
++	ret = request_module("nvme-%s", opts->transport);
++	if (ret) {
++		pr_err("module nvme-%s is not available: %d\n",
++			opts->transport, ret);
++		goto out_free_opts;
++	}
+ 
+ 	/*
+ 	 * Check the generic options first as we need a valid transport for
+-- 
+2.40.0
+

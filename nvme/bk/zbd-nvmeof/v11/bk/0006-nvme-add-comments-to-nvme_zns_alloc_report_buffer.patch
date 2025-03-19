@@ -1,0 +1,69 @@
+From 20d24cc079c3119b8550ad261c81cb64d0d01426 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Sun, 7 Mar 2021 18:04:59 -0800
+Subject: [PATCH V11 6/6] nvme: add comments to nvme_zns_alloc_report_buffer
+
+The report zone buffer calculation is dependent nvme report zones
+header, nvme report zone descriptor and on the various block
+layer request queue attributes such as queue_max_hw_sectors(),
+queue_max_segments(). These queue_XXX attributes are calculated on
+different ctrl values in the nvme-core.
+
+Add clear comments about what values we are using and how they are
+calculated based on the controller's attributes.
+
+This is needed since when referencing the code after long time it is not
+straight forward to understand how we calculate the buffer size given
+that there are variables and ctrl attributes involved.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/host/zns.c | 22 ++++++++++++++++++++++
+ 1 file changed, 22 insertions(+)
+
+diff --git a/drivers/nvme/host/zns.c b/drivers/nvme/host/zns.c
+index bc2f344f0ae0..c2d08d9cc269 100644
+--- a/drivers/nvme/host/zns.c
++++ b/drivers/nvme/host/zns.c
+@@ -125,16 +125,38 @@ static void *nvme_zns_alloc_report_buffer(struct nvme_ns *ns,
+ 	size_t bufsize;
+ 	void *buf;
+ 
++	/*
++	 * Set the minimum buffer size for report zone header and one zone
++	 * descriptor.
++	 */
+ 	const size_t min_bufsize = sizeof(struct nvme_zone_report) +
+ 				   sizeof(struct nvme_zone_descriptor);
+ 
++	/*
++	 * Recalculate the number of zones based on disk size of zone size.
++	 */
+ 	nr_zones = min_t(unsigned int, nr_zones,
+ 			 get_capacity(ns->disk) >> ilog2(ns->zsze));
+ 
++	/*
++	 * Calculate the buffer size based on the report zone header and number
++	 * of zone descriptors are required for each zone.
++	 */
+ 	bufsize = sizeof(struct nvme_zone_report) +
+ 		nr_zones * sizeof(struct nvme_zone_descriptor);
++
++	/*
++	 * Recalculate and Limit the buffer size to queue max hw sectors. For
++	 * NVMe queue max hw sectors are calcualted based on controller's
++	 * Maximum Data Transfer Size (MDTS).
++	 */
+ 	bufsize = min_t(size_t, bufsize,
+ 			queue_max_hw_sectors(q) << SECTOR_SHIFT);
++	/*
++	 * Recalculate and Limit the buffer size to queue max segments. For
++	 * NVMe queue max segments are calculated based on how many controller
++	 * pages are needed to fit the max hw sectors.
++	 */
+ 	bufsize = min_t(size_t, bufsize, queue_max_segments(q) << PAGE_SHIFT);
+ 
+ 	while (bufsize >= min_bufsize) {
+-- 
+2.22.1
+

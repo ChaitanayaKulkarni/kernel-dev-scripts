@@ -1,0 +1,40 @@
+From bd34bd41a87a833467d2bbb310ed7a6d0c074bf1 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Sun, 7 Mar 2021 18:04:59 -0800
+Subject: [PATCH V12 4/4] nvme: add comments to nvme_zns_alloc_report_buffer
+
+Update the function with comments to explain the buffer size
+calculation.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/host/zns.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/drivers/nvme/host/zns.c b/drivers/nvme/host/zns.c
+index bc2f344f0ae0..3cc1a5632140 100644
+--- a/drivers/nvme/host/zns.c
++++ b/drivers/nvme/host/zns.c
+@@ -128,11 +128,19 @@ static void *nvme_zns_alloc_report_buffer(struct nvme_ns *ns,
+ 	const size_t min_bufsize = sizeof(struct nvme_zone_report) +
+ 				   sizeof(struct nvme_zone_descriptor);
+ 
++	/*
++	 * Recalculate the number of zones based on disk size of zone size.
++	 */
+ 	nr_zones = min_t(unsigned int, nr_zones,
+ 			 get_capacity(ns->disk) >> ilog2(ns->zsze));
+ 
+ 	bufsize = sizeof(struct nvme_zone_report) +
+ 		nr_zones * sizeof(struct nvme_zone_descriptor);
++
++	/*
++	 * Limit the buffer size to the maximum data transfer size and on
++	 * the maximum number of segments allowed.
++	 */
+ 	bufsize = min_t(size_t, bufsize,
+ 			queue_max_hw_sectors(q) << SECTOR_SHIFT);
+ 	bufsize = min_t(size_t, bufsize, queue_max_segments(q) << PAGE_SHIFT);
+-- 
+2.22.1
+

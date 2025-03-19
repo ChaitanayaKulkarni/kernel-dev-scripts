@@ -1,0 +1,176 @@
+From 9ca3cddff87e3680d6c036bccd846e3942ff0c01 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Tue, 12 Nov 2019 12:22:54 -0800
+Subject: [PATCH V2] nvmet: make ctrl model configurable
+
+From: Mark Ruijter <MRuijter@onestopsystems.com>
+
+This patch adds a new target subsys attribute which allows user to
+optionally specify model name which then used in the
+nvmet_execute_identify_ctrl() to fill up the nvme_id_ctrl structure.
+
+The default value for the model is set to "Linux" for backward
+compatibility.
+
+Signed-off-by: Mark Ruijter <MRuijter@onestopsystems.com>
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+Changes from V1:-
+
+1. Don't allocate memory for default subsys model,
+2. Use helper to get the default model string from ctrl->subsys in the
+   nvmet_execute_identify_ctrl() and nvmet_subsys_attr_model()_show.
+   Later is needed so that nvmetcli can display default value Linux
+   when the model is not set from the user.
+3. Get rid of the extra variable c in the nvmet_subsys_attr_model_store()
+   and replace for with while loop without loosing the code redability.
+---
+ drivers/nvme/target/admin-cmd.c |  9 +++++--
+ drivers/nvme/target/configfs.c  | 44 +++++++++++++++++++++++++++++++++
+ drivers/nvme/target/core.c      |  2 ++
+ drivers/nvme/target/nvmet.h     |  4 +++
+ 4 files changed, 57 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/nvme/target/admin-cmd.c b/drivers/nvme/target/admin-cmd.c
+index 56c21b501185..81374507099f 100644
+--- a/drivers/nvme/target/admin-cmd.c
++++ b/drivers/nvme/target/admin-cmd.c
+@@ -312,12 +312,17 @@ static void nvmet_execute_get_log_page(struct nvmet_req *req)
+ 	nvmet_req_complete(req, NVME_SC_INVALID_FIELD | NVME_SC_DNR);
+ }
+ 
++const char *nvmet_subsys_model(struct nvmet_subsys *subsys)
++{
++	return subsys->model ? subsys->model : NVMET_DEFAULT_CTRL_MODEL;
++}
++
+ static void nvmet_execute_identify_ctrl(struct nvmet_req *req)
+ {
++	const char *model = nvmet_subsys_model(req->sq->ctrl->subsys);
+ 	struct nvmet_ctrl *ctrl = req->sq->ctrl;
+ 	struct nvme_id_ctrl *id;
+ 	u16 status = 0;
+-	const char model[] = "Linux";
+ 
+ 	id = kzalloc(sizeof(*id), GFP_KERNEL);
+ 	if (!id) {
+@@ -332,7 +337,7 @@ static void nvmet_execute_identify_ctrl(struct nvmet_req *req)
+ 	memset(id->sn, ' ', sizeof(id->sn));
+ 	bin2hex(id->sn, &ctrl->subsys->serial,
+ 		min(sizeof(ctrl->subsys->serial), sizeof(id->sn) / 2));
+-	memcpy_and_pad(id->mn, sizeof(id->mn), model, sizeof(model) - 1, ' ');
++	memcpy_and_pad(id->mn, sizeof(id->mn), model, strlen(model), ' ');
+ 	memcpy_and_pad(id->fr, sizeof(id->fr),
+ 		       UTS_RELEASE, strlen(UTS_RELEASE), ' ');
+ 
+diff --git a/drivers/nvme/target/configfs.c b/drivers/nvme/target/configfs.c
+index 98613a45bd3b..4580f9d9b07f 100644
+--- a/drivers/nvme/target/configfs.c
++++ b/drivers/nvme/target/configfs.c
+@@ -862,10 +862,54 @@ static ssize_t nvmet_subsys_attr_serial_store(struct config_item *item,
+ }
+ CONFIGFS_ATTR(nvmet_subsys_, attr_serial);
+ 
++static ssize_t nvmet_subsys_attr_model_show(struct config_item *item,
++					    char *page)
++{
++	struct nvmet_subsys *subsys = to_subsys(item);
++
++	return snprintf(page, PAGE_SIZE, "%s\n", nvmet_subsys_model(subsys));
++}
++
++static ssize_t nvmet_subsys_attr_model_store(struct config_item *item,
++					     const char *page, size_t count)
++{
++	struct nvmet_subsys *subsys = to_subsys(item);
++	int ret = -EINVAL, pos = 0, len;
++	char *tmp;
++
++	down_write(&nvmet_config_sem);
++	len = strcspn(page, "\n");
++	if (!len)
++		goto out_unlock;
++
++	/* Only 20h (space) until 7eh (~) is allowed */
++	while (pos < len && (page[pos] >= 0x20 && page[pos] <= 0x7e) && ++pos)
++		;
++	if (pos != len)
++		goto out_unlock;
++
++	tmp = kstrndup(page, len, GFP_KERNEL);
++	if (!tmp) {
++		ret = -ENOMEM;
++		goto out_unlock;
++	}
++
++	ret = count;
++	kfree(subsys->model);
++	subsys->model = tmp;
++
++out_unlock:
++	up_write(&nvmet_config_sem);
++	return ret;
++}
++
++CONFIGFS_ATTR(nvmet_subsys_, attr_model);
++
+ static struct configfs_attribute *nvmet_subsys_attrs[] = {
+ 	&nvmet_subsys_attr_attr_allow_any_host,
+ 	&nvmet_subsys_attr_attr_version,
+ 	&nvmet_subsys_attr_attr_serial,
++	&nvmet_subsys_attr_attr_model,
+ 	NULL,
+ };
+ 
+diff --git a/drivers/nvme/target/core.c b/drivers/nvme/target/core.c
+index 28438b833c1b..1d17638bbc45 100644
+--- a/drivers/nvme/target/core.c
++++ b/drivers/nvme/target/core.c
+@@ -1416,6 +1416,7 @@ struct nvmet_subsys *nvmet_subsys_alloc(const char *subsysnqn,
+ 		kfree(subsys);
+ 		return ERR_PTR(-ENOMEM);
+ 	}
++	subsys->model = NULL;
+ 
+ 	kref_init(&subsys->ref);
+ 
+@@ -1435,6 +1436,7 @@ static void nvmet_subsys_free(struct kref *ref)
+ 	WARN_ON_ONCE(!list_empty(&subsys->namespaces));
+ 
+ 	kfree(subsys->subsysnqn);
++	kfree(subsys->model);
+ 	kfree(subsys);
+ }
+ 
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index 46df45e837c9..7fafb5171037 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -23,6 +23,7 @@
+ #define NVMET_ASYNC_EVENTS		4
+ #define NVMET_ERROR_LOG_SLOTS		128
+ #define NVMET_NO_ERROR_LOC		((u16)-1)
++#define NVMET_DEFAULT_CTRL_MODEL       "Linux"
+ 
+ /*
+  * Supported optional AENs:
+@@ -222,6 +223,7 @@ struct nvmet_subsys {
+ 	u64			ver;
+ 	u64			serial;
+ 	char			*subsysnqn;
++	char			*model;
+ 
+ 	struct config_group	group;
+ 
+@@ -487,6 +489,8 @@ u16 nvmet_bdev_flush(struct nvmet_req *req);
+ u16 nvmet_file_flush(struct nvmet_req *req);
+ void nvmet_ns_changed(struct nvmet_subsys *subsys, u32 nsid);
+ 
++const char *nvmet_subsys_model(struct nvmet_subsys *subsys);
++
+ static inline u32 nvmet_rw_len(struct nvmet_req *req)
+ {
+ 	return ((u32)le16_to_cpu(req->cmd->rw.length) + 1) <<
+-- 
+2.22.1
+

@@ -1,0 +1,7 @@
+let i=0
+while [ 1 ]
+do 
+	ls -l  $1*  |  wc -l
+	sleep 1
+	dmesg -c
+done

@@ -1,0 +1,35 @@
+RANDREAD: (g=0): rw=randread, bs=(R) 4096B-4096B, (W) 4096B-4096B, (T) 4096B-4096B, ioengine=io_uring, iodepth=8
+...
+fio-3.38
+Starting 48 processes
+
+RANDREAD: (groupid=0, jobs=48): err= 0: pid=3868: Wed Nov 13 11:33:59 2024
+  read: IOPS=72.5k, BW=283MiB/s (297MB/s)(16.6GiB/60004msec)
+    slat (usec): min=2, max=41927, avg=169.36, stdev=763.14
+    clat (nsec): min=331, max=70987k, avg=5129200.43, stdev=2552076.67
+     lat (usec): min=96, max=74273, avg=5298.56, stdev=2656.47
+    clat percentiles (usec):
+     |  1.00th=[  322],  5.00th=[ 2442], 10.00th=[ 2737], 20.00th=[ 3163],
+     | 30.00th=[ 3523], 40.00th=[ 3949], 50.00th=[ 4424], 60.00th=[ 5211],
+     | 70.00th=[ 5997], 80.00th=[ 6783], 90.00th=[ 8455], 95.00th=[10028],
+     | 99.00th=[13698], 99.50th=[15401], 99.90th=[19268], 99.95th=[21365],
+     | 99.99th=[26346]
+   bw (  KiB/s): min=245072, max=336825, per=100.00%, avg=290156.16, stdev=361.50, samples=5712
+   iops        : min=61260, max=84194, avg=72529.60, stdev=90.32, samples=5712
+  lat (nsec)   : 500=0.01%, 750=0.01%, 1000=0.01%
+  lat (usec)   : 2=0.01%, 4=0.01%, 10=0.01%, 20=0.01%, 50=0.02%
+  lat (usec)   : 100=0.14%, 250=0.61%, 500=0.30%, 750=0.12%, 1000=0.30%
+  lat (msec)   : 2=0.88%, 4=38.82%, 10=53.85%, 20=4.87%, 50=0.08%
+  lat (msec)   : 100=0.01%
+  cpu          : usr=0.58%, sys=17.83%, ctx=541539, majf=0, minf=853
+  IO depths    : 1=0.1%, 2=0.1%, 4=0.1%, 8=100.0%, 16=0.0%, 32=0.0%, >=64=0.0%
+     submit    : 0=0.0%, 4=100.0%, 8=0.0%, 16=0.0%, 32=0.0%, 64=0.0%, >=64=0.0%
+     complete  : 0=0.0%, 4=100.0%, 8=0.1%, 16=0.0%, 32=0.0%, 64=0.0%, >=64=0.0%
+     issued rwts: total=4347359,0,0,0 short=0,0,0,0 dropped=0,0,0,0
+     latency   : target=0, window=0, percentile=100.00%, depth=8
+
+Run status group 0 (all jobs):
+   READ: bw=283MiB/s (297MB/s), 283MiB/s-283MiB/s (297MB/s-297MB/s), io=16.6GiB (17.8GB), run=60004-60004msec
+
+Disk stats (read/write):
+  nvme0n1: ios=4331734/0, sectors=34653872/0, merge=0/0, ticks=17484934/0, in_queue=17484934, util=99.88%

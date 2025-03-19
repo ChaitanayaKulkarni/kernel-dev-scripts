@@ -1,0 +1,20 @@
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index 1a8d32a4a5c3..e4762e4c5801 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -2068,10 +2068,13 @@ static bool nvme_update_disk_info(struct nvme_ns *ns, struct nvme_id_ns *id,
+ 	lim->physical_block_size = min(phys_bs, atomic_bs);
+ 	lim->io_min = phys_bs;
+ 	lim->io_opt = io_opt;
+-	if (ns->ctrl->quirks & NVME_QUIRK_DEALLOCATE_ZEROES)
++	if (ns->ctrl->quirks & NVME_QUIRK_DEALLOCATE_ZEROES) {
++		pr_info("%s %d\n", __func__, __LINE__);
+ 		lim->max_write_zeroes_sectors = UINT_MAX;
+-	else
++	} else {
++		pr_info("%s %d\n", __func__, __LINE__);
+ 		lim->max_write_zeroes_sectors = ns->ctrl->max_zeroes_sectors;
++	}
+ 	return valid;
+ }
+ 

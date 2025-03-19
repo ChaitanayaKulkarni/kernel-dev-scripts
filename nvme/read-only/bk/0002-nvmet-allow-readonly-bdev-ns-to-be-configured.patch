@@ -1,0 +1,37 @@
+From d2a877643f32f8692577300a0b28af662d8f2502 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Wed, 30 Sep 2020 18:48:06 -0700
+Subject: [PATCH 2/3] nvmet: allow readonly bdev-ns to be configured
+
+Right now we open bdev-ns in read-write mode. This doesn't allow us to
+export the bdev which is marked read-only using blockdev --setro.
+
+Allow user to export the readonly bdev by considering the ns->readonly
+configfs attribute when opening the bdev. Use FMODE_WRITE when
+ns->readonly is not set.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/io-cmd-bdev.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/nvme/target/io-cmd-bdev.c b/drivers/nvme/target/io-cmd-bdev.c
+index 125dde3f410e..781705f671b5 100644
+--- a/drivers/nvme/target/io-cmd-bdev.c
++++ b/drivers/nvme/target/io-cmd-bdev.c
+@@ -65,10 +65,10 @@ static void nvmet_bdev_ns_enable_integrity(struct nvmet_ns *ns)
+ 
+ int nvmet_bdev_ns_enable(struct nvmet_ns *ns)
+ {
++	fmode_t mode = FMODE_READ | ns->readonly ? 0 : FMODE_WRITE;
+ 	int ret;
+ 
+-	ns->bdev = blkdev_get_by_path(ns->device_path,
+-			FMODE_READ | FMODE_WRITE, NULL);
++	ns->bdev = blkdev_get_by_path(ns->device_path, mode, NULL);
+ 	if (IS_ERR(ns->bdev)) {
+ 		ret = PTR_ERR(ns->bdev);
+ 		if (ret != -ENOTBLK) {
+-- 
+2.22.1
+

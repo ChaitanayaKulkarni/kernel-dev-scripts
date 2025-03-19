@@ -1,0 +1,54 @@
+From 7b0a6eefa20905e52f48995d827a2d132de34457 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Fri, 7 Apr 2023 20:45:37 -0700
+Subject: [PATCH 3/4] nvmet: allow user to mark bdev-ns write-protected
+
+Right now we open bdev-ns in read-write mode. This doesn't allow us to
+export the bdev which is marked read-only using blockdev --setro.
+
+Allow user to export the readonly bdev by considering ns->write_protect
+configfs attribute when opening the bdev. Use FMODE_WRITE when
+ns->write_protect is not set FMODE_READ otherwise.
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/target/io-cmd-bdev.c | 16 ++++++++++++++--
+ 1 file changed, 14 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/nvme/target/io-cmd-bdev.c b/drivers/nvme/target/io-cmd-bdev.c
+index c2d6cea0236b..08d2f6685fa4 100644
+--- a/drivers/nvme/target/io-cmd-bdev.c
++++ b/drivers/nvme/target/io-cmd-bdev.c
+@@ -74,6 +74,7 @@ static void nvmet_bdev_ns_enable_integrity(struct nvmet_ns *ns)
+ 
+ int nvmet_bdev_ns_enable(struct nvmet_ns *ns)
+ {
++	fmode_t mode;
+ 	int ret;
+ 
+ 	/*
+@@ -84,8 +85,19 @@ int nvmet_bdev_ns_enable(struct nvmet_ns *ns)
+ 	if (ns->buffered_io)
+ 		return -ENOTBLK;
+ 
+-	ns->bdev = blkdev_get_by_path(ns->device_path,
+-			FMODE_READ | FMODE_WRITE, NULL);
++	switch (ns->write_protect) {
++	case NVME_NS_WRITE_PROTECT_PERMANENT:
++	case NVME_NS_WRITE_PROTECT:
++		mode = FMODE_READ;
++		break;
++	case NVME_NS_NO_WRITE_PROTECT:
++		mode = FMODE_READ | FMODE_WRITE;
++		break;
++	default:
++		return -EINVAL;
++	}
++
++	ns->bdev = blkdev_get_by_path(ns->device_path, mode, NULL);
+ 	if (IS_ERR(ns->bdev)) {
+ 		ret = PTR_ERR(ns->bdev);
+ 		if (ret != -ENOTBLK) {
+-- 
+2.29.0
+

@@ -1,0 +1,163 @@
+From 21e4a3c8bd119a885f3dab2c87535e89048aba73 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Thu, 7 Apr 2022 21:36:57 -0700
+Subject: [PATCH 3/6] nvme-core: remove qid parameter
+
+The function __nvme_submit_sync_cmd() has following list of callers
+which sets the qid value :-
+
+        Callers                 |   qid value
+--------------------------------------------------
+nvme_submit_sync_cmd()          | NVME_QID_ANY
+nvme_features()                 | NVME_QID_ANY
+nvme_sec_submit()               | NVME_QID_ANY
+nvmf_reg_read32()               | NVME_QID_ANY
+nvmf_reg_read64()               | NVME_QID_ANY
+nvmf_reg_write32()              | NVME_QID_ANY
+nvmf_connect_admin_queue()      | NVME_QID_ANY
+nvmf_connect_io_queue()         |   qid > 0
+
+We can easily derive the qid value from the nvme_command parameter of
+the function __nvme_submit_sync_cmd() when its caller is
+nvmf_connect_io_queue().
+
+Remove the qid fuction parameter from __nvme_submit_sync_cmd() and
+and derive the value from nvme_command if the caller is
+nvmf_connect_io_queue() and adjust the rest of code accordingly.
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/host/core.c    | 21 +++++++++++++++++----
+ drivers/nvme/host/fabrics.c | 10 +++++-----
+ drivers/nvme/host/nvme.h    |  3 +--
+ 3 files changed, 23 insertions(+), 11 deletions(-)
+
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index 60f65f9ba2cf..b63952cb9a81 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -1069,17 +1069,30 @@ static int nvme_execute_rq(struct request *rq, bool at_head)
+ 	return blk_status_to_errno(status);
+ }
+ 
++static inline bool is_fabrics_io_connect_cmd(struct nvme_command *cmd)
++{
++	return cmd->connect.opcode == nvme_fabrics_command &&
++	       cmd->connect.fctype == nvme_fabrics_type_connect &&
++	       le16_to_cpu(cmd->connect.qid) > 0;
++}
++
+ /*
+  * Returns 0 on success.  If the result is negative, it's a Linux error code;
+  * if the result is positive, it's an NVM Express status code
+  */
+ int __nvme_submit_sync_cmd(struct request_queue *q, struct nvme_command *cmd,
+ 		union nvme_result *result, void *buffer, unsigned bufflen,
+-		int qid, int at_head, blk_mq_req_flags_t flags)
++		int at_head, blk_mq_req_flags_t flags)
+ {
++	int qid = NVME_QID_ANY;
+ 	struct request *req;
+ 	int ret;
+ 
++	if (is_fabrics_io_connect_cmd(cmd)) {
++		/* nvmf io connect command has qid in nvme_command set */
++		qid = le16_to_cpu(cmd->connect.qid);
++	}
++
+ 	if (qid == NVME_QID_ANY)
+ 		req = blk_mq_alloc_request(q, nvme_req_op(cmd), flags);
+ 	else
+@@ -1109,7 +1122,7 @@ int nvme_submit_sync_cmd(struct request_queue *q, struct nvme_command *cmd,
+ 		void *buffer, unsigned bufflen)
+ {
+ 	return __nvme_submit_sync_cmd(q, cmd, NULL, buffer, bufflen,
+-			NVME_QID_ANY, 0, 0);
++			0, 0);
+ }
+ EXPORT_SYMBOL_GPL(nvme_submit_sync_cmd);
+ 
+@@ -1506,7 +1519,7 @@ static int nvme_features(struct nvme_ctrl *dev, u8 op, unsigned int fid,
+ 	c.features.dword11 = cpu_to_le32(dword11);
+ 
+ 	ret = __nvme_submit_sync_cmd(dev->admin_q, &c, &res,
+-			buffer, buflen, NVME_QID_ANY, 0, 0);
++			buffer, buflen, 0, 0);
+ 	if (ret >= 0 && result)
+ 		*result = le32_to_cpu(res.u32);
+ 	return ret;
+@@ -2096,7 +2109,7 @@ int nvme_sec_submit(void *data, u16 spsp, u8 secp, void *buffer, size_t len,
+ 	cmd.common.cdw11 = cpu_to_le32(len);
+ 
+ 	return __nvme_submit_sync_cmd(ctrl->admin_q, &cmd, NULL, buffer, len,
+-			NVME_QID_ANY, 1, 0);
++			1, 0);
+ }
+ EXPORT_SYMBOL_GPL(nvme_sec_submit);
+ #endif /* CONFIG_BLK_SED_OPAL */
+diff --git a/drivers/nvme/host/fabrics.c b/drivers/nvme/host/fabrics.c
+index 0a0512300f1b..7ad8c4438318 100644
+--- a/drivers/nvme/host/fabrics.c
++++ b/drivers/nvme/host/fabrics.c
+@@ -153,7 +153,7 @@ int nvmf_reg_read32(struct nvme_ctrl *ctrl, u32 off, u32 *val)
+ 	cmd.prop_get.offset = cpu_to_le32(off);
+ 
+ 	ret = __nvme_submit_sync_cmd(ctrl->fabrics_q, &cmd, &res, NULL, 0,
+-			NVME_QID_ANY, 0, 0);
++			0, 0);
+ 
+ 	if (ret >= 0)
+ 		*val = le64_to_cpu(res.u64);
+@@ -199,7 +199,7 @@ int nvmf_reg_read64(struct nvme_ctrl *ctrl, u32 off, u64 *val)
+ 	cmd.prop_get.offset = cpu_to_le32(off);
+ 
+ 	ret = __nvme_submit_sync_cmd(ctrl->fabrics_q, &cmd, &res, NULL, 0,
+-			NVME_QID_ANY, 0, 0);
++			0, 0);
+ 
+ 	if (ret >= 0)
+ 		*val = le64_to_cpu(res.u64);
+@@ -244,7 +244,7 @@ int nvmf_reg_write32(struct nvme_ctrl *ctrl, u32 off, u32 val)
+ 	cmd.prop_set.value = cpu_to_le64(val);
+ 
+ 	ret = __nvme_submit_sync_cmd(ctrl->fabrics_q, &cmd, NULL, NULL, 0,
+-			NVME_QID_ANY, 0, 0);
++			0, 0);
+ 	if (unlikely(ret))
+ 		dev_err(ctrl->device,
+ 			"Property Set error: %d, offset %#x\n",
+@@ -389,7 +389,7 @@ int nvmf_connect_admin_queue(struct nvme_ctrl *ctrl)
+ 	strncpy(data->hostnqn, ctrl->opts->host->nqn, NVMF_NQN_SIZE);
+ 
+ 	ret = __nvme_submit_sync_cmd(ctrl->fabrics_q, &cmd, &res,
+-			data, sizeof(*data), NVME_QID_ANY, 1,
++			data, sizeof(*data), 1,
+ 			BLK_MQ_REQ_RESERVED | BLK_MQ_REQ_NOWAIT);
+ 	if (ret) {
+ 		nvmf_log_connect_error(ctrl, ret, le32_to_cpu(res.u32),
+@@ -450,7 +450,7 @@ int nvmf_connect_io_queue(struct nvme_ctrl *ctrl, u16 qid)
+ 	strncpy(data->hostnqn, ctrl->opts->host->nqn, NVMF_NQN_SIZE);
+ 
+ 	ret = __nvme_submit_sync_cmd(ctrl->connect_q, &cmd, &res,
+-			data, sizeof(*data), qid, 1,
++			data, sizeof(*data), 1,
+ 			BLK_MQ_REQ_RESERVED | BLK_MQ_REQ_NOWAIT);
+ 	if (ret) {
+ 		nvmf_log_connect_error(ctrl, ret, le32_to_cpu(res.u32),
+diff --git a/drivers/nvme/host/nvme.h b/drivers/nvme/host/nvme.h
+index a55e9d376d30..5bf093dfaa8b 100644
+--- a/drivers/nvme/host/nvme.h
++++ b/drivers/nvme/host/nvme.h
+@@ -745,8 +745,7 @@ int nvme_submit_sync_cmd(struct request_queue *q, struct nvme_command *cmd,
+ 		void *buf, unsigned bufflen);
+ int __nvme_submit_sync_cmd(struct request_queue *q, struct nvme_command *cmd,
+ 		union nvme_result *result, void *buffer, unsigned bufflen,
+-		int qid, int at_head,
+-		blk_mq_req_flags_t flags);
++		int at_head, blk_mq_req_flags_t flags);
+ int nvme_set_features(struct nvme_ctrl *dev, unsigned int fid,
+ 		      unsigned int dword11, void *buffer, size_t buflen,
+ 		      u32 *result);
+-- 
+2.29.0
+

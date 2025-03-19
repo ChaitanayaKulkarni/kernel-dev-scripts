@@ -1,0 +1,19 @@
+From 84d007644f8964d984fb0888bf5504e00edbe5ea Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Mon, 17 Jan 2022 17:24:48 -0800
+Subject: [PATCH 0/3] *** SUBJECT HERE ***
+
+*** BLURB HERE ***
+
+Chaitanya Kulkarni (3):
+  nvmet: set blksize shift in to revalidate
+  nvmet: allow bdev to use file backend
+  nvmet: cosmetics fix
+
+ drivers/nvme/target/io-cmd-bdev.c |  8 ++++++++
+ drivers/nvme/target/io-cmd-file.c | 34 +++++++++++++++++++++++--------
+ 2 files changed, 33 insertions(+), 9 deletions(-)
+
+-- 
+2.29.0
+

@@ -1,0 +1,13 @@
+[RANDWRITE]
+ioengine=libaio
+direct=1
+rw=randwrite
+randrepeat=1
+runtime=1m
+iodepth=8
+numjobs=32
+bs=4k
+time_based
+overwrite=0
+size=500m
+group_reporting

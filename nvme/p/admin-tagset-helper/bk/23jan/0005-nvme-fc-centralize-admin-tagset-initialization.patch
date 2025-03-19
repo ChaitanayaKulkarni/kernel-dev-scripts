@@ -1,0 +1,68 @@
+From 661e331975e9916619312b1e8bd2b76f0b9404db Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Sat, 22 Jan 2022 22:39:15 -0800
+Subject: [PATCH 05/11] nvme-fc: centralize admin tagset initialization
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/host/fabrics.h | 17 +++++++++++++++++
+ drivers/nvme/host/fc.c      | 12 +++---------
+ 2 files changed, 20 insertions(+), 9 deletions(-)
+
+diff --git a/drivers/nvme/host/fabrics.h b/drivers/nvme/host/fabrics.h
+index c3203ff1c654..f7aa4ed17d30 100644
+--- a/drivers/nvme/host/fabrics.h
++++ b/drivers/nvme/host/fabrics.h
+@@ -186,6 +186,23 @@ static inline char *nvmf_ctrl_subsysnqn(struct nvme_ctrl *ctrl)
+ 	return ctrl->subsys->subnqn;
+ }
+ 
++static inline void nvme_ctrl_init_admin_tagset(struct blk_mq_tag_set *set,
++					       void *driver_data, int numa_node,
++					       const struct blk_mq_ops *ops,
++					       unsigned int flags)
++{
++	memset(set, 0, sizeof(*set));
++	set->queue_depth = NVME_AQ_MQ_TAG_DEPTH;
++	set->reserved_tags = NVMF_RESERVED_TAGS;
++	set->driver_data = driver_data;
++	set->numa_node = numa_node;
++	set->nr_hw_queues = 1;
++	set->timeout = NVME_ADMIN_TIMEOUT;
++	set->ops = ops;
++	set->flags = flags;
++}
++
++
+ int nvmf_reg_read32(struct nvme_ctrl *ctrl, u32 off, u32 *val);
+ int nvmf_reg_read64(struct nvme_ctrl *ctrl, u32 off, u64 *val);
+ int nvmf_reg_write32(struct nvme_ctrl *ctrl, u32 off, u32 val);
+diff --git a/drivers/nvme/host/fc.c b/drivers/nvme/host/fc.c
+index 23c896a138a3..6ad74af5406f 100644
+--- a/drivers/nvme/host/fc.c
++++ b/drivers/nvme/host/fc.c
+@@ -3529,18 +3529,12 @@ nvme_fc_init_ctrl(struct device *dev, struct nvmf_ctrl_options *opts,
+ 
+ 	nvme_fc_init_queue(ctrl, 0);
+ 
+-	memset(&ctrl->admin_tag_set, 0, sizeof(ctrl->admin_tag_set));
+-	ctrl->admin_tag_set.ops = &nvme_fc_admin_mq_ops;
+-	ctrl->admin_tag_set.queue_depth = NVME_AQ_MQ_TAG_DEPTH;
+-	ctrl->admin_tag_set.reserved_tags = NVMF_RESERVED_TAGS;
+-	ctrl->admin_tag_set.numa_node = ctrl->ctrl.numa_node;
++	nvme_ctrl_init_admin_tagset(&(ctrl->admin_tag_set), ctrl,
++				    ctrl->ctrl.numa_node, &nvme_fc_admin_mq_ops,
++				    BLK_MQ_F_NO_SCHED);
+ 	ctrl->admin_tag_set.cmd_size =
+ 		struct_size((struct nvme_fcp_op_w_sgl *)NULL, priv,
+ 			    ctrl->lport->ops->fcprqst_priv_sz);
+-	ctrl->admin_tag_set.driver_data = ctrl;
+-	ctrl->admin_tag_set.nr_hw_queues = 1;
+-	ctrl->admin_tag_set.timeout = NVME_ADMIN_TIMEOUT;
+-	ctrl->admin_tag_set.flags = BLK_MQ_F_NO_SCHED;
+ 
+ 	ret = blk_mq_alloc_tag_set(&ctrl->admin_tag_set);
+ 	if (ret)
+-- 
+2.29.0
+

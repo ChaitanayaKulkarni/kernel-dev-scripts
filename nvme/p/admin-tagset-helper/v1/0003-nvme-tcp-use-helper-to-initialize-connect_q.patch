@@ -1,0 +1,34 @@
+From 149eb1a5a54a5423368a188b73dbf037d0b60cc4 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Sat, 22 Jan 2022 13:31:08 -0800
+Subject: [PATCH 3/9] nvme-tcp: use helper to initialize connect_q
+
+Use helper to remove duplicate code for connect queue initialization
+and error handling for all fabrics transports.
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/host/tcp.c | 6 ++----
+ 1 file changed, 2 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/nvme/host/tcp.c b/drivers/nvme/host/tcp.c
+index 4ceb28675fdf..6cbcc8b4daaf 100644
+--- a/drivers/nvme/host/tcp.c
++++ b/drivers/nvme/host/tcp.c
+@@ -1825,11 +1825,9 @@ static int nvme_tcp_configure_io_queues(struct nvme_ctrl *ctrl, bool new)
+ 			goto out_free_io_queues;
+ 		}
+ 
+-		ctrl->connect_q = blk_mq_init_queue(ctrl->tagset);
+-		if (IS_ERR(ctrl->connect_q)) {
+-			ret = PTR_ERR(ctrl->connect_q);
++		ret = nvme_ctrl_init_connect_q(ctrl);
++		if (ret)
+ 			goto out_free_tag_set;
+-		}
+ 	}
+ 
+ 	ret = nvme_tcp_start_io_queues(ctrl);
+-- 
+2.29.0
+

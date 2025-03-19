@@ -1,0 +1,36 @@
+From 26c29e8bbc2b6e39a76f5d454522f055712ba51f Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Thu, 7 Apr 2022 12:21:41 -0700
+Subject: [PATCH 2/2] nvmet: handle disc default command set identifier
+
+Similar to previous patch handle identify command cns value
+NVME_ID_CNS_CS_CTRL when executing nvme_admin_identify for discovery
+controller.
+
+This is needed to mask out the errors reported by the blktest nvme/002.
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/target/discovery.c | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/nvme/target/discovery.c b/drivers/nvme/target/discovery.c
+index c2162eef8ce1..34c7ed055674 100644
+--- a/drivers/nvme/target/discovery.c
++++ b/drivers/nvme/target/discovery.c
+@@ -254,7 +254,11 @@ static void nvmet_execute_disc_identify(struct nvmet_req *req)
+ 	if (!nvmet_check_transfer_len(req, NVME_IDENTIFY_DATA_SIZE))
+ 		return;
+ 
+-	if (req->cmd->identify.cns != NVME_ID_CNS_CTRL) {
++	switch (req->cmd->identify.cns) {
++	case NVME_ID_CNS_CTRL:
++	case NVME_ID_CNS_CS_CTRL:
++		break;
++	default:
+ 		req->error_loc = offsetof(struct nvme_identify, cns);
+ 		status = NVME_SC_INVALID_FIELD | NVME_SC_DNR;
+ 		goto out;
+-- 
+2.29.0
+

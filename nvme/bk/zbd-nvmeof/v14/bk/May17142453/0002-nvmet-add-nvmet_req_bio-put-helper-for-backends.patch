@@ -1,0 +1,68 @@
+From 6af0f95c2e00004087b94fe7f2ceb0acf603451c Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Thu, 8 Apr 2021 12:11:12 -0700
+Subject: [PATCH V14 2/4] nvmet: add nvmet_req_bio put helper for backends
+
+In current code there exists two backend which are using inline bio
+optimization, that adds a duplicate code for freeing the bio.
+
+For Zoned Block Device backend we also use same optimzation and it will
+lead to having duplicate code in the three backeneds: generic bdev,
+passsthru, and generic zns.
+
+Add a helper function to avoid duplicate code and update the respective
+backends.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/io-cmd-bdev.c | 3 +--
+ drivers/nvme/target/nvmet.h       | 6 ++++++
+ drivers/nvme/target/passthru.c    | 3 +--
+ 3 files changed, 8 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/nvme/target/io-cmd-bdev.c b/drivers/nvme/target/io-cmd-bdev.c
+index 429263ca9b97..079e997686a8 100644
+--- a/drivers/nvme/target/io-cmd-bdev.c
++++ b/drivers/nvme/target/io-cmd-bdev.c
+@@ -164,8 +164,7 @@ static void nvmet_bio_done(struct bio *bio)
+ 	struct nvmet_req *req = bio->bi_private;
+ 
+ 	nvmet_req_complete(req, blk_to_nvme_status(req, bio->bi_status));
+-	if (bio != &req->b.inline_bio)
+-		bio_put(bio);
++	nvmet_req_bio_put(req, bio);
+ }
+ 
+ #ifdef CONFIG_BLK_DEV_INTEGRITY
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index 5fb3602038f2..4844942b6c50 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -630,4 +630,10 @@ static inline void nvmet_req_cns_error_compplete(struct nvmet_req *req)
+ 	nvmet_req_complete(req, NVME_SC_INVALID_FIELD | NVME_SC_DNR);
+ }
+ 
++static inline void nvmet_req_bio_put(struct nvmet_req *req, struct bio *bio)
++{
++	if (bio != &req->b.inline_bio)
++		bio_put(bio);
++}
++
+ #endif /* _NVMET_H */
+diff --git a/drivers/nvme/target/passthru.c b/drivers/nvme/target/passthru.c
+index 39b1473f7204..fced52de33ce 100644
+--- a/drivers/nvme/target/passthru.c
++++ b/drivers/nvme/target/passthru.c
+@@ -206,8 +206,7 @@ static int nvmet_passthru_map_sg(struct nvmet_req *req, struct request *rq)
+ 	for_each_sg(req->sg, sg, req->sg_cnt, i) {
+ 		if (bio_add_pc_page(rq->q, bio, sg_page(sg), sg->length,
+ 				    sg->offset) < sg->length) {
+-			if (bio != &req->p.inline_bio)
+-				bio_put(bio);
++			nvmet_req_bio_put(req, bio);
+ 			return -EINVAL;
+ 		}
+ 	}
+-- 
+2.22.1
+

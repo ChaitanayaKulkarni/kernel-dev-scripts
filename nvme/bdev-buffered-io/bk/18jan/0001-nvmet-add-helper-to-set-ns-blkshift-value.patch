@@ -1,0 +1,68 @@
+From 956a566e7916a5fd55b9e71058cdeb2a370d3290 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Mon, 17 Jan 2022 18:08:16 -0800
+Subject: [PATCH 1/3] nvmet: add helper to set ns->blkshift value
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+In order to support the block device in the buffered I/O mode, we use  
+file backend. Calculating the blksize_shift value for the block device
+backend is different from the file backend.  
+ 
+Move the existing code for calculating the namespace's blksize_shift
+value into the helper for file backend. The last patch in this series
+will add the code for block device blksize_shift calculation in the same
+helper.
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/target/io-cmd-file.c | 21 ++++++++++++++-------
+ 1 file changed, 14 insertions(+), 7 deletions(-)
+
+diff --git a/drivers/nvme/target/io-cmd-file.c b/drivers/nvme/target/io-cmd-file.c
+index 6be6e59d273b..7aa4cdcb80ce 100644
+--- a/drivers/nvme/target/io-cmd-file.c
++++ b/drivers/nvme/target/io-cmd-file.c
+@@ -26,6 +26,16 @@ int nvmet_file_ns_revalidate(struct nvmet_ns *ns)
+ 	return ret;
+ }
+ 
++static int nvmet_file_ns_set_blkshift(struct nvmet_ns *ns)
++{
++	/*
++	 * i_blkbits can be greater than the universally accepted upper bound,
++	 * so make sure we export a sane namespace lba_shift.
++	 */
++	ns->blksize_shift = min_t(u8, file_inode(ns->file)->i_blkbits, 12);
++	return 0;
++}
++
+ void nvmet_file_ns_disable(struct nvmet_ns *ns)
+ {
+ 	if (ns->file) {
+@@ -57,17 +67,14 @@ int nvmet_file_ns_enable(struct nvmet_ns *ns)
+ 		return ret;
+ 	}
+ 
++	ret = nvmet_file_ns_set_blkshift(ns);
++	if (ret)
++		return ret;
++
+ 	ret = nvmet_file_ns_revalidate(ns);
+ 	if (ret)
+ 		goto err;
+ 
+-	/*
+-	 * i_blkbits can be greater than the universally accepted upper bound,
+-	 * so make sure we export a sane namespace lba_shift.
+-	 */
+-	ns->blksize_shift = min_t(u8,
+-			file_inode(ns->file)->i_blkbits, 12);
+-
+ 	ns->bvec_cache = kmem_cache_create("nvmet-bvec",
+ 			NVMET_MAX_MPOOL_BVEC * sizeof(struct bio_vec),
+ 			0, SLAB_HWCACHE_ALIGN, NULL);
+-- 
+2.29.0
+

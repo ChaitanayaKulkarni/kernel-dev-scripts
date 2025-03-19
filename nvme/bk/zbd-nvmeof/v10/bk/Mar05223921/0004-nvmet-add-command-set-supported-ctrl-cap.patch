@@ -1,0 +1,56 @@
+From 9c07d45899b8dee6e1b67dd0580737cc424a7329 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Tue, 23 Feb 2021 19:17:57 -0800
+Subject: [PATCH V10 4/9] nvmet: add command set supported ctrl cap
+
+Update the ctrl->cap register export the Multiple Command Set Supported
+features support.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/core.c | 15 ++++++++++++++-
+ 1 file changed, 14 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/nvme/target/core.c b/drivers/nvme/target/core.c
+index 7c3dee21474e..0eb171388438 100644
+--- a/drivers/nvme/target/core.c
++++ b/drivers/nvme/target/core.c
+@@ -1115,6 +1115,17 @@ static inline u8 nvmet_cc_iocqes(u32 cc)
+ 	return (cc >> NVME_CC_IOCQES_SHIFT) & 0xf;
+ }
+ 
++static inline bool nvmet_cc_css_check(u8 cc_css)
++{
++	switch (cc_css <<= NVME_CC_CSS_SHIFT) {
++	case NVME_CC_CSS_NVM:
++	case NVME_CC_CSS_CSI:
++		return true;
++	default:
++		return false;
++	}
++}
++
+ static void nvmet_start_ctrl(struct nvmet_ctrl *ctrl)
+ {
+ 	lockdep_assert_held(&ctrl->lock);
+@@ -1123,7 +1134,7 @@ static void nvmet_start_ctrl(struct nvmet_ctrl *ctrl)
+ 	    nvmet_cc_iocqes(ctrl->cc) != NVME_NVM_IOCQES ||
+ 	    nvmet_cc_mps(ctrl->cc) != 0 ||
+ 	    nvmet_cc_ams(ctrl->cc) != 0 ||
+-	    nvmet_cc_css(ctrl->cc) != 0) {
++	    !nvmet_cc_css_check(nvmet_cc_css(ctrl->cc))) {
+ 		ctrl->csts = NVME_CSTS_CFS;
+ 		return;
+ 	}
+@@ -1174,6 +1185,8 @@ static void nvmet_init_cap(struct nvmet_ctrl *ctrl)
+ {
+ 	/* command sets supported: NVMe command set: */
+ 	ctrl->cap = (1ULL << 37);
++	if (IS_ENABLED(CONFIG_BLK_DEV_ZONED))
++		ctrl->cap |= (1ULL << 43);
+ 	/* CC.EN timeout in 500msec units: */
+ 	ctrl->cap |= (15ULL << 24);
+ 	/* maximum queue entries supported: */
+-- 
+2.22.1
+

@@ -1,0 +1,308 @@
+From 6692f4da10486f75556014f2adc4eff9c98a2f09 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Sun, 4 Jun 2023 23:20:59 -0700
+Subject: [PATCH V2 0/4] nvmet-auth: auth send / receive cleanup
+
+Hi,
+
+nvmet_execute_auth_send() and nvmet_exeucte_auth_receive() share a lot
+of common functionality such as :-
+
+1. Checking secp/spsp values and its error handling.
+2. Initializing transfer buffer len and its error handling.
+2. Allocating transfer buffer and its error handling.
+
+This code is repeated in both the functions.
+
+Add common helpers with very small restructring of code to remove
+duplication of above functionality in the nvmet_exeucte_auth_receive()
+and nvmet_execute_auth_send(), it also makes code easy to read as both
+the functions are doing substantial work.
+
+Please note that this series is generated on the top of this :-
+
+commit 01cff945c026f1e245ba6401f7df2336ddbae11d (origin/nvme-6.5)
+Author: Chaitanya Kulkarni <kch@nvidia.com>
+Date:   Fri May 19 02:40:52 2023 -0700
+
+    nvme-fcloop: no need to return from void function
+    
+    Remove return at the end of void function.
+
+-ck
+
+- Changes in V2:-
+
+* add reviewe tags
+* remove use of conditional operators in 3rd patch
+* add a patch to fix the nvmet_sq->dhchap_step type fix from int -> u16
+
+Chaitanya Kulkarni (4):
+  nvmet-auth: use common helper to check secp/spsp
+  nvmet_auth: use common helper for buffer alloc
+  nvmet-auth: use helper for auth send/recv cmd prep
+  nvmet-auth: use correct type for status variable
+
+ drivers/nvme/target/fabrics-cmd-auth.c | 108 +++++++++++--------------
+ drivers/nvme/target/nvmet.h            |   2 +-
+ 2 files changed, 48 insertions(+), 62 deletions(-)
+
+nvme (nvme-6.5) # gitlog -4
+6692f4da1048 (HEAD -> nvme-6.5) nvmet-auth: use correct type for status variable
+16cb863ed3b1 nvmet-auth: use helper for auth send/recv cmd prep
+d980c9183a99 nvmet_auth: use common helper for buffer alloc
+104b23f8d911 nvmet-auth: use common helper to check secp/spsp
+nvme (nvme-6.5) # git reset HEAD~4 --hard
+HEAD is now at 01cff945c026 nvme-fcloop: no need to return from void function
+nvme (nvme-6.5) # git am p/nvmet-auth-code-cleanup/*patch; git am --skip
+Patch is empty.
+When you have resolved this problem, run "git am --continue".
+If you prefer to skip this patch, run "git am --skip" instead.
+To record the empty patch as an empty commit, run "git am --allow-empty".
+To restore the original branch and stop patching, run "git am --abort".
+Applying: nvmet-auth: use common helper to check secp/spsp
+Applying: nvmet_auth: use common helper for buffer alloc
+Applying: nvmet-auth: use helper for auth send/recv cmd prep
+Applying: nvmet-auth: use correct type for status variable
+nvme (nvme-6.5) # ./compile_nvme.sh 
++ modprobe -r nvme-fabrics
++ modprobe -r nvme_loop
++ modprobe -r nvmet
++ modprobe -r nvme
++ sleep 1
++ modprobe -r nvme-core
++ lsmod
++ grep nvme
++ sleep 1
++ git diff
+++ nproc
++ make -j 48 M=drivers/nvme/ modules
+  CC [M]  drivers/nvme/target/core.o
+  CC [M]  drivers/nvme/target/configfs.o
+  CC [M]  drivers/nvme/target/admin-cmd.o
+  CC [M]  drivers/nvme/target/fabrics-cmd.o
+  CC [M]  drivers/nvme/target/discovery.o
+  CC [M]  drivers/nvme/target/io-cmd-file.o
+  CC [M]  drivers/nvme/target/io-cmd-bdev.o
+  CC [M]  drivers/nvme/target/passthru.o
+  CC [M]  drivers/nvme/target/zns.o
+  CC [M]  drivers/nvme/target/fabrics-cmd-auth.o
+  CC [M]  drivers/nvme/target/auth.o
+  CC [M]  drivers/nvme/target/trace.o
+  CC [M]  drivers/nvme/target/loop.o
+  CC [M]  drivers/nvme/target/rdma.o
+  CC [M]  drivers/nvme/target/fc.o
+  CC [M]  drivers/nvme/target/fcloop.o
+  CC [M]  drivers/nvme/target/tcp.o
+  LD [M]  drivers/nvme/target/nvme-loop.o
+  LD [M]  drivers/nvme/target/nvme-fcloop.o
+  LD [M]  drivers/nvme/target/nvmet.o
+  LD [M]  drivers/nvme/target/nvmet-fc.o
+  LD [M]  drivers/nvme/target/nvmet-tcp.o
+  LD [M]  drivers/nvme/target/nvmet-rdma.o
+  MODPOST drivers/nvme/Module.symvers
+  LD [M]  drivers/nvme/target/nvmet.ko
+  LD [M]  drivers/nvme/target/nvme-loop.ko
+  LD [M]  drivers/nvme/target/nvmet-rdma.ko
+  LD [M]  drivers/nvme/target/nvmet-fc.ko
+  LD [M]  drivers/nvme/target/nvme-fcloop.ko
+  LD [M]  drivers/nvme/target/nvmet-tcp.ko
++ HOST=drivers/nvme/host
++ TARGET=drivers/nvme/target
+++ uname -r
++ HOST_DEST=/lib/modules/6.4.0-rc2nvme+/kernel/drivers/nvme/host/
+++ uname -r
++ TARGET_DEST=/lib/modules/6.4.0-rc2nvme+/kernel/drivers/nvme/target/
++ cp drivers/nvme/host/nvme-core.ko drivers/nvme/host/nvme-fabrics.ko drivers/nvme/host/nvme-fc.ko drivers/nvme/host/nvme.ko drivers/nvme/host/nvme-rdma.ko drivers/nvme/host/nvme-tcp.ko /lib/modules/6.4.0-rc2nvme+/kernel/drivers/nvme/host//
++ cp drivers/nvme/target/nvme-fcloop.ko drivers/nvme/target/nvme-loop.ko drivers/nvme/target/nvmet-fc.ko drivers/nvme/target/nvmet.ko drivers/nvme/target/nvmet-rdma.ko drivers/nvme/target/nvmet-tcp.ko /lib/modules/6.4.0-rc2nvme+/kernel/drivers/nvme/target//
++ ls -lrth /lib/modules/6.4.0-rc2nvme+/kernel/drivers/nvme/host/ /lib/modules/6.4.0-rc2nvme+/kernel/drivers/nvme/target//
+/lib/modules/6.4.0-rc2nvme+/kernel/drivers/nvme/host/:
+total 7.8M
+-rw-r--r--. 1 root root 3.8M Jun  4 23:21 nvme-core.ko
+-rw-r--r--. 1 root root 493K Jun  4 23:21 nvme-fabrics.ko
+-rw-r--r--. 1 root root 981K Jun  4 23:21 nvme-fc.ko
+-rw-r--r--. 1 root root 785K Jun  4 23:21 nvme.ko
+-rw-r--r--. 1 root root 929K Jun  4 23:21 nvme-rdma.ko
+-rw-r--r--. 1 root root 906K Jun  4 23:21 nvme-tcp.ko
+
+/lib/modules/6.4.0-rc2nvme+/kernel/drivers/nvme/target//:
+total 7.4M
+-rw-r--r--. 1 root root 537K Jun  4 23:21 nvme-fcloop.ko
+-rw-r--r--. 1 root root 476K Jun  4 23:21 nvme-loop.ko
+-rw-r--r--. 1 root root 805K Jun  4 23:21 nvmet-fc.ko
+-rw-r--r--. 1 root root 4.0M Jun  4 23:21 nvmet.ko
+-rw-r--r--. 1 root root 899K Jun  4 23:21 nvmet-rdma.ko
+-rw-r--r--. 1 root root 761K Jun  4 23:21 nvmet-tcp.ko
++ sync
++ sync
++ sync
++ modprobe nvme
++ echo 'Press enter to continue ...'
+Press enter to continue ...
+################nvme_trtype=loop############
+nvme/002 (create many subsystems and test discovery)         [passed]
+    runtime  20.311s  ...  20.535s
+nvme/003 (test if we're sending keep-alives to a discovery controller) [passed]
+    runtime  10.080s  ...  10.080s
+nvme/004 (test nvme and nvmet UUID NS descriptors)           [passed]
+    runtime  1.465s  ...  1.470s
+nvme/005 (reset local loopback target)                       [passed]
+    runtime  1.797s  ...  1.784s
+nvme/006 (create an NVMeOF target with a block device-backed ns) [passed]
+    runtime  0.060s  ...  0.061s
+nvme/007 (create an NVMeOF target with a file-backed ns)     [passed]
+    runtime  0.034s  ...  0.035s
+nvme/008 (create an NVMeOF host with a block device-backed ns) [passed]
+    runtime  1.468s  ...  1.468s
+nvme/009 (create an NVMeOF host with a file-backed ns)       [passed]
+    runtime  1.441s  ...  1.436s
+nvme/010 (run data verification fio job on NVMeOF block device-backed ns) [passed]
+    runtime  94.861s  ...  86.838s
+nvme/011 (run data verification fio job on NVMeOF file-backed ns) [passed]
+    runtime  81.316s  ...  71.517s
+nvme/012 (run mkfs and data verification fio job on NVMeOF block device-backed ns) [passed]
+    runtime    ...  77.886s
+nvme/013 (run mkfs and data verification fio job on NVMeOF file-backed ns) [passed]
+    runtime  70.922s  ...  77.348s
+nvme/014 (flush a NVMeOF block device-backed ns)             [passed]
+    runtime  4.239s  ...  4.570s
+nvme/015 (unit test for NVMe flush for file backed ns)       [passed]
+    runtime  3.763s  ...  3.792s
+nvme/016 (create/delete many NVMeOF block device-backed ns and test discovery) [passed]
+    runtime  12.382s  ...  12.757s
+nvme/017 (create/delete many file-ns and test discovery)     [passed]
+    runtime  12.338s  ...  12.283s
+nvme/018 (unit test NVMe-oF out of range access on a file backend) [passed]
+    runtime  1.440s  ...  1.434s
+nvme/019 (test NVMe DSM Discard command on NVMeOF block-device ns) [passed]
+    runtime  1.451s  ...  1.445s
+nvme/020 (test NVMe DSM Discard command on NVMeOF file-backed ns) [passed]
+    runtime  1.430s  ...  1.421s
+nvme/021 (test NVMe list command on NVMeOF file-backed ns)   [passed]
+    runtime  1.434s  ...  1.434s
+nvme/022 (test NVMe reset command on NVMeOF file-backed ns)  [passed]
+    runtime  1.756s  ...  1.756s
+nvme/023 (test NVMe smart-log command on NVMeOF block-device ns) [passed]
+    runtime  1.449s  ...  1.453s
+nvme/024 (test NVMe smart-log command on NVMeOF file-backed ns) [passed]
+    runtime  1.414s  ...  1.435s
+nvme/025 (test NVMe effects-log command on NVMeOF file-backed ns) [passed]
+    runtime  1.431s  ...  1.426s
+nvme/026 (test NVMe ns-descs command on NVMeOF file-backed ns) [passed]
+    runtime  1.435s  ...  1.417s
+nvme/027 (test NVMe ns-rescan command on NVMeOF file-backed ns) [passed]
+    runtime  1.438s  ...  1.438s
+nvme/028 (test NVMe list-subsys command on NVMeOF file-backed ns) [passed]
+    runtime  1.433s  ...  1.429s
+nvme/029 (test userspace IO via nvme-cli read/write interface) [passed]
+    runtime  1.579s  ...  1.561s
+nvme/030 (ensure the discovery generation counter is updated appropriately) [passed]
+    runtime  0.211s  ...  0.209s
+nvme/031 (test deletion of NVMeOF controllers immediately after setup) [passed]
+    runtime  3.968s  ...  3.925s
+nvme/038 (test deletion of NVMeOF subsystem without enabling) [passed]
+    runtime  0.013s  ...  0.013s
+nvme/040 (test nvme fabrics controller reset/disconnect operation during I/O) [passed]
+    runtime  7.909s  ...  7.858s
+nvme/041 (Create authenticated connections)                  [passed]
+    runtime  0.741s  ...  0.766s
+nvme/042 (Test dhchap key types for authenticated connections) [passed]
+    runtime  4.897s  ...  4.920s
+nvme/043 (Test hash and DH group variations for authenticated connections) [passed]
+    runtime  3.126s  ...  6.955s
+nvme/044 (Test bi-directional authentication)                [passed]
+    runtime  1.854s  ...  1.797s
+nvme/045 (Test re-authentication)                            [passed]
+    runtime  4.087s  ...  4.039s
+nvme/047 (test different queue types for fabric transports)  [not run]
+    nvme_trtype=loop is not supported in this test
+nvme/048 (Test queue count changes on reconnect)             [not run]
+    nvme_trtype=loop is not supported in this test
+################nvme_trtype=tcp############
+nvme/002 (create many subsystems and test discovery)         [not run]
+    runtime  20.535s  ...  
+    nvme_trtype=tcp is not supported in this test
+nvme/003 (test if we're sending keep-alives to a discovery controller) [passed]
+    runtime  10.080s  ...  10.096s
+nvme/004 (test nvme and nvmet UUID NS descriptors)           [passed]
+    runtime  1.470s  ...  1.150s
+nvme/005 (reset local loopback target)                       [passed]
+    runtime  1.784s  ...  1.193s
+nvme/006 (create an NVMeOF target with a block device-backed ns) [passed]
+    runtime  0.061s  ...  0.060s
+nvme/007 (create an NVMeOF target with a file-backed ns)     [passed]
+    runtime  0.035s  ...  0.035s
+nvme/008 (create an NVMeOF host with a block device-backed ns) [passed]
+    runtime  1.468s  ...  1.153s
+nvme/009 (create an NVMeOF host with a file-backed ns)       [passed]
+    runtime  1.436s  ...  1.133s
+nvme/010 (run data verification fio job on NVMeOF block device-backed ns) [passed]
+    runtime  86.838s  ...  94.475s
+nvme/011 (run data verification fio job on NVMeOF file-backed ns) [passed]
+    runtime  71.517s  ...  65.550s
+nvme/012 (run mkfs and data verification fio job on NVMeOF block device-backed ns) [passed]
+    runtime  77.886s  ...  88.897s
+nvme/013 (run mkfs and data verification fio job on NVMeOF file-backed ns) [passed]
+    runtime  77.348s  ...  62.977s
+nvme/014 (flush a NVMeOF block device-backed ns)             [passed]
+    runtime  4.570s  ...  4.069s
+nvme/015 (unit test for NVMe flush for file backed ns)       [passed]
+    runtime  3.792s  ...  3.540s
+nvme/016 (create/delete many NVMeOF block device-backed ns and test discovery) [not run]
+    runtime  12.757s  ...  
+    nvme_trtype=tcp is not supported in this test
+nvme/017 (create/delete many file-ns and test discovery)     [not run]
+    runtime  12.283s  ...  
+    nvme_trtype=tcp is not supported in this test
+nvme/018 (unit test NVMe-oF out of range access on a file backend) [passed]
+    runtime  1.434s  ...  1.134s
+nvme/019 (test NVMe DSM Discard command on NVMeOF block-device ns) [passed]
+    runtime  1.445s  ...  1.158s
+nvme/020 (test NVMe DSM Discard command on NVMeOF file-backed ns) [passed]
+    runtime  1.421s  ...  1.116s
+nvme/021 (test NVMe list command on NVMeOF file-backed ns)   [passed]
+    runtime  1.434s  ...  1.136s
+nvme/022 (test NVMe reset command on NVMeOF file-backed ns)  [passed]
+    runtime  1.756s  ...  1.171s
+nvme/023 (test NVMe smart-log command on NVMeOF block-device ns) [passed]
+    runtime  1.453s  ...  1.142s
+nvme/024 (test NVMe smart-log command on NVMeOF file-backed ns) [passed]
+    runtime  1.435s  ...  1.138s
+nvme/025 (test NVMe effects-log command on NVMeOF file-backed ns) [passed]
+    runtime  1.426s  ...  1.123s
+nvme/026 (test NVMe ns-descs command on NVMeOF file-backed ns) [passed]
+    runtime  1.417s  ...  1.117s
+nvme/027 (test NVMe ns-rescan command on NVMeOF file-backed ns) [passed]
+    runtime  1.438s  ...  1.147s
+nvme/028 (test NVMe list-subsys command on NVMeOF file-backed ns) [passed]
+    runtime  1.429s  ...  1.121s
+nvme/029 (test userspace IO via nvme-cli read/write interface) [passed]
+    runtime  1.561s  ...  1.259s
+nvme/030 (ensure the discovery generation counter is updated appropriately) [passed]
+    runtime  0.209s  ...  0.121s
+nvme/031 (test deletion of NVMeOF controllers immediately after setup) [passed]
+    runtime  3.925s  ...  0.815s
+nvme/038 (test deletion of NVMeOF subsystem without enabling) [passed]
+    runtime  0.013s  ...  0.017s
+nvme/040 (test nvme fabrics controller reset/disconnect operation during I/O) [passed]
+    runtime  7.858s  ...  7.171s
+nvme/041 (Create authenticated connections)                  [passed]
+    runtime  0.766s  ...  0.452s
+nvme/042 (Test dhchap key types for authenticated connections) [passed]
+    runtime  4.920s  ...  2.822s
+nvme/043 (Test hash and DH group variations for authenticated connections) [passed]
+    runtime  6.955s  ...  0.691s
+nvme/044 (Test bi-directional authentication)                [passed]
+    runtime  1.797s  ...  1.216s
+nvme/045 (Test re-authentication)                            [passed]
+    runtime  4.039s  ...  3.810s
+nvme/047 (test different queue types for fabric transports)  [passed]
+    runtime    ...  1.832s
+nvme/048 (Test queue count changes on reconnect)             [passed]
+    runtime    ...  5.251s
+blktests (master) # 
+
+
+-- 
+2.40.0
+

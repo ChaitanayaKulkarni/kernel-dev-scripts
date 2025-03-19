@@ -1,0 +1,125 @@
+From 5851247a55ff2a9bb5a854545111ca7c1ff271c0 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Wed, 26 Apr 2023 06:00:02 -0700
+Subject: [PATCH 1/2] nvme-fabrics: move queue map common code to helper
+
+NVMe TCP and RDMA transport both share common code to initialize the
+controller queue map where default, read, and poll numbers are set
+followed by their offset.
+
+Add and use common helper function to reduce the code for RDMA.
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/host/fabrics.c | 36 ++++++++++++++++++++++++++++++++++++
+ drivers/nvme/host/fabrics.h |  2 ++
+ drivers/nvme/host/rdma.c    | 33 +--------------------------------
+ 3 files changed, 39 insertions(+), 32 deletions(-)
+
+diff --git a/drivers/nvme/host/fabrics.c b/drivers/nvme/host/fabrics.c
+index bbaa04a0c502..38858ed908f2 100644
+--- a/drivers/nvme/host/fabrics.c
++++ b/drivers/nvme/host/fabrics.c
+@@ -552,6 +552,42 @@ int nvmf_register_transport(struct nvmf_transport_ops *ops)
+ }
+ EXPORT_SYMBOL_GPL(nvmf_register_transport);
+ 
++void nvmf_ctrl_map_queues(struct nvme_ctrl *ctrl,
++		struct blk_mq_tag_set *set, int io_queues[])
++{
++	struct blk_mq_queue_map *default_map = &set->map[HCTX_TYPE_DEFAULT];
++	struct blk_mq_queue_map *read_map = &set->map[HCTX_TYPE_READ];
++	struct blk_mq_queue_map *poll_map = &set->map[HCTX_TYPE_POLL];
++	struct nvmf_ctrl_options *opts = ctrl->opts;
++
++	if (opts->nr_write_queues && io_queues[HCTX_TYPE_READ]) {
++		/* separate read/write queues */
++		default_map->nr_queues = io_queues[HCTX_TYPE_DEFAULT];
++		default_map->queue_offset = 0;
++		read_map->nr_queues = io_queues[HCTX_TYPE_READ];
++		read_map->queue_offset = io_queues[HCTX_TYPE_DEFAULT];
++	} else {
++		/* shared read/write queues */
++		default_map->nr_queues = io_queues[HCTX_TYPE_DEFAULT];
++		default_map->queue_offset = 0;
++		read_map->nr_queues = io_queues[HCTX_TYPE_DEFAULT];
++		read_map->queue_offset = 0;
++	}
++	blk_mq_map_queues(default_map);
++	blk_mq_map_queues(read_map);
++
++	if (opts->nr_poll_queues && io_queues[HCTX_TYPE_POLL]) {
++		/* map dedicated poll queues only if we have queues left */
++		poll_map->nr_queues = io_queues[HCTX_TYPE_POLL];
++		poll_map->queue_offset = io_queues[HCTX_TYPE_DEFAULT] +
++					io_queues[HCTX_TYPE_READ];
++		blk_mq_map_queues(poll_map);
++	}
++	nvme_ctrl_print_io_queues(ctrl, io_queues);
++}
++EXPORT_SYMBOL_GPL(nvmf_ctrl_map_queues);
++
++
+ /**
+  * nvmf_unregister_transport() - NVMe Fabrics Library unregistration function.
+  * @ops:	Transport ops instance to be unregistered from the
+diff --git a/drivers/nvme/host/fabrics.h b/drivers/nvme/host/fabrics.h
+index dcac3df8a5f7..399ebdd1a190 100644
+--- a/drivers/nvme/host/fabrics.h
++++ b/drivers/nvme/host/fabrics.h
+@@ -215,5 +215,7 @@ int nvmf_get_address(struct nvme_ctrl *ctrl, char *buf, int size);
+ bool nvmf_should_reconnect(struct nvme_ctrl *ctrl);
+ bool nvmf_ip_options_match(struct nvme_ctrl *ctrl,
+ 		struct nvmf_ctrl_options *opts);
++void nvmf_ctrl_map_queues(struct nvme_ctrl *ctrl,
++		struct blk_mq_tag_set *set, int io_queues[]);
+ 
+ #endif /* _NVME_FABRICS_H */
+diff --git a/drivers/nvme/host/rdma.c b/drivers/nvme/host/rdma.c
+index 64a6fb677744..65965532a1d9 100644
+--- a/drivers/nvme/host/rdma.c
++++ b/drivers/nvme/host/rdma.c
+@@ -2138,39 +2138,8 @@ static void nvme_rdma_complete_rq(struct request *rq)
+ static void nvme_rdma_map_queues(struct blk_mq_tag_set *set)
+ {
+ 	struct nvme_rdma_ctrl *ctrl = to_rdma_ctrl(set->driver_data);
+-	struct nvmf_ctrl_options *opts = ctrl->ctrl.opts;
+ 
+-	if (opts->nr_write_queues && ctrl->io_queues[HCTX_TYPE_READ]) {
+-		/* separate read/write queues */
+-		set->map[HCTX_TYPE_DEFAULT].nr_queues =
+-			ctrl->io_queues[HCTX_TYPE_DEFAULT];
+-		set->map[HCTX_TYPE_DEFAULT].queue_offset = 0;
+-		set->map[HCTX_TYPE_READ].nr_queues =
+-			ctrl->io_queues[HCTX_TYPE_READ];
+-		set->map[HCTX_TYPE_READ].queue_offset =
+-			ctrl->io_queues[HCTX_TYPE_DEFAULT];
+-	} else {
+-		/* shared read/write queues */
+-		set->map[HCTX_TYPE_DEFAULT].nr_queues =
+-			ctrl->io_queues[HCTX_TYPE_DEFAULT];
+-		set->map[HCTX_TYPE_DEFAULT].queue_offset = 0;
+-		set->map[HCTX_TYPE_READ].nr_queues =
+-			ctrl->io_queues[HCTX_TYPE_DEFAULT];
+-		set->map[HCTX_TYPE_READ].queue_offset = 0;
+-	}
+-	blk_mq_map_queues(&set->map[HCTX_TYPE_DEFAULT]);
+-	blk_mq_map_queues(&set->map[HCTX_TYPE_READ]);
+-
+-	if (opts->nr_poll_queues && ctrl->io_queues[HCTX_TYPE_POLL]) {
+-		/* map dedicated poll queues only if we have queues left */
+-		set->map[HCTX_TYPE_POLL].nr_queues =
+-				ctrl->io_queues[HCTX_TYPE_POLL];
+-		set->map[HCTX_TYPE_POLL].queue_offset =
+-			ctrl->io_queues[HCTX_TYPE_DEFAULT] +
+-			ctrl->io_queues[HCTX_TYPE_READ];
+-		blk_mq_map_queues(&set->map[HCTX_TYPE_POLL]);
+-	}
+-	nvme_ctrl_print_io_queues(&ctrl->ctrl, ctrl->io_queues);
++	nvmf_ctrl_map_queues(&ctrl->ctrl, set, ctrl->io_queues);
+ }
+ 
+ static const struct blk_mq_ops nvme_rdma_mq_ops = {
+-- 
+2.40.0
+

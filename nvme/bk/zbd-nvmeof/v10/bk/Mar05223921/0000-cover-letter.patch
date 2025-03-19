@@ -1,0 +1,39 @@
+From f5acedae4a48f16844542cc5eb89903d5747256f Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Fri, 5 Mar 2021 21:24:52 -0800
+Subject: [PATCH V10 0/9] *** SUBJECT HERE ***
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+*** BLURB HERE ***
+
+Chaitanya Kulkarni (9):
+  block: export bio_add_hw_pages()
+  nvmet: trim args for nvmet_copy_ns_identifier()
+  nvmet: add NVM Command Set Identifier support
+  nvmet: add command set supported ctrl cap
+  nvmet: add ZBD over ZNS backend support
+  nvmet: add nvmet_req_bio put helper for backends
+  nvmet: return on a new line for the void function
+  nvme-core: check ctrl css before setting up zns
+  nvme-core: add a helper to print css related error
+
+ block/bio.c                       |   1 +
+ block/blk.h                       |   4 -
+ drivers/nvme/host/core.c          |  17 +-
+ drivers/nvme/target/Makefile      |   1 +
+ drivers/nvme/target/admin-cmd.c   | 138 ++++++++++---
+ drivers/nvme/target/core.c        |  16 +-
+ drivers/nvme/target/io-cmd-bdev.c |  36 +++-
+ drivers/nvme/target/nvmet.h       |  45 +++++
+ drivers/nvme/target/passthru.c    |   3 +-
+ drivers/nvme/target/zns.c         | 312 ++++++++++++++++++++++++++++++
+ include/linux/blkdev.h            |   3 +
+ include/linux/nvme.h              |   1 +
+ 12 files changed, 528 insertions(+), 49 deletions(-)
+ create mode 100644 drivers/nvme/target/zns.c
+
+-- 
+2.22.1
+

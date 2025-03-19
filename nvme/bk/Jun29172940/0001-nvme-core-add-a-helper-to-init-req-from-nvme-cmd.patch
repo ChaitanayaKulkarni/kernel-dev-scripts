@@ -1,0 +1,49 @@
+From 4054b47e0b1a7deae4e45eb8a3af8ed9f60aac12 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Tue, 22 Sep 2020 16:50:32 -0700
+Subject: [PATCH 1/7] nvme-core: add a helper to init req from nvme cmd
+
+This is a preparation patch which adds a helper that we use in the next
+patch that splits the nvme_alloc_request() into
+nvme_alloc_request_qid_any() and nvme_alloc_request_qid(). The new
+functions shares the code to initialize the allocated request from NVMe
+cmd.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/host/core.c | 12 +++++++++---
+ 1 file changed, 9 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index 9beb9c94eeef..cfcce9a7003b 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -502,6 +502,14 @@ static inline void nvme_clear_nvme_request(struct request *req)
+ 	}
+ }
+ 
++static inline void nvme_init_req_from_cmd(struct request *req,
++		struct nvme_command *cmd)
++{
++	req->cmd_flags |= REQ_FAILFAST_DRIVER;
++	nvme_clear_nvme_request(req);
++	nvme_req(req)->cmd = cmd;
++}
++
+ struct request *nvme_alloc_request(struct request_queue *q,
+ 		struct nvme_command *cmd, blk_mq_req_flags_t flags, int qid)
+ {
+@@ -517,9 +525,7 @@ struct request *nvme_alloc_request(struct request_queue *q,
+ 	if (IS_ERR(req))
+ 		return req;
+ 
+-	req->cmd_flags |= REQ_FAILFAST_DRIVER;
+-	nvme_clear_nvme_request(req);
+-	nvme_req(req)->cmd = cmd;
++	nvme_init_req_from_cmd(req, cmd);
+ 
+ 	return req;
+ }
+-- 
+2.22.1
+

@@ -1,0 +1,58 @@
+From c3827e6b16f6f90918b443ed33304fe6ce3ac68f Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Tue, 13 Feb 2024 19:29:03 -0800
+Subject: [PATCH V2 2/2] nvme-fabrics: use post connect auth helper
+
+Use previously added helper to handle post connect command auth in
+nvmf_connect_io_queue().
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/host/fabrics.c | 24 +-----------------------
+ 1 file changed, 1 insertion(+), 23 deletions(-)
+
+diff --git a/drivers/nvme/host/fabrics.c b/drivers/nvme/host/fabrics.c
+index 8156dadc4f9c..9743772b7d7d 100644
+--- a/drivers/nvme/host/fabrics.c
++++ b/drivers/nvme/host/fabrics.c
+@@ -495,7 +495,6 @@ int nvmf_connect_io_queue(struct nvme_ctrl *ctrl, u16 qid)
+ 	struct nvmf_connect_data *data;
+ 	union nvme_result res;
+ 	int ret;
+-	u32 result;
+ 
+ 	nvmf_connect_cmd_prep(ctrl, qid, &cmd);
+ 
+@@ -513,28 +512,7 @@ int nvmf_connect_io_queue(struct nvme_ctrl *ctrl, u16 qid)
+ 				       &cmd, data);
+ 		goto out_free_data;
+ 	}
+-	result = le32_to_cpu(res.u32);
+-	if (result & (NVME_CONNECT_AUTHREQ_ATR | NVME_CONNECT_AUTHREQ_ASCR)) {
+-		/* Secure concatenation is not implemented */
+-		if (result & NVME_CONNECT_AUTHREQ_ASCR) {
+-			dev_warn(ctrl->device,
+-				 "qid 0: secure concatenation is not supported\n");
+-			ret = NVME_SC_AUTH_REQUIRED;
+-			goto out_free_data;
+-		}
+-		/* Authentication required */
+-		ret = nvme_auth_negotiate(ctrl, qid);
+-		if (ret) {
+-			dev_warn(ctrl->device,
+-				 "qid %d: authentication setup failed\n", qid);
+-			ret = NVME_SC_AUTH_REQUIRED;
+-		} else {
+-			ret = nvme_auth_wait(ctrl, qid);
+-			if (ret)
+-				dev_warn(ctrl->device,
+-					 "qid %u: authentication failed\n", qid);
+-		}
+-	}
++	ret = nvme_auth_post_connect(ctrl, 0, le32_to_cpu(res.u32));
+ out_free_data:
+ 	kfree(data);
+ 	return ret;
+-- 
+2.40.0
+

@@ -1,0 +1,33 @@
+From 61a1a6827f1e61204ba8d8b6600cb8ecbc445f13 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Thu, 8 Feb 2024 01:35:28 -0800
+Subject: [PATCH 1/4] nvme-fabrics: fix I/O connect error handling
+
+In nvmf_connect_io_queue() when connect I/O commands fails we just log
+the connect error and continue processing for authentication.
+
+This overrides error that is captured from _nvme_submit_sync_cmd() and
+funcion returns wrong value instead or actual error.
+
+Add goto out_free_data after logging the connect error to fix the issue.
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/host/fabrics.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/drivers/nvme/host/fabrics.c b/drivers/nvme/host/fabrics.c
+index cd49a8f303cb..8016addce8bd 100644
+--- a/drivers/nvme/host/fabrics.c
++++ b/drivers/nvme/host/fabrics.c
+@@ -510,6 +510,7 @@ int nvmf_connect_io_queue(struct nvme_ctrl *ctrl, u16 qid)
+ 	if (ret) {
+ 		nvmf_log_connect_error(ctrl, ret, le32_to_cpu(res.u32),
+ 				       &cmd, data);
++		goto out_free_data;
+ 	}
+ 	ret = nvme_auth_post_connect(ctrl, 0, le32_to_cpu(res.u32));
+ 	kfree(data);
+-- 
+2.40.0
+

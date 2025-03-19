@@ -1,0 +1,36 @@
+From 91e2113227642f9eec73e94c7999d73106e045b6 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Sat, 22 Aug 2020 14:58:19 -0700
+Subject: [PATCH 7/7] nvmet: move get/put ctrl into dev open/release
+
+Move ctrl get and put operations into ctrl open and release
+file operations respectively.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/host/core.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index a16d95599918..0c2ed2f54ff4 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -3240,6 +3240,7 @@ static int nvme_dev_open(struct inode *inode, struct file *file)
+ 	}
+ 
+ 	file->private_data = ctrl;
++	nvme_get_ctrl(ctrl);
+ 	return 0;
+ }
+ 
+@@ -4624,7 +4625,6 @@ struct nvme_ctrl *nvme_ctrl_get_by_file(struct file *f)
+ 	}
+ 
+ 	ctrl = f->private_data;
+-	nvme_get_ctrl(ctrl);
+ 
+ out_close:
+ 	return ctrl;
+-- 
+2.22.1
+

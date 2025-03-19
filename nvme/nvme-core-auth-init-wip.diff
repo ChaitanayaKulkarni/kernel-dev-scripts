@@ -1,0 +1,35 @@
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index f586a4808e6e..0c940e7f5a3a 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -4721,10 +4721,15 @@ static inline void _nvme_check_size(void)
+ 
+ static int __init nvme_core_init(void)
+ {
+-	int result = -ENOMEM;
++	int result;
+ 
+ 	_nvme_check_size();
+ 
++	result = nvme_init_auth();
++	if (result)
++		goto out;
++
++	result = -ENOMEM;
+ 	nvme_wq = alloc_workqueue("nvme-wq",
+ 			WQ_UNBOUND | WQ_MEM_RECLAIM | WQ_SYSFS, 0);
+ 	if (!nvme_wq)
+@@ -4769,13 +4774,8 @@ static int __init nvme_core_init(void)
+ 		goto unregister_generic_ns;
+ 	}
+ 
+-	result = nvme_init_auth();
+-	if (result)
+-		goto destroy_ns_chr;
+ 	return 0;
+ 
+-destroy_ns_chr:
+-	class_destroy(nvme_ns_chr_class);
+ unregister_generic_ns:
+ 	unregister_chrdev_region(nvme_ns_chr_devt, NVME_MINORS);
+ destroy_subsys_class:

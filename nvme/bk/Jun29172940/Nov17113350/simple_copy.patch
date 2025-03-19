@@ -1,0 +1,399 @@
+
+
+NVMe Simple copy command implementation.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/host/core.c | 173 ++++++++++++++++++++++++++++++++++-----
+ drivers/nvme/host/nvme.h |   5 ++
+ include/linux/nvme.h     |  31 ++++++-
+ 3 files changed, 187 insertions(+), 22 deletions(-)
+
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index 108f60b46804..f3a94c2d95f8 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -562,56 +562,139 @@ static inline void nvme_setup_flush(struct nvme_ns *ns,
+ 	cmnd->common.nsid = cpu_to_le32(ns->head->ns_id);
+ }
+ 
+-static blk_status_t nvme_setup_discard(struct nvme_ns *ns, struct request *req,
+-		struct nvme_command *cmnd)
++static blk_status_t nvme_free_ranges(struct nvme_ns *ns, struct request *req,
++				     void *range)
++{
++	switch (req_op(req)) {
++	case REQ_OP_DISCARD:
++		if (virt_to_page(range) == ns->ctrl->discard_page)
++			clear_bit_unlock(0, &ns->ctrl->discard_page_busy);
++		else
++			kfree(range);
++		break;
++	case REQ_OP_SIMPLE_COPY:
++		if (virt_to_page(range) == ns->ctrl->simple_copy_page)
++			clear_bit_unlock(0, &ns->ctrl->simple_copy_page_busy);
++		else
++			kfree(range);
++		break;
++	default:
++		WARN_ON_ONCE(1);
++		break;
++	}
++	return BLK_STS_IOERR;
++}
++
++static blk_status_t nvme_build_ranges(struct nvme_ns *ns, struct request *req,
++				      void **r)
+ {
+-	unsigned short segments = blk_rq_nr_discard_segments(req), n = 0;
++	unsigned short segments = blk_rq_nr_discard_segments(req);
++	gfp_t kmalloc_flags = GFP_ATOMIC | __GFP_NOWARN;
+ 	struct nvme_dsm_range *range;
++	unsigned short n = 0;
+ 	struct bio *bio;
+ 
+-	range = kmalloc_array(segments, sizeof(*range),
+-				GFP_ATOMIC | __GFP_NOWARN);
++	range = kmalloc_array(segments, sizeof(*range), kmalloc_flags);
+ 	if (!range) {
+ 		/*
+ 		 * If we fail allocation our range, fallback to the controller
+ 		 * discard page. If that's also busy, it's safe to return
+ 		 * busy, as we know we can make progress once that's freed.
+ 		 */
+-		if (test_and_set_bit_lock(0, &ns->ctrl->discard_page_busy))
+-			return BLK_STS_RESOURCE;
+-
+-		range = page_address(ns->ctrl->discard_page);
++		switch (req_op(req)) {
++		case REQ_OP_DISCARD:
++			if (test_and_set_bit_lock(0,
++					&ns->ctrl->discard_page_busy))
++				return BLK_STS_RESOURCE;
++			range = page_address(ns->ctrl->discard_page);
++			break;
++		case REQ_OP_SIMPLE_COPY:
++			if (test_and_set_bit_lock(0,
++					&ns->ctrl->simple_copy_page_busy))
++				return BLK_STS_RESOURCE;
++			range = page_address(ns->ctrl->simple_copy_page);
++			break;
++		}
+ 	}
+ 
+ 	__rq_for_each_bio(bio, req) {
+ 		u64 slba = nvme_block_nr(ns, bio->bi_iter.bi_sector);
+ 		u32 nlb = bio->bi_iter.bi_size >> ns->lba_shift;
+ 
+-		if (n < segments) {
++		if (n >= segments)
++			break;
++
++		switch (req_op(req)) {
++		case REQ_OP_DISCARD:
++		case REQ_OP_SIMPLE_COPY:
+ 			range[n].cattr = cpu_to_le32(0);
+ 			range[n].nlb = cpu_to_le32(nlb);
+ 			range[n].slba = cpu_to_le64(slba);
++			break;
++		default:
++			WARN_ON_ONCE(1);
++			break;
+ 		}
+ 		n++;
+ 	}
+ 
+-	if (WARN_ON_ONCE(n != segments)) {
+-		if (virt_to_page(range) == ns->ctrl->discard_page)
+-			clear_bit_unlock(0, &ns->ctrl->discard_page_busy);
+-		else
+-			kfree(range);
+-		return BLK_STS_IOERR;
+-	}
++	if (WARN_ON_ONCE(n != segments))
++		return nvme_free_ranges(ns, req, range);
+ 
+-	cmnd->dsm.opcode = nvme_cmd_dsm;
+-	cmnd->dsm.nsid = cpu_to_le32(ns->head->ns_id);
+-	cmnd->dsm.nr = cpu_to_le32(segments - 1);
+-	cmnd->dsm.attributes = cpu_to_le32(NVME_DSMGMT_AD);
++	*r = range;
++	return BLK_STS_OK;
++}
+ 
++static void nvme_req_build_special_vec(struct request *req,
++				       void *range, unsigned short segments)
++{
+ 	req->special_vec.bv_page = virt_to_page(range);
+ 	req->special_vec.bv_offset = offset_in_page(range);
+ 	req->special_vec.bv_len = sizeof(*range) * segments;
+ 	req->rq_flags |= RQF_SPECIAL_PAYLOAD;
++}
++
++static blk_status_t nvme_setup_discard(struct nvme_ns *ns, struct request *req,
++		struct nvme_command *cmnd)
++{
++	unsigned short segments = blk_rq_nr_discard_segments(req);
++	struct nvme_dsm_range *range = NULL;
++	blk_status_t sts;
++
++	sts = nvme_build_ranges(ns, req, (void **)&range);
++	if (!sts)
++		return sts;
++
++	cmnd->dsm.opcode = nvme_cmd_dsm;
++	cmnd->dsm.nsid = cpu_to_le32(ns->head->ns_id);
++	cmnd->dsm.nr = cpu_to_le32(segments - 1);
++	cmnd->dsm.attributes = cpu_to_le32(NVME_DSMGMT_AD);
++
++	nvme_req_build_special_vec(req, range, segments);
++
++	return BLK_STS_OK;
++}
++
++static blk_status_t nvme_setup_simple_copy(struct nvme_ns *ns,
++		struct request *req, struct nvme_command *cmnd)
++{
++	unsigned short segments = blk_rq_nr_simple_copy_segments(req);
++	/* TODO : find a right way to calculate the number of lbas */
++	u32 nlb = ((blk_rq_bytes(req) >> ns->lba_shift) - 1) & 0x00FFFFFF;
++	struct nvme_simple_copy_src_range *range = NULL;
++	u64 sdlba = req->bio->copy.orig_dst_sector;
++	blk_status_t sts;
++
++	sts = nvme_build_ranges(ns, req, (void **)&range);
++	if (!sts)
++		return sts;
++
++	cmnd->simple_copy.opcode = nvme_cmd_simple_copy;
++	cmnd->simple_copy.nsid = cpu_to_le32(ns->head->ns_id);
++	cmnd->simple_copy.sdlba = cpu_to_le64(sdlba);
++	cmnd->simple_copy.cdw12 = cpu_to_le32((segments - 1) << 24 | nlb);
++
++	nvme_req_build_special_vec(req, range, segments);
+ 
+ 	return BLK_STS_OK;
+ }
+@@ -696,6 +779,11 @@ void nvme_cleanup_cmd(struct request *req)
+ 			clear_bit_unlock(0, &ns->ctrl->discard_page_busy);
+ 		else
+ 			kfree(page_address(page) + req->special_vec.bv_offset);
++
++		if (page == ns->ctrl->simple_copy_page)
++			clear_bit_unlock(0, &ns->ctrl->simple_copy_page_busy);
++		else
++			kfree(page_address(page) + req->special_vec.bv_offset);
+ 	}
+ }
+ EXPORT_SYMBOL_GPL(nvme_cleanup_cmd);
+@@ -722,6 +810,9 @@ blk_status_t nvme_setup_cmd(struct nvme_ns *ns, struct request *req,
+ 	case REQ_OP_DISCARD:
+ 		ret = nvme_setup_discard(ns, req, cmd);
+ 		break;
++	case REQ_OP_SIMPLE_COPY:
++		ret = nvme_setup_simple_copy(ns, req, cmd);
++		break;
+ 	case REQ_OP_READ:
+ 	case REQ_OP_WRITE:
+ 		ret = nvme_setup_rw(ns, req, cmd);
+@@ -1593,6 +1684,27 @@ static void nvme_config_write_zeroes(struct gendisk *disk, struct nvme_ns *ns)
+ 	blk_queue_max_write_zeroes_sectors(disk->queue, max_sectors);
+ }
+ 
++static void nvme_config_simple_copy(struct gendisk *disk, struct nvme_ns *ns)
++{
++	struct nvme_ctrl *ctrl = ns->ctrl;
++	struct request_queue *queue = disk->queue;
++
++	if (!(ctrl->oncs & NVME_CTRL_ONCS_SIMPLE_COPY)) {
++		blk_queue_flag_clear(QUEUE_FLAG_SIMPLE_COPY, queue);
++		return;
++	}
++
++	BUILD_BUG_ON(PAGE_SIZE / sizeof(struct nvme_simple_copy_src_range) <
++			NVME_SIMPLE_COPY_MAX_RANGES);
++
++	/* If discard is already enabled, don't reset queue limits */
++	if (blk_queue_flag_test_and_set(QUEUE_FLAG_SIMPLE_COPY, queue))
++		return;
++
++	blk_queue_max_simple_copy_sectors(queue, UINT_MAX);
++	blk_queue_max_simple_copy_segments(queue, ctrl->msrc + 1);
++}
++
+ static int nvme_report_ns_ids(struct nvme_ctrl *ctrl, unsigned int nsid,
+ 		struct nvme_id_ns *id, struct nvme_ns_ids *ids)
+ {
+@@ -1687,6 +1799,7 @@ static void nvme_update_disk_info(struct gendisk *disk,
+ 
+ 	nvme_config_discard(disk, ns);
+ 	nvme_config_write_zeroes(disk, ns);
++	nvme_config_simple_copy(disk, ns);
+ 
+ 	if (id->nsattr & (1 << 0))
+ 		set_disk_ro(disk, true);
+@@ -2672,6 +2785,11 @@ int nvme_init_identify(struct nvme_ctrl *ctrl)
+ 	ctrl->oaes = le32_to_cpu(id->oaes);
+ 	atomic_set(&ctrl->abort_limit, id->acl + 1);
+ 	ctrl->vwc = id->vwc;
++
++	ctrl->mcl = le32_to_cpu(id->mcl);
++	ctrl->mssrl = le32_to_cpu(id->mssrl);
++	ctrl->msrc = id->msrc;
++
+ 	if (id->mdts)
+ 		max_hw_sectors = 1 << (id->mdts + page_shift - 9);
+ 	else
+@@ -3863,6 +3981,7 @@ static void nvme_free_ctrl(struct device *dev)
+ 	kfree(ctrl->effects);
+ 	nvme_mpath_uninit(ctrl);
+ 	__free_page(ctrl->discard_page);
++	__free_page(ctrl->simple_copy_page);
+ 
+ 	if (subsys) {
+ 		mutex_lock(&nvme_subsystems_lock);
+@@ -3912,6 +4031,13 @@ int nvme_init_ctrl(struct nvme_ctrl *ctrl, struct device *dev,
+ 		goto out;
+ 	}
+ 
++	ctrl->simple_copy_page = alloc_page(GFP_KERNEL);
++	if (!ctrl->discard_page) {
++		kfree(ctrl->discard_page);
++		ret = -ENOMEM;
++		goto out;
++	}
++
+ 	ret = ida_simple_get(&nvme_instance_ida, 0, 0, GFP_KERNEL);
+ 	if (ret < 0)
+ 		goto out;
+@@ -3951,6 +4077,8 @@ int nvme_init_ctrl(struct nvme_ctrl *ctrl, struct device *dev,
+ out_release_instance:
+ 	ida_simple_remove(&nvme_instance_ida, ctrl->instance);
+ out:
++	if (ctrl->simple_copy_page)
++		__free_page(ctrl->simple_copy_page);
+ 	if (ctrl->discard_page)
+ 		__free_page(ctrl->discard_page);
+ 	return ret;
+@@ -4077,6 +4205,7 @@ static inline void _nvme_check_size(void)
+ 	BUILD_BUG_ON(sizeof(struct nvme_download_firmware) != 64);
+ 	BUILD_BUG_ON(sizeof(struct nvme_format_cmd) != 64);
+ 	BUILD_BUG_ON(sizeof(struct nvme_dsm_cmd) != 64);
++	BUILD_BUG_ON(sizeof(struct nvme_simple_copy_cmd) != 64);
+ 	BUILD_BUG_ON(sizeof(struct nvme_write_zeroes_cmd) != 64);
+ 	BUILD_BUG_ON(sizeof(struct nvme_abort_cmd) != 64);
+ 	BUILD_BUG_ON(sizeof(struct nvme_get_log_page_command) != 64);
+@@ -4087,6 +4216,8 @@ static inline void _nvme_check_size(void)
+ 	BUILD_BUG_ON(sizeof(struct nvme_smart_log) != 512);
+ 	BUILD_BUG_ON(sizeof(struct nvme_dbbuf) != 64);
+ 	BUILD_BUG_ON(sizeof(struct nvme_directive_cmd) != 64);
++	BUILD_BUG_ON(sizeof(struct nvme_dsm_range) !=
++		     sizeof(struct nvme_simple_copy_src_range));
+ }
+ 
+ 
+diff --git a/drivers/nvme/host/nvme.h b/drivers/nvme/host/nvme.h
+index b5013c101b35..e8ad867710f4 100644
+--- a/drivers/nvme/host/nvme.h
++++ b/drivers/nvme/host/nvme.h
+@@ -217,6 +217,9 @@ struct nvme_ctrl {
+ 	u32 max_hw_sectors;
+ 	u32 max_segments;
+ 	u16 crdt[3];
++	u32 mcl;
++	u32 mssrl;
++	u8  msrc;
+ 	u16 oncs;
+ 	u16 oacs;
+ 	u16 nssa;
+@@ -279,6 +282,8 @@ struct nvme_ctrl {
+ 
+ 	struct page *discard_page;
+ 	unsigned long discard_page_busy;
++	struct page *simple_copy_page;
++	unsigned long simple_copy_page_busy;
+ 
+ 	struct nvme_fault_inject fault_inject;
+ };
+diff --git a/include/linux/nvme.h b/include/linux/nvme.h
+index f61d6906e59d..02470d09f308 100644
+--- a/include/linux/nvme.h
++++ b/include/linux/nvme.h
+@@ -254,7 +254,10 @@ struct nvme_id_ctrl {
+ 	__u8			anacap;
+ 	__le32			anagrpmax;
+ 	__le32			nanagrpid;
+-	__u8			rsvd352[160];
++	__le32			mcl;
++	__le32			mssrl;
++	__u8			msrc;
++	__u8			rsvd352[151];
+ 	__u8			sqes;
+ 	__u8			cqes;
+ 	__le16			maxcmd;
+@@ -290,6 +293,7 @@ enum {
+ 	NVME_CTRL_ONCS_DSM			= 1 << 2,
+ 	NVME_CTRL_ONCS_WRITE_ZEROES		= 1 << 3,
+ 	NVME_CTRL_ONCS_TIMESTAMP		= 1 << 6,
++	NVME_CTRL_ONCS_SIMPLE_COPY		= 1 << 7,
+ 	NVME_CTRL_VWC_PRESENT			= 1 << 0,
+ 	NVME_CTRL_OACS_SEC_SUPP                 = 1 << 0,
+ 	NVME_CTRL_OACS_DIRECTIVES		= 1 << 5,
+@@ -567,6 +571,7 @@ enum nvme_opcode {
+ 	nvme_cmd_resv_report	= 0x0e,
+ 	nvme_cmd_resv_acquire	= 0x11,
+ 	nvme_cmd_resv_release	= 0x15,
++	nvme_cmd_simple_copy	= 0x16,
+ };
+ 
+ #define nvme_opcode_name(opcode)	{ opcode, #opcode }
+@@ -669,6 +674,28 @@ enum {
+ 	NVME_CMD_SGL_ALL	= NVME_CMD_SGL_METABUF | NVME_CMD_SGL_METASEG,
+ };
+ 
++struct nvme_simple_copy_cmd {
++	__u8			opcode;
++	__u8			flags;
++	__u16			command_id;
++	__le32			nsid;
++	__u64			rsvd;
++	__le64			metadata;
++	union nvme_data_ptr	dptr;
++	__le64			sdlba;
++	__le32			cdw12; /* nr 24-31 nlb 00-23 */
++	__u32			rsvd13[2];
++};
++
++
++#define NVME_SIMPLE_COPY_MAX_RANGES	256
++
++struct nvme_simple_copy_src_range {
++	__le32			rsvd;
++	__le32			nlb;
++	__le64			slba;
++};
++
+ struct nvme_common_command {
+ 	__u8			opcode;
+ 	__u8			flags;
+@@ -1222,6 +1249,7 @@ struct nvme_command {
+ 		struct nvme_format_cmd format;
+ 		struct nvme_dsm_cmd dsm;
+ 		struct nvme_write_zeroes_cmd write_zeroes;
++		struct nvme_simple_copy_cmd simple_copy;
+ 		struct nvme_abort_cmd abort;
+ 		struct nvme_get_log_page_command get_log_page;
+ 		struct nvmf_common_command fabrics;
+@@ -1296,6 +1324,7 @@ enum {
+ 	NVME_SC_CAP_EXCEEDED		= 0x81,
+ 	NVME_SC_NS_NOT_READY		= 0x82,
+ 	NVME_SC_RESERVATION_CONFLICT	= 0x83,
++	NVME_SC_WRITE_ON_READ_ONLY	= 0x84,
+ 
+ 	/*
+ 	 * Command Specific Status:
+-- 
+2.17.0
+
+
+

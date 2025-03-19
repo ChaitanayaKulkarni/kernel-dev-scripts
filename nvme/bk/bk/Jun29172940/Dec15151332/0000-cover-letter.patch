@@ -1,0 +1,35 @@
+From d39155a8e50bcbcb70c5b53633975effdb24d0fe Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Tue, 15 Dec 2020 15:08:26 -0800
+Subject: [PATCH V8 0/7] *** SUBJECT HERE ***
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+*** BLURB HERE ***
+
+Chaitanya Kulkarni (7):
+  block: export bio_add_hw_pages()
+  nvmet: add lba to sect conversion helpers
+  nvmet: add NVM command set identifier support
+  nvmet: add ZBD over ZNS backend support
+  nvmet: add bio get helper for different backends
+  nvmet: add bio init helper for different backends
+  nvmet: add bio put helper for different backends
+
+ block/bio.c                       |   1 +
+ block/blk.h                       |   4 -
+ drivers/nvme/target/Makefile      |   1 +
+ drivers/nvme/target/admin-cmd.c   |  59 ++++--
+ drivers/nvme/target/core.c        |  14 +-
+ drivers/nvme/target/io-cmd-bdev.c |  57 ++---
+ drivers/nvme/target/nvmet.h       |  82 ++++++++
+ drivers/nvme/target/passthru.c    |  11 +-
+ drivers/nvme/target/zns.c         | 335 ++++++++++++++++++++++++++++++
+ include/linux/blkdev.h            |   4 +
+ 10 files changed, 515 insertions(+), 53 deletions(-)
+ create mode 100644 drivers/nvme/target/zns.c
+
+-- 
+2.22.1
+

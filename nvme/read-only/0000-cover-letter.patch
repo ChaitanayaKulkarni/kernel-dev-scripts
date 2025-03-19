@@ -1,0 +1,25 @@
+From 3000f6cf0686599f74b3084f8942b08ef6fbf992 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Fri, 7 Apr 2023 20:48:34 -0700
+Subject: [PATCH 0/4] *** SUBJECT HERE ***
+
+*** BLURB HERE ***
+
+Chaitanya Kulkarni (4):
+  nvmet: change the type of the ns->readonly
+  nvmet: allow user to set the ns write protected
+  nvmet: allow user to mark bdev-ns write-protected
+  nvmet: allow user to mark file-ns write-protected
+
+ drivers/nvme/target/admin-cmd.c   | 37 +++++++++++++++++++++----------
+ drivers/nvme/target/configfs.c    | 34 ++++++++++++++++++++++++++++
+ drivers/nvme/target/core.c        |  3 ++-
+ drivers/nvme/target/io-cmd-bdev.c | 16 +++++++++++--
+ drivers/nvme/target/io-cmd-file.c | 14 +++++++++++-
+ drivers/nvme/target/nvmet.h       |  2 +-
+ include/linux/nvme.h              |  2 +-
+ 7 files changed, 90 insertions(+), 18 deletions(-)
+
+-- 
+2.29.0
+

@@ -1,0 +1,104 @@
+From 5794ab1f2e737170b310b190b6e03740a3e1e171 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Fri, 17 Jul 2020 18:06:35 -0700
+Subject: [PATCH] xarray: use __xa_load() version
+
+This patch adds a new xarray API __xa_load() that moves xa_load() core
+to its low level function __xa_load(). Caller is responsible for handling
+RCU locking. This API is needed for NVMe subsystem so that it can take
+an advantage of the RCU locking provided by the XAarray for reference
+counting.
+
+This is a preparation patch for replacing linked list with XArray for 
+NVMe host and core subsystem.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/host/core.c   |  2 +-
+ drivers/nvme/target/core.c |  2 +-
+ include/linux/xarray.h     | 22 ++++++++++++++++++++++
+ lib/xarray.c               |  7 +------
+ 4 files changed, 25 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index 2f1a3cb55e37..6578c484095a 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -3793,7 +3793,7 @@ static struct nvme_ns *nvme_find_get_ns(struct nvme_ctrl *ctrl, unsigned nsid)
+        struct nvme_ns *ns;
+ 
+        rcu_read_lock();
+-       ns = xa_load(&ctrl->namespaces, nsid);
++       ns = __xa_load(&ctrl->namespaces, nsid);
+        ns = ns && kref_get_unless_zero(&ns->kref) ? ns : NULL;
+        rcu_read_unlock();
+ 
+diff --git a/drivers/nvme/target/core.c b/drivers/nvme/target/core.c
+index 1292277d85dd..ef325840dcc9 100644
+--- a/drivers/nvme/target/core.c
++++ b/drivers/nvme/target/core.c
+@@ -416,7 +416,7 @@ struct nvmet_ns *nvmet_find_namespace(struct nvmet_ctrl *ctrl, __le32 nsid)
+        struct nvmet_ns *ns;
+ 
+        rcu_read_lock();
+-       ns = xa_load(&ctrl->subsys->namespaces, nsid);
++       ns = __xa_load(&ctrl->subsys->namespaces, nsid);
+        if (ns)
+                percpu_ref_get(&ns->ref);
+        rcu_read_unlock();
+diff --git a/include/linux/xarray.h b/include/linux/xarray.h
+index b4d70e7568b2..799396ce5414 100644
+--- a/include/linux/xarray.h
++++ b/include/linux/xarray.h
+@@ -1505,6 +1505,28 @@ void xas_pause(struct xa_state *);
+ 
+ void xas_create_range(struct xa_state *);
+ 
++/** 
++ * __xa_load() - core load API without rcu read locking.
++ * @xa: XArray.
++ * @index: index into array.
++ *
++ * Context: Any context.  Takes and releases the RCU lock.
++ * Return: The entry at @index in @xa.
++ */
++static inline void *__xa_load(struct xarray *xa, unsigned long index)
++{
++       XA_STATE(xas, xa, index);
++       void *entry;
++
++       do {
++               entry = xas_load(&xas);
++               if (xa_is_zero(entry))
++                       entry = NULL;
++       } while (xas_retry(&xas, entry));
++
++       return entry;
++}
++
+ /**
+  * xas_reload() - Refetch an entry from the xarray.
+  * @xas: XArray operation state. 
+diff --git a/lib/xarray.c b/lib/xarray.c                                                               
+index e9e641d3c0c3..949bedc174ad 100644
+--- a/lib/xarray.c
++++ b/lib/xarray.c
+@@ -1297,15 +1297,10 @@ EXPORT_SYMBOL_GPL(xas_find_conflict);
+  */
+ void *xa_load(struct xarray *xa, unsigned long index)
+ {
+-       XA_STATE(xas, xa, index);
+        void *entry;
+ 
+        rcu_read_lock();
+-       do {
+-               entry = xas_load(&xas);
+-               if (xa_is_zero(entry))
+-                       entry = NULL;
+-       } while (xas_retry(&xas, entry));
++       entry = __xa_load(xa, index);
+        rcu_read_unlock();
+ 
+        return entry;
+-- 
+2.23.0

@@ -1,0 +1,134 @@
+From ae32e4b907747783213d7fcb17f0150656c9de61 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Sat, 25 Apr 2020 15:19:42 -0700
+Subject: [PATCH 1/3] nvmet: add helper to revalidate bdev and file ns
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+This patch adds a wrapper helper to indicate size change in the bdev &
+file-backed namespace when revalidating ns. The new helper
+nvmet_ns_revaliate() returns true if the new size is different than the
+original size false otherwise. This helper is needed in order to
+minimize code repetition in the next patch for configfs.c and existing
+admin-cmd.c.  
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/admin-cmd.c   |  5 +----
+ drivers/nvme/target/core.c        |  8 ++++++++
+ drivers/nvme/target/io-cmd-bdev.c |  6 +++++-
+ drivers/nvme/target/io-cmd-file.c | 11 ++++++++---
+ drivers/nvme/target/nvmet.h       |  5 +++--
+ 5 files changed, 25 insertions(+), 10 deletions(-)
+
+diff --git a/drivers/nvme/target/admin-cmd.c b/drivers/nvme/target/admin-cmd.c
+index 4c79aa804887..f544a14e8b5c 100644
+--- a/drivers/nvme/target/admin-cmd.c
++++ b/drivers/nvme/target/admin-cmd.c
+@@ -486,10 +486,7 @@ static void nvmet_execute_identify_ns(struct nvmet_req *req)
+ 	if (!ns)
+ 		goto done;
+ 
+-	if (ns->bdev)
+-		nvmet_bdev_ns_revalidate(ns);
+-	else
+-		nvmet_file_ns_revalidate(ns);
++	nvmet_ns_revalidate(ns);
+ 
+ 	/*
+ 	 * nuse = ncap = nsze isn't always true, but we have no way to find
+diff --git a/drivers/nvme/target/core.c b/drivers/nvme/target/core.c
+index b685f99d56a1..219bcf21d4bf 100644
+--- a/drivers/nvme/target/core.c
++++ b/drivers/nvme/target/core.c
+@@ -514,6 +514,14 @@ static void nvmet_p2pmem_ns_add_p2p(struct nvmet_ctrl *ctrl,
+ 		ns->nsid);
+ }
+ 
++bool nvmet_ns_revalidate(struct nvmet_ns *ns)
++{
++	if (ns->bdev)
++		return nvmet_bdev_ns_revalidate(ns);
++
++	return nvmet_file_ns_revalidate(ns, NULL);
++}
++
+ int nvmet_ns_enable(struct nvmet_ns *ns)
+ {
+ 	struct nvmet_subsys *subsys = ns->subsys;
+diff --git a/drivers/nvme/target/io-cmd-bdev.c b/drivers/nvme/target/io-cmd-bdev.c
+index 0427e040e3dd..34443881a384 100644
+--- a/drivers/nvme/target/io-cmd-bdev.c
++++ b/drivers/nvme/target/io-cmd-bdev.c
+@@ -75,9 +75,13 @@ void nvmet_bdev_ns_disable(struct nvmet_ns *ns)
+ 	}
+ }
+ 
+-void nvmet_bdev_ns_revalidate(struct nvmet_ns *ns)
++bool nvmet_bdev_ns_revalidate(struct nvmet_ns *ns)
+ {
++	loff_t oldsize = ns->size;
++
+ 	ns->size = i_size_read(ns->bdev->bd_inode);
++
++	return oldsize != ns->size ? true : false;
+ }
+ 
+ static u16 blk_to_nvme_status(struct nvmet_req *req, blk_status_t blk_sts)
+diff --git a/drivers/nvme/target/io-cmd-file.c b/drivers/nvme/target/io-cmd-file.c
+index f0bd08d86ac0..f0892f310ae0 100644
+--- a/drivers/nvme/target/io-cmd-file.c
++++ b/drivers/nvme/target/io-cmd-file.c
+@@ -13,8 +13,9 @@
+ #define NVMET_MAX_MPOOL_BVEC		16
+ #define NVMET_MIN_MPOOL_OBJ		16
+ 
+-int nvmet_file_ns_revalidate(struct nvmet_ns *ns)
++bool nvmet_file_ns_revalidate(struct nvmet_ns *ns, int *retp)
+ {
++	loff_t oldsize = ns->size;
+ 	struct kstat stat;
+ 	int ret;
+ 
+@@ -22,7 +23,11 @@ int nvmet_file_ns_revalidate(struct nvmet_ns *ns)
+ 			  AT_STATX_FORCE_SYNC);
+ 	if (!ret)
+ 		ns->size = stat.size;
+-	return ret;
++
++	if (retp)
++		*retp = ret;
++
++	return oldsize != ns->size ? true : false;
+ }
+ 
+ void nvmet_file_ns_disable(struct nvmet_ns *ns)
+@@ -54,7 +59,7 @@ int nvmet_file_ns_enable(struct nvmet_ns *ns)
+ 		return PTR_ERR(ns->file);
+ 	}
+ 
+-	ret = nvmet_file_ns_revalidate(ns);
++	nvmet_file_ns_revalidate(ns, &ret);
+ 	if (ret)
+ 		goto err;
+ 
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index 3d981eb6e100..90c7a61d7265 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -498,8 +498,9 @@ void nvmet_file_ns_disable(struct nvmet_ns *ns);
+ u16 nvmet_bdev_flush(struct nvmet_req *req);
+ u16 nvmet_file_flush(struct nvmet_req *req);
+ void nvmet_ns_changed(struct nvmet_subsys *subsys, u32 nsid);
+-void nvmet_bdev_ns_revalidate(struct nvmet_ns *ns);
+-int nvmet_file_ns_revalidate(struct nvmet_ns *ns);
++bool nvmet_bdev_ns_revalidate(struct nvmet_ns *ns);
++bool nvmet_file_ns_revalidate(struct nvmet_ns *ns, int *ret);
++bool nvmet_ns_revalidate(struct nvmet_ns *ns);
+ 
+ static inline u32 nvmet_rw_len(struct nvmet_req *req)
+ {
+-- 
+2.22.1
+

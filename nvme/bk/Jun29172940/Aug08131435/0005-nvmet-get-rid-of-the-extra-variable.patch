@@ -1,0 +1,52 @@
+From c62e982e9526c6b7bf53e79777be3916cc1bfe07 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Thu, 6 Aug 2020 23:22:55 -0700
+Subject: [PATCH 05/12] nvmet: get rid of the extra variable
+
+In function nvmet_passthru_execute_cmd() the return value of the
+function nvmet_passthru_map_sg() is not used to determine stauts i.e.
+we can safly ignore the actual cause of error that is returned and just
+check for binary status pass or fail.
+
+The prior check to this function call can be combined safely with the &&
+so that we can get rid of the extra variable and second if condition.
+
+Remove the extra variable and adjust the code accordingly to have only
+one if condition.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/passthru.c | 10 +++-------
+ 1 file changed, 3 insertions(+), 7 deletions(-)
+
+diff --git a/drivers/nvme/target/passthru.c b/drivers/nvme/target/passthru.c
+index 58377420874f..9a175b8b9d57 100644
+--- a/drivers/nvme/target/passthru.c
++++ b/drivers/nvme/target/passthru.c
+@@ -221,7 +221,6 @@ static void nvmet_passthru_execute_cmd(struct nvmet_req *req)
+ 	struct request *rq = NULL;
+ 	u32 effects;
+ 	u16 status;
+-	int ret;
+ 
+ 	if (likely(req->sq->qid != 0)) {
+ 		u32 nsid = le32_to_cpu(req->cmd->common.nsid);
+@@ -242,12 +241,9 @@ static void nvmet_passthru_execute_cmd(struct nvmet_req *req)
+ 		goto out_put_ns;
+ 	}
+ 
+-	if (likely(req->sg_cnt)) {
+-		ret = nvmet_passthru_map_sg(req, rq);
+-		if (unlikely(ret)) {
+-			status = NVME_SC_INTERNAL;
+-			goto out_put_req;
+-		}
++	if (likely(req->sg_cnt) && unlikely(nvmet_passthru_map_sg(req, rq))) {
++		status = NVME_SC_INTERNAL;
++		goto out_put_req;
+ 	}
+ 
+ 	/*
+-- 
+2.22.1
+

@@ -1,0 +1,320 @@
+From d101d9c726c3c7c5ea3e23c030c2af12621dedb1 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Mon, 4 May 2020 23:24:05 -0700
+Subject: [PATCH 0/3] nvmet: add target ns revalidate support
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Hi Christoph/Sagi,
+
+As per previous discussion on the ns-revalidation thread, this patch
+series adds a new per namespace configfs attribute so that AEN check
+can be triggered from the userspace with appropriate notification
+tool(s).
+
+P.S. I've dropped the previous version numbering since first patch is
+already in the tree now.
+
+As always test log at the end for reference.
+
+Regards,
+Chaitanya
+
+Chaitanya Kulkarni (3):
+  nvmet: add helper to revalidate bdev and file ns
+  nvmet: on ns size change generate AEN from configfs
+  nvmet: add async event tracing support
+
+ drivers/nvme/target/admin-cmd.c   |  5 +----
+ drivers/nvme/target/configfs.c    | 22 ++++++++++++++++++++++
+ drivers/nvme/target/core.c        | 10 ++++++++++
+ drivers/nvme/target/io-cmd-bdev.c |  6 +++++-
+ drivers/nvme/target/io-cmd-file.c | 11 ++++++++---
+ drivers/nvme/target/nvmet.h       |  5 +++--
+ drivers/nvme/target/trace.h       | 28 ++++++++++++++++++++++++++++
+ 7 files changed, 77 insertions(+), 10 deletions(-)
+
+1. blktest for 100 NS, 10 ns per subsys :-
+. tests/nvme/rc
+
+DESCRIPTION="Test target namespace resize AEN"
+
+requires() {
+	_have_program nvme && _have_modules nvme-loop nvmet && _have_configfs
+}
+
+test() {
+	echo "Running ${TEST_NAME}"
+
+	local port
+	local file_path
+	local nr_ss=10
+	local nr_ns=10
+	local orig_size=10G
+	local new_size=1G
+	local subsys_name="blktests-subsystem"
+
+	_setup_nvmet
+	port="$(_create_nvmet_port "loop")"
+	for ((i = 1; i <= nr_ss; i++)); do
+		truncate -s ${orig_size} "${TMPDIR}/img${i}1"
+		_create_nvmet_subsystem "${subsys_name}${i}" "${TMPDIR}/img${i}1" \
+			"91fdba0d-f87b-4c25-b80f-db7be1418b9e"
+		for ((j = 2; j <= nr_ns; j++)); do
+			file_path="${TMPDIR}/img${i}${j}"
+
+			truncate -s ${orig_size} "${file_path}"
+			_create_nvmet_ns "${subsys_name}${i}" "${j}" "${file_path}"
+		done
+		_add_nvmet_subsys_to_port "${port}" "${subsys_name}${i}"
+		nvme connect -t loop -n "${subsys_name}${i}"
+	done
+
+	sleep 1
+
+	echo "Original Size of NVMeOF host device:-"
+	for i in `nvme list | grep "Linux" | tr -s ' ' ' ' | cut -f 1 -d ' ' | sort`; do
+		lsblk ${i} --output NAME,SIZE | grep -v NAME | sort
+	done
+	for ((i = nr_ss; i >= 1; i--)); do
+		for ((j = nr_ns; j >= 1; j--)); do
+			file_path="${TMPDIR}/img${i}${j}"
+			subsys_path="${NVMET_CFS}"/subsystems/"${subsys_name}${i}"
+
+			truncate -s ${new_size} ${file_path}
+			echo 1 > "${subsys_path}"/namespaces/${j}/resize_check 
+			sleep 0.25
+		done
+	done
+	echo "New Size of NVMeOF host device:-"
+	for i in `nvme list | grep "Linux" | tr -s ' ' ' ' | cut -f 1 -d ' ' | sort`; do
+		lsblk ${i} --output NAME,SIZE | grep -v NAME
+	done
+
+	for ((i = nr_ss; i >= 1; i--)); do
+		nvme disconnect -n "${subsys_name}${i}"
+		_remove_nvmet_subsystem_from_port "${port}" "${subsys_name}${i}"
+		for ((j = nr_ns; j > 1; j--)); do
+			file_path="${TMPDIR}/img${i}${j}"
+
+			_remove_nvmet_ns "${subsys_name}${i}" $j
+			rm ${file_path}
+		done
+		_remove_nvmet_subsystem "${subsys_name}${i}"
+		rm "${TMPDIR}/img${i}1"
+	done
+
+	_remove_nvmet_port "${port}"
+
+	echo "Test complete"
+}
+
+# ./check tests/nvme/035
+nvme/035 (Test target namespace resize AEN)                  [passed]
+
+2. AEN trace events from host and target :-
+ 
+nvmet_async_event: nvmet10: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme10: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet10: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme10: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet10: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme10: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet10: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme10: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet10: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme10: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet10: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme10: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet10: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme10: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet10: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme10: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet10: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme10: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet10: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme10: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet9: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme9: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet9: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme9: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet9: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme9: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet9: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme9: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet9: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme9: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet9: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme9: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet9: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme9: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet9: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme9: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet9: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme9: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet9: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme9: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet8: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme8: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet8: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme8: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet8: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme8: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet8: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme8: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet8: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme8: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet8: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme8: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet8: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme8: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet8: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme8: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet8: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme8: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet8: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme8: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet7: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme7: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet7: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme7: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet7: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme7: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet7: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme7: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet7: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme7: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet7: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme7: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet7: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme7: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet7: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme7: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet7: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme7: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet7: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme7: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet6: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme6: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet6: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme6: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet6: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme6: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet6: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme6: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet6: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme6: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet6: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme6: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet6: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme6: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet6: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme6: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet6: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme6: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet6: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme6: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet5: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme5: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet5: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme5: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet5: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme5: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet5: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme5: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet5: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme5: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet5: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme5: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet5: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme5: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet5: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme5: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet5: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme5: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet5: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme5: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet4: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme4: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet4: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme4: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet4: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme4: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet4: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme4: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet4: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme4: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet4: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme4: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet4: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme4: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet4: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme4: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet4: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme4: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet4: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme4: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet3: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme3: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet3: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme3: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet3: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme3: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet3: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme3: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet3: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme3: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet3: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme3: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet3: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme3: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet3: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme3: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet3: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme3: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet3: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme3: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet2: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme2: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet2: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme2: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet2: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme2: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet2: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme2: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet2: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme2: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet2: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme2: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet2: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme2: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet2: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme2: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet2: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme2: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet2: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme2: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet1: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme1: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet1: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme1: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet1: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme1: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet1: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme1: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet1: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme1: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet1: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme1: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet1: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme1: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet1: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme1: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet1: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme1: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet1: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme1: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+-- 
+2.22.1
+

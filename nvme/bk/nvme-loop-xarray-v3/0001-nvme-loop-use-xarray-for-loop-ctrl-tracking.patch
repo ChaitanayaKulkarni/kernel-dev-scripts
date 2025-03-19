@@ -1,0 +1,161 @@
+From 8f833cbc0652e3965c116de3c02645419b943f82 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Tue, 29 Sep 2020 21:33:57 -0700
+Subject: [PATCH V3 1/1] nvme-loop: use xarray for loop ctrl tracking
+
+For nvme-loop ctrls are tracked with nvme_loop_ctrl_list. This requires
+an extra locking just for list operations.
+
+The Xarray data structure provides a clear API which handles locking
+implicitly so we can get rid of the locking and the list loops if any.
+
+Replace nvme loop ctrl list and its lock nvme_loop_ctrl_mutex with
+nvme_loop_ctrls XArray.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/loop.c | 66 +++++++++++++++++++++++---------------
+ 1 file changed, 41 insertions(+), 25 deletions(-)
+
+diff --git a/drivers/nvme/target/loop.c b/drivers/nvme/target/loop.c
+index f6d81239be21..249eeef7d1f3 100644
+--- a/drivers/nvme/target/loop.c
++++ b/drivers/nvme/target/loop.c
+@@ -31,7 +31,6 @@ struct nvme_loop_ctrl {
+ 
+ 	struct blk_mq_tag_set	admin_tag_set;
+ 
+-	struct list_head	list;
+ 	struct blk_mq_tag_set	tag_set;
+ 	struct nvme_loop_iod	async_event_iod;
+ 	struct nvme_ctrl	ctrl;
+@@ -58,8 +57,7 @@ struct nvme_loop_queue {
+ static LIST_HEAD(nvme_loop_ports);
+ static DEFINE_MUTEX(nvme_loop_ports_mutex);
+ 
+-static LIST_HEAD(nvme_loop_ctrl_list);
+-static DEFINE_MUTEX(nvme_loop_ctrl_mutex);
++static DEFINE_XARRAY(nvme_loop_ctrls);
+ 
+ static void nvme_loop_queue_response(struct nvmet_req *nvme_req);
+ static void nvme_loop_delete_ctrl(struct nvmet_ctrl *ctrl);
+@@ -262,13 +260,9 @@ static void nvme_loop_free_ctrl(struct nvme_ctrl *nctrl)
+ {
+ 	struct nvme_loop_ctrl *ctrl = to_loop_ctrl(nctrl);
+ 
+-	if (list_empty(&ctrl->list))
++	if (!xa_erase(&nvme_loop_ctrls, nctrl->cntlid))
+ 		goto free_ctrl;
+ 
+-	mutex_lock(&nvme_loop_ctrl_mutex);
+-	list_del(&ctrl->list);
+-	mutex_unlock(&nvme_loop_ctrl_mutex);
+-
+ 	if (nctrl->tagset) {
+ 		blk_cleanup_queue(ctrl->ctrl.connect_q);
+ 		blk_mq_free_tag_set(&ctrl->tag_set);
+@@ -430,14 +424,10 @@ static void nvme_loop_delete_ctrl_host(struct nvme_ctrl *ctrl)
+ 
+ static void nvme_loop_delete_ctrl(struct nvmet_ctrl *nctrl)
+ {
+-	struct nvme_loop_ctrl *ctrl;
++	struct nvme_loop_ctrl *ctrl = xa_load(&nvme_loop_ctrls, nctrl->cntlid);
+ 
+-	mutex_lock(&nvme_loop_ctrl_mutex);
+-	list_for_each_entry(ctrl, &nvme_loop_ctrl_list, list) {
+-		if (ctrl->ctrl.cntlid == nctrl->cntlid)
+-			nvme_delete_ctrl(&ctrl->ctrl);
+-	}
+-	mutex_unlock(&nvme_loop_ctrl_mutex);
++	if (ctrl)
++		nvme_delete_ctrl(&ctrl->ctrl);
+ }
+ 
+ static void nvme_loop_reset_ctrl_work(struct work_struct *work)
+@@ -545,6 +535,17 @@ static int nvme_loop_create_io_queues(struct nvme_loop_ctrl *ctrl)
+ 	return ret;
+ }
+ 
++static void nvme_loop_delete_io_queues(struct nvme_loop_ctrl *ctrl)
++{
++	/*
++	 * Any changes to the nvme_loop_create_io_queues() error unwind path
++	 * should reflect here.
++	 */
++	nvme_loop_destroy_io_queues(ctrl);
++	blk_cleanup_queue(ctrl->ctrl.connect_q);
++	blk_mq_free_tag_set(&ctrl->tag_set);
++}
++
+ static struct nvmet_port *nvme_loop_find_port(struct nvme_ctrl *ctrl)
+ {
+ 	struct nvmet_port *p, *found = NULL;
+@@ -572,7 +573,6 @@ static struct nvme_ctrl *nvme_loop_create_ctrl(struct device *dev,
+ 	if (!ctrl)
+ 		return ERR_PTR(-ENOMEM);
+ 	ctrl->ctrl.opts = opts;
+-	INIT_LIST_HEAD(&ctrl->list);
+ 
+ 	INIT_WORK(&ctrl->ctrl.reset_work, nvme_loop_reset_ctrl_work);
+ 
+@@ -621,14 +621,18 @@ static struct nvme_ctrl *nvme_loop_create_ctrl(struct device *dev,
+ 	if (!nvme_change_ctrl_state(&ctrl->ctrl, NVME_CTRL_LIVE))
+ 		WARN_ON_ONCE(1);
+ 
+-	mutex_lock(&nvme_loop_ctrl_mutex);
+-	list_add_tail(&ctrl->list, &nvme_loop_ctrl_list);
+-	mutex_unlock(&nvme_loop_ctrl_mutex);
++	ret = xa_insert(&nvme_loop_ctrls, ctrl->ctrl.cntlid, ctrl,
++			GFP_KERNEL);
++	if (ret)
++		goto out_remove_io_queues;
+ 
+ 	nvme_start_ctrl(&ctrl->ctrl);
+ 
+ 	return &ctrl->ctrl;
+ 
++out_remove_io_queues:
++	if (opts->nr_io_queues)
++		nvme_loop_delete_io_queues(ctrl);
+ out_remove_admin_queue:
+ 	nvme_loop_destroy_admin_queue(ctrl);
+ out_free_queues:
+@@ -696,17 +700,29 @@ static int __init nvme_loop_init_module(void)
+ 	return ret;
+ }
+ 
+-static void __exit nvme_loop_cleanup_module(void)
++static void nvme_loop_cleanup_ctrls(void)
+ {
+-	struct nvme_loop_ctrl *ctrl, *next;
++	struct nvme_loop_ctrl *ctrl;
++	unsigned long idx;
+ 
++	synchronize_rcu();
++	xa_lock(&nvme_loop_ctrls);
++	xa_for_each(&nvme_loop_ctrls, idx, ctrl) {
++		__xa_erase(&nvme_loop_ctrls, idx);
++		xa_unlock(&nvme_loop_ctrls);
++		nvme_delete_ctrl(&ctrl->ctrl);
++		xa_lock(&nvme_loop_ctrls);
++	}
++	xa_unlock(&nvme_loop_ctrls);
++
++	xa_destroy(&nvme_loop_ctrls);
++}
++static void __exit nvme_loop_cleanup_module(void)
++{
+ 	nvmf_unregister_transport(&nvme_loop_transport);
+ 	nvmet_unregister_transport(&nvme_loop_ops);
+ 
+-	mutex_lock(&nvme_loop_ctrl_mutex);
+-	list_for_each_entry_safe(ctrl, next, &nvme_loop_ctrl_list, list)
+-		nvme_delete_ctrl(&ctrl->ctrl);
+-	mutex_unlock(&nvme_loop_ctrl_mutex);
++	nvme_loop_cleanup_ctrls();
+ 
+ 	flush_workqueue(nvme_delete_wq);
+ }
+-- 
+2.22.1
+

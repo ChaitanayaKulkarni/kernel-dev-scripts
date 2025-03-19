@@ -1,0 +1,34 @@
+From 0d8bf6bc4669754cb49d88795f95001a5e6a4de0 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Tue, 18 Aug 2020 16:01:49 -0700
+Subject: [PATCH V2 05/11] nvmet: remove op_flags for write commands
+
+The function nvmet_passthru_map_sg() sets the op_flags to
+(REQ_SYNC | REQ_IDLE). Currently, in the block layer this check is only
+present for not throttling WRITE_ODIRECT requests for REQ_OP_WRITE
+opcode so passthru requests being REQ_OP_DRV/IN|OUT] it will not have
+the desired effect.
+
+Remove the op_flags assignment for nvme_is_write() case.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/passthru.c | 2 --
+ 1 file changed, 2 deletions(-)
+
+diff --git a/drivers/nvme/target/passthru.c b/drivers/nvme/target/passthru.c
+index 8f9c2144a103..fbe2678aea6a 100644
+--- a/drivers/nvme/target/passthru.c
++++ b/drivers/nvme/target/passthru.c
+@@ -188,8 +188,6 @@ static int nvmet_passthru_map_sg(struct nvmet_req *req, struct request *rq)
+ 
+ 	if (req->cmd->common.opcode == nvme_cmd_flush)
+ 		op_flags = REQ_FUA;
+-	else if (nvme_is_write(req->cmd))
+-		op_flags = REQ_SYNC | REQ_IDLE;
+ 
+ 	bio = bio_alloc(GFP_KERNEL, min(sg_cnt, BIO_MAX_PAGES));
+ 	bio->bi_end_io = bio_put;
+-- 
+2.22.1
+

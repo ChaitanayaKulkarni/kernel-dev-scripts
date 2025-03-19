@@ -1,0 +1,126 @@
+--- configfs.c	2019-10-07 19:01:58.000000000 +0200
++++ /usr/src/packages/BUILD/kernel-5.3.5/drivers/nvme/target/configfs.c	2019-10-14 10:19:17.187624027 +0200
+@@ -545,6 +545,34 @@
+ 
+ CONFIGFS_ATTR(nvmet_ns_, buffered_io);
+ 
++static ssize_t nvmet_ns_use_vfs_show(struct config_item *item, char *page)
++{
++        return sprintf(page, "%d\n", to_nvmet_ns(item)->use_vfs);
++}
++
++static ssize_t nvmet_ns_use_vfs_store(struct config_item *item,
++                const char *page, size_t count)
++{
++        struct nvmet_ns *ns = to_nvmet_ns(item);
++        bool val;
++
++        if (strtobool(page, &val))
++                return -EINVAL;
++
++        mutex_lock(&ns->subsys->lock);
++        if (ns->enabled) {
++                pr_err("disable ns before setting use_vfs value.\n");
++                mutex_unlock(&ns->subsys->lock);
++                return -EINVAL;
++        }
++
++        ns->use_vfs = val;
++        mutex_unlock(&ns->subsys->lock);
++        return count;
++}
++
++CONFIGFS_ATTR(nvmet_ns_, use_vfs);
++
+ static struct configfs_attribute *nvmet_ns_attrs[] = {
+ 	&nvmet_ns_attr_device_path,
+ 	&nvmet_ns_attr_device_nguid,
+@@ -552,6 +580,7 @@
+ 	&nvmet_ns_attr_ana_grpid,
+ 	&nvmet_ns_attr_enable,
+ 	&nvmet_ns_attr_buffered_io,
++	&nvmet_ns_attr_use_vfs,
+ #ifdef CONFIG_PCI_P2PDMA
+ 	&nvmet_ns_attr_p2pmem,
+ #endif
+--- core.c	2019-10-07 19:01:58.000000000 +0200
++++ /usr/src/packages/BUILD/kernel-5.3.5/drivers/nvme/target/core.c	2019-10-14 10:14:38.686953801 +0200
+@@ -653,7 +653,7 @@
+ 
+ 	uuid_gen(&ns->uuid);
+ 	ns->buffered_io = false;
+-
++        ns->use_vfs = false;
+ 	return ns;
+ }
+ 
+--- io-cmd-bdev.c	2019-10-07 19:01:58.000000000 +0200
++++ /usr/src/packages/BUILD/kernel-5.3.5/drivers/nvme/target/io-cmd-bdev.c	2019-10-14 15:06:53.347300960 +0200
+@@ -51,6 +51,10 @@
+ {
+ 	int ret;
+ 
++	if (ns->use_vfs) {
++		pr_info("Force using the vfs layer\n");
++		return -ENOTBLK;
++	}
+ 	ns->bdev = blkdev_get_by_path(ns->device_path,
+ 			FMODE_READ | FMODE_WRITE, NULL);
+ 	if (IS_ERR(ns->bdev)) {
+--- io-cmd-file.c	2019-10-07 19:01:58.000000000 +0200
++++ /usr/src/packages/BUILD/kernel-5.3.5/drivers/nvme/target/io-cmd-file.c	2019-10-14 15:21:11.590260670 +0200
+@@ -31,6 +31,7 @@
+ {
+ 	int flags = O_RDWR | O_LARGEFILE;
+ 	struct kstat stat;
++	struct block_device *bdev;
+ 	int ret;
+ 
+ 	if (!ns->buffered_io)
+@@ -45,16 +46,28 @@
+ 
+ 	ret = vfs_getattr(&ns->file->f_path,
+ 			&stat, STATX_SIZE, AT_STATX_FORCE_SYNC);
+-	if (ret)
++	if (ret) {
++		pr_err("failed to stat device file %s\n",
++			ns->device_path);
+ 		goto err;
++	}
+ 
+ 	ns->size = stat.size;
+-	/*
+-	 * i_blkbits can be greater than the universally accepted upper bound,
+-	 * so make sure we export a sane namespace lba_shift.
+-	 */
+-	ns->blksize_shift = min_t(u8,
+-			file_inode(ns->file)->i_blkbits, 12);
++	if (ns->size == 0 && ns->use_vfs) {
++		bdev = blkdev_get_by_path(ns->device_path,
++		                        FMODE_READ | FMODE_WRITE, NULL);
++		if (!IS_ERR(bdev)) {
++        		ns->size = i_size_read(bdev->bd_inode);
++			ns->blksize_shift = blksize_bits(bdev_logical_block_size(bdev));
++                }
++	} else {
++		/*
++		 * i_blkbits can be greater than the universally accepted upper bound,
++		 * so make sure we export a sane namespace lba_shift.
++		 */
++		ns->blksize_shift = min_t(u8,
++				file_inode(ns->file)->i_blkbits, 12);
++	}
+ 
+ 	ns->bvec_cache = kmem_cache_create("nvmet-bvec",
+ 			NVMET_MAX_MPOOL_BVEC * sizeof(struct bio_vec),
+--- nvmet.h	2019-10-07 19:01:58.000000000 +0200
++++ /usr/src/packages/BUILD/kernel-5.3.5/drivers/nvme/target/nvmet.h	2019-10-14 10:13:27.652679601 +0200
+@@ -63,6 +63,7 @@
+ 	u32			anagrpid;
+ 
+ 	bool			buffered_io;
++	bool			use_vfs;
+ 	bool			enabled;
+ 	struct nvmet_subsys	*subsys;
+ 	const char		*device_path;
+

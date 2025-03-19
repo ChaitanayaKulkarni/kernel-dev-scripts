@@ -1,0 +1,324 @@
+From 03e083791645ee934f1bd9814ea11674a2d308f7 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Mon, 6 Jun 2022 11:53:49 -0700
+Subject: [PATCH 0/6] nvme: __nvme_submit_sync_command() cleanup
+
+The function __nvme_submit_sync_command() has unusually large number of
+arguments = 9 which is not a good practice for kernel code unless there
+is no other way to pass the parameters. Some of the arguments can be
+derived from other arguments with addition of the readable helpers.
+
+This patch series removes the unnecessary arguments from the function
+that also makes code easy to read, debug and maintain.
+
+I've ran the blktests on it seems to pass all the testcases.
+
+Please let me know if I miss someting in terms of testing.
+
+-ck
+
+Chaitanya Kulkarni (6):
+  nvme-core: remove unused timeout parameter
+  nvme-core: fix qid param blk_mq_alloc_request_hctx
+  nvme-core: remove qid parameter
+  nvme-core: remove flags parameter
+  nvme-core: remove at_head parameter
+  nvme-core: remove __nvme_submit_sync_cmd() wrapper
+
+ drivers/nvme/host/core.c    | 79 ++++++++++++++++++++++---------------
+ drivers/nvme/host/fabrics.c | 19 ++++-----
+ drivers/nvme/host/nvme.h    |  6 +--
+ drivers/nvme/host/pci.c     | 10 ++---
+ drivers/nvme/host/zns.c     |  7 ++--
+ 5 files changed, 65 insertions(+), 56 deletions(-)
+
+vme (nvme-5.19) # git am --skip 
+Applying: nvme-core: remove unused timeout parameter
+Applying: nvme-core: fix qid param blk_mq_alloc_request_hctx
+Applying: nvme-core: remove qid parameter
+Applying: nvme-core: remove flags parameter
+Applying: nvme-core: remove at_head parameter
+Applying: nvme-core: remove __nvme_submit_sync_cmd() wrapper
+nvme (nvme-5.19) # ./compile_nvme.sh
++ umount /mnt/nvme0n1
++ clear_dmesg
+./compile_nvme.sh: line 3: clear_dmesg: command not found
+umount: /mnt/nvme0n1: no mount point specified.
++ ./delete.sh
++ NQN=testnqn
++ nvme disconnect -n testnqn
+NQN:testnqn disconnected 0 controller(s)
+
+real	0m0.010s
+user	0m0.002s
+sys	0m0.003s
++ rm -fr '/sys/kernel/config/nvmet/ports/1/subsystems/*'
++ rmdir /sys/kernel/config/nvmet/ports/1
+rmdir: failed to remove '/sys/kernel/config/nvmet/ports/1': No such file or directory
++ for subsys in /sys/kernel/config/nvmet/subsystems/*
++ for ns in ${subsys}/namespaces/*
++ echo 0
+./delete.sh: line 14: /sys/kernel/config/nvmet/subsystems/*/namespaces/*/enable: No such file or directory
++ rmdir '/sys/kernel/config/nvmet/subsystems/*/namespaces/*'
+rmdir: failed to remove '/sys/kernel/config/nvmet/subsystems/*/namespaces/*': No such file or directory
++ rmdir '/sys/kernel/config/nvmet/subsystems/*'
+rmdir: failed to remove '/sys/kernel/config/nvmet/subsystems/*': No such file or directory
++ rmdir 'config/nullb/nullb*'
+rmdir: failed to remove 'config/nullb/nullb*': No such file or directory
++ umount /mnt/nvme0n1
+umount: /mnt/nvme0n1: no mount point specified.
++ umount /mnt/backend
+umount: /mnt/backend: not mounted.
++ modprobe -r nvme_loop
++ modprobe -r nvme_fabrics
++ modprobe -r nvmet
++ modprobe -r nvme
++ modprobe -r null_blk
++ tree /sys/kernel/config
+/sys/kernel/config
+
+0 directories, 0 files
++ modprobe -r nvme-fabrics
++ modprobe -r nvme_loop
++ modprobe -r nvmet
++ modprobe -r nvme
++ sleep 1
++ modprobe -r nvme-core
++ lsmod
++ grep nvme
++ sleep 1
++ git diff
++ sleep 1
+++ nproc
++ make -j 48 M=drivers/nvme/target/ clean
+++ nproc
++ make -j 48 M=drivers/nvme/ modules
+  CC [M]  drivers/nvme/target/core.o
+  CC [M]  drivers/nvme/target/configfs.o
+  CC [M]  drivers/nvme/target/admin-cmd.o
+  CC [M]  drivers/nvme/target/fabrics-cmd.o
+  CC [M]  drivers/nvme/target/discovery.o
+  CC [M]  drivers/nvme/target/io-cmd-file.o
+  CC [M]  drivers/nvme/target/io-cmd-bdev.o
+  CC [M]  drivers/nvme/target/passthru.o
+  CC [M]  drivers/nvme/target/zns.o
+  CC [M]  drivers/nvme/target/trace.o
+  CC [M]  drivers/nvme/target/loop.o
+  CC [M]  drivers/nvme/target/rdma.o
+  CC [M]  drivers/nvme/target/fc.o
+  CC [M]  drivers/nvme/target/fcloop.o
+  CC [M]  drivers/nvme/target/tcp.o
+  CC [M]  drivers/nvme/host/core.o
+  CC [M]  drivers/nvme/host/ioctl.o
+  CC [M]  drivers/nvme/host/constants.o
+  CC [M]  drivers/nvme/host/trace.o
+  CC [M]  drivers/nvme/host/multipath.o
+  CC [M]  drivers/nvme/host/zns.o
+  CC [M]  drivers/nvme/host/fault_inject.o
+  CC [M]  drivers/nvme/host/pci.o
+  CC [M]  drivers/nvme/host/fabrics.o
+  CC [M]  drivers/nvme/host/rdma.o
+  CC [M]  drivers/nvme/host/fc.o
+  CC [M]  drivers/nvme/host/tcp.o
+  LD [M]  drivers/nvme/target/nvme-loop.o
+  LD [M]  drivers/nvme/target/nvme-fcloop.o
+  LD [M]  drivers/nvme/host/nvme-fabrics.o
+  LD [M]  drivers/nvme/target/nvmet.o
+  LD [M]  drivers/nvme/target/nvmet-fc.o
+  LD [M]  drivers/nvme/target/nvmet-tcp.o
+  LD [M]  drivers/nvme/target/nvmet-rdma.o
+  LD [M]  drivers/nvme/host/nvme-rdma.o
+  LD [M]  drivers/nvme/host/nvme-tcp.o
+  LD [M]  drivers/nvme/host/nvme-fc.o
+  LD [M]  drivers/nvme/host/nvme.o
+  LD [M]  drivers/nvme/host/nvme-core.o
+  MODPOST drivers/nvme/Module.symvers
+  LD [M]  drivers/nvme/host/nvme-core.ko
+  LD [M]  drivers/nvme/host/nvme-fabrics.ko
+  LD [M]  drivers/nvme/host/nvme-fc.ko
+  LD [M]  drivers/nvme/host/nvme-rdma.ko
+  LD [M]  drivers/nvme/host/nvme-tcp.ko
+  LD [M]  drivers/nvme/host/nvme.ko
+  CC [M]  drivers/nvme/target/nvme-fcloop.mod.o
+  CC [M]  drivers/nvme/target/nvme-loop.mod.o
+  CC [M]  drivers/nvme/target/nvmet-fc.mod.o
+  CC [M]  drivers/nvme/target/nvmet-rdma.mod.o
+  CC [M]  drivers/nvme/target/nvmet-tcp.mod.o
+  CC [M]  drivers/nvme/target/nvmet.mod.o
+  LD [M]  drivers/nvme/target/nvmet-fc.ko
+  LD [M]  drivers/nvme/target/nvme-fcloop.ko
+  LD [M]  drivers/nvme/target/nvmet-rdma.ko
+  LD [M]  drivers/nvme/target/nvme-loop.ko
+  LD [M]  drivers/nvme/target/nvmet-tcp.ko
+  LD [M]  drivers/nvme/target/nvmet.ko
++ HOST=drivers/nvme/host
++ TARGET=drivers/nvme/target
+++ uname -r
++ HOST_DEST=/lib/modules/5.18.0-rc3nvme+/kernel/drivers/nvme/host/
+++ uname -r
++ TARGET_DEST=/lib/modules/5.18.0-rc3nvme+/kernel/drivers/nvme/target/
++ cp drivers/nvme/host/nvme-core.ko drivers/nvme/host/nvme-fabrics.ko drivers/nvme/host/nvme-fc.ko drivers/nvme/host/nvme.ko drivers/nvme/host/nvme-rdma.ko drivers/nvme/host/nvme-tcp.ko /lib/modules/5.18.0-rc3nvme+/kernel/drivers/nvme/host//
++ cp drivers/nvme/target/nvme-fcloop.ko drivers/nvme/target/nvme-loop.ko drivers/nvme/target/nvmet-fc.ko drivers/nvme/target/nvmet.ko drivers/nvme/target/nvmet-rdma.ko drivers/nvme/target/nvmet-tcp.ko /lib/modules/5.18.0-rc3nvme+/kernel/drivers/nvme/target//
++ ls -lrth /lib/modules/5.18.0-rc3nvme+/kernel/drivers/nvme/host/ /lib/modules/5.18.0-rc3nvme+/kernel/drivers/nvme/target//
+/lib/modules/5.18.0-rc3nvme+/kernel/drivers/nvme/host/:
+total 6.3M
+-rw-r--r--. 1 root root 2.7M Jun  6 17:45 nvme-core.ko
+-rw-r--r--. 1 root root 422K Jun  6 17:45 nvme-fabrics.ko
+-rw-r--r--. 1 root root 924K Jun  6 17:45 nvme-fc.ko
+-rw-r--r--. 1 root root 716K Jun  6 17:45 nvme.ko
+-rw-r--r--. 1 root root 863K Jun  6 17:45 nvme-rdma.ko
+-rw-r--r--. 1 root root 809K Jun  6 17:45 nvme-tcp.ko
+
+/lib/modules/5.18.0-rc3nvme+/kernel/drivers/nvme/target//:
+total 6.3M
+-rw-r--r--. 1 root root 472K Jun  6 17:45 nvme-fcloop.ko
+-rw-r--r--. 1 root root 415K Jun  6 17:45 nvme-loop.ko
+-rw-r--r--. 1 root root 732K Jun  6 17:45 nvmet-fc.ko
+-rw-r--r--. 1 root root 3.2M Jun  6 17:45 nvmet.ko
+-rw-r--r--. 1 root root 822K Jun  6 17:45 nvmet-rdma.ko
+-rw-r--r--. 1 root root 675K Jun  6 17:45 nvmet-tcp.ko
++ sync
++ sync
++ sync
++ modprobe nvme
++ echo 'Press enter to continue ...'
+Press enter to continue ...
++ read next
+
+
+nvme (nvme-5.19) # cdblktests 
+blktests (master) # nvme_trtype=tcp ./check nvme 
+nvme/002 (create many subsystems and test discovery)         [not run]
+    runtime  17.206s  ...  
+    nvme_trtype=tcp is not supported in this test
+nvme/003 (test if we're sending keep-alives to a discovery controller) [passed]
+    runtime  10.083s  ...  10.085s
+nvme/004 (test nvme and nvmet UUID NS descriptors)           [passed]
+    runtime  1.436s  ...  1.141s
+nvme/005 (reset local loopback target)                       [passed]
+    runtime  6.772s  ...  6.205s
+nvme/006 (create an NVMeOF target with a block device-backed ns) [passed]
+    runtime  0.057s  ...  0.073s
+nvme/007 (create an NVMeOF target with a file-backed ns)     [passed]
+    runtime  0.039s  ...  0.042s
+nvme/008 (create an NVMeOF host with a block device-backed ns) [passed]
+    runtime  1.435s  ...  1.148s
+nvme/009 (create an NVMeOF host with a file-backed ns)       [passed]
+    runtime  1.405s  ...  1.117s
+nvme/010 (run data verification fio job on NVMeOF block device-backed ns) [passed]
+    runtime  8.197s  ...  17.531s
+nvme/011 (run data verification fio job on NVMeOF file-backed ns) [passed]
+    runtime  86.446s  ...  80.812s
+nvme/012 (run mkfs and data verification fio job on NVMeOF block device-backed ns) [passed]
+    runtime  11.663s  ...  21.509s
+nvme/013 (run mkfs and data verification fio job on NVMeOF file-backed ns) [passed]
+    runtime  90.610s  ...  97.420s
+nvme/014 (flush a NVMeOF block device-backed ns)             [passed]
+    runtime  8.889s  ...  8.551s
+nvme/015 (unit test for NVMe flush for file backed ns)       [passed]
+    runtime  8.796s  ...  8.741s
+nvme/016 (create/delete many NVMeOF block device-backed ns and test discovery) [not run]
+    runtime  13.641s  ...  
+    nvme_trtype=tcp is not supported in this test
+nvme/017 (create/delete many file-ns and test discovery)     [not run]
+    runtime  13.113s  ...  
+    nvme_trtype=tcp is not supported in this test
+nvme/018 (unit test NVMe-oF out of range access on a file backend) [passed]
+    runtime  1.405s  ...  1.125s
+nvme/019 (test NVMe DSM Discard command on NVMeOF block-device ns) [passed]
+    runtime  1.440s  ...  1.140s
+nvme/020 (test NVMe DSM Discard command on NVMeOF file-backed ns) [passed]
+    runtime  1.411s  ...  1.113s
+nvme/021 (test NVMe list command on NVMeOF file-backed ns)   [passed]
+    runtime  1.423s  ...  1.116s
+nvme/022 (test NVMe reset command on NVMeOF file-backed ns)  [passed]
+    runtime  6.725s  ...  6.230s
+nvme/023 (test NVMe smart-log command on NVMeOF block-device ns) [passed]
+    runtime  1.435s  ...  1.134s
+nvme/024 (test NVMe smart-log command on NVMeOF file-backed ns) [passed]
+    runtime  1.398s  ...  1.105s
+nvme/025 (test NVMe effects-log command on NVMeOF file-backed ns) [passed]
+    runtime  1.398s  ...  1.112s
+nvme/026 (test NVMe ns-descs command on NVMeOF file-backed ns) [passed]
+    runtime  1.405s  ...  1.107s
+nvme/027 (test NVMe ns-rescan command on NVMeOF file-backed ns) [passed]
+    runtime  1.407s  ...  1.127s
+nvme/028 (test NVMe list-subsys command on NVMeOF file-backed ns) [passed]
+    runtime  1.429s  ...  1.116s
+nvme/029 (test userspace IO via nvme-cli read/write interface) [passed]
+    runtime  1.521s  ...  1.233s
+nvme/030 (ensure the discovery generation counter is updated appropriately) [passed]
+    runtime  0.177s  ...  0.115s
+nvme/031 (test deletion of NVMeOF controllers immediately after setup) [passed]
+    runtime  53.745s  ...  50.742s
+nvme/038 (test deletion of NVMeOF subsystem without enabling) [passed]
+    runtime  0.019s  ...  0.025s
+blktests (master) # nvme_trtype=loop ./check nvme 
+nvme/002 (create many subsystems and test discovery)         [passed]
+    runtime    ...  17.636s
+nvme/003 (test if we're sending keep-alives to a discovery controller) [passed]
+    runtime  10.085s  ...  10.091s
+nvme/004 (test nvme and nvmet UUID NS descriptors)           [passed]
+    runtime  1.141s  ...  1.435s
+nvme/005 (reset local loopback target)                       [passed]
+    runtime  6.205s  ...  6.788s
+nvme/006 (create an NVMeOF target with a block device-backed ns) [passed]
+    runtime  0.073s  ...  0.063s
+nvme/007 (create an NVMeOF target with a file-backed ns)     [passed]
+    runtime  0.042s  ...  0.040s
+nvme/008 (create an NVMeOF host with a block device-backed ns) [passed]
+    runtime  1.148s  ...  1.452s
+nvme/009 (create an NVMeOF host with a file-backed ns)       [passed]
+    runtime  1.117s  ...  1.427s
+nvme/010 (run data verification fio job on NVMeOF block device-backed ns) [passed]
+    runtime  17.531s  ...  8.175s
+nvme/011 (run data verification fio job on NVMeOF file-backed ns) [passed]
+    runtime  80.812s  ...  85.502s
+nvme/012 (run mkfs and data verification fio job on NVMeOF block device-backed ns) [passed]
+    runtime  21.509s  ...  11.513s
+nvme/013 (run mkfs and data verification fio job on NVMeOF file-backed ns) [passed]
+    runtime  97.420s  ...  92.585s
+nvme/014 (flush a NVMeOF block device-backed ns)             [passed]
+    runtime  8.551s  ...  8.828s
+nvme/015 (unit test for NVMe flush for file backed ns)       [passed]
+    runtime  8.741s  ...  8.735s
+nvme/016 (create/delete many NVMeOF block device-backed ns and test discovery) [passed]
+    runtime    ...  13.152s
+nvme/017 (create/delete many file-ns and test discovery)     [passed]
+    runtime    ...  13.662s
+nvme/018 (unit test NVMe-oF out of range access on a file backend) [passed]
+    runtime  1.125s  ...  1.409s
+nvme/019 (test NVMe DSM Discard command on NVMeOF block-device ns) [passed]
+    runtime  1.140s  ...  1.438s
+nvme/020 (test NVMe DSM Discard command on NVMeOF file-backed ns) [passed]
+    runtime  1.113s  ...  1.415s
+nvme/021 (test NVMe list command on NVMeOF file-backed ns)   [passed]
+    runtime  1.116s  ...  1.422s
+nvme/022 (test NVMe reset command on NVMeOF file-backed ns)  [passed]
+    runtime  6.230s  ...  6.721s
+nvme/023 (test NVMe smart-log command on NVMeOF block-device ns) [passed]
+    runtime  1.134s  ...  1.432s
+nvme/024 (test NVMe smart-log command on NVMeOF file-backed ns) [passed]
+    runtime  1.105s  ...  1.415s
+nvme/025 (test NVMe effects-log command on NVMeOF file-backed ns) [passed]
+    runtime  1.112s  ...  1.430s
+nvme/026 (test NVMe ns-descs command on NVMeOF file-backed ns) [passed]
+    runtime  1.107s  ...  1.423s
+nvme/027 (test NVMe ns-rescan command on NVMeOF file-backed ns) [passed]
+    runtime  1.127s  ...  1.423s
+nvme/028 (test NVMe list-subsys command on NVMeOF file-backed ns) [passed]
+    runtime  1.116s  ...  1.405s
+nvme/029 (test userspace IO via nvme-cli read/write interface) [passed]
+    runtime  1.233s  ...  1.535s
+nvme/030 (ensure the discovery generation counter is updated appropriately) [passed]
+    runtime  0.115s  ...  0.189s
+nvme/031 (test deletion of NVMeOF controllers immediately after setup) [passed]
+    runtime  50.742s  ...  53.742s
+nvme/038 (test deletion of NVMeOF subsystem without enabling) [passed]
+    runtime  0.025s  ...  0.020s
+blktests (master) # 
+
+
+-- 
+2.29.0
+

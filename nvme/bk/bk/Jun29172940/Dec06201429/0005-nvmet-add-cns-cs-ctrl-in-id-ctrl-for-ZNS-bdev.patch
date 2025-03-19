@@ -1,0 +1,32 @@
+From 0eaf91594ff007a0f93b98cbe7753580d68fb1a9 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Tue, 17 Nov 2020 11:01:10 -0800
+Subject: [PATCH 5/9] nvmet: add cns-cs-ctrl in id-ctrl for ZNS bdev
+
+Update the nvmet_execute_identify() such that it can now handle
+NVME_ID_CNS_CS_CTRL when identify.cis is set to ZNS. This allows
+host to identify the support for ZNS.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/admin-cmd.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/drivers/nvme/target/admin-cmd.c b/drivers/nvme/target/admin-cmd.c
+index d4fc1bb1a318..e7d2b96cda6b 100644
+--- a/drivers/nvme/target/admin-cmd.c
++++ b/drivers/nvme/target/admin-cmd.c
+@@ -650,6 +650,10 @@ static void nvmet_execute_identify(struct nvmet_req *req)
+ 		return nvmet_execute_identify_ns(req);
+ 	case NVME_ID_CNS_CTRL:
+ 		return nvmet_execute_identify_ctrl(req);
++	case NVME_ID_CNS_CS_CTRL:
++		if (req->cmd->identify.csi == NVME_CSI_ZNS)
++			return nvmet_execute_identify_cns_cs_ctrl(req);
++		break;
+ 	case NVME_ID_CNS_NS_ACTIVE_LIST:
+ 		return nvmet_execute_identify_nslist(req);
+ 	case NVME_ID_CNS_NS_DESC_LIST:
+-- 
+2.22.1
+

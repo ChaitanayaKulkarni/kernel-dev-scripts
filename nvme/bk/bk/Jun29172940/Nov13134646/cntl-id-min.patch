@@ -1,0 +1,83 @@
+diff --git a/drivers/nvme/target/configfs.c b/drivers/nvme/target/configfs.c
+index 98613a4..95849bc 100644
+--- a/drivers/nvme/target/configfs.c
++++ b/drivers/nvme/target/configfs.c
+@@ -862,10 +862,40 @@ static ssize_t nvmet_subsys_attr_serial_store(struct config_item *item,
+ }
+ CONFIGFS_ATTR(nvmet_subsys_, attr_serial);
+ 
++static ssize_t nvmet_subsys_cntlid_min_show(struct config_item *item,
++                                             char *page)
++{
++        struct nvmet_subsys *subsys = to_subsys(item);
++
++        return snprintf(page, PAGE_SIZE, "%d\n", subsys->cntlid_min);
++}
++
++static ssize_t nvmet_subsys_cntlid_min_store(struct config_item *item,
++                                          const char *page, size_t count)
++{
++        struct nvmet_subsys *subsys = to_subsys(item);
++        u16 sid;
++        int ret = 0;
++
++        down_write(&nvmet_config_sem);
++        /* should this be %x ? */
++        sscanf(page, "%hu\n", &sid);
++
++        if (sid >= NVME_CNTLID_MIN && sid <= NVME_CNTLID_MAX)
++                subsys->cntlid_min = sid;
++        else
++                ret = -EINVAL;
++        up_write(&nvmet_config_sem);
++
++        return ret ? ret : count;
++}
++CONFIGFS_ATTR(nvmet_subsys_, cntlid_min);
++
+ static struct configfs_attribute *nvmet_subsys_attrs[] = {
+ 	&nvmet_subsys_attr_attr_allow_any_host,
+ 	&nvmet_subsys_attr_attr_version,
+ 	&nvmet_subsys_attr_attr_serial,
++	&nvmet_subsys_attr_cntlid_min,
+ 	NULL,
+ };
+ 
+diff --git a/drivers/nvme/target/core.c b/drivers/nvme/target/core.c
+index 3a67e24..a92b1ad 100644
+--- a/drivers/nvme/target/core.c
++++ b/drivers/nvme/target/core.c
+@@ -1268,10 +1268,9 @@ u16 nvmet_alloc_ctrl(const char *subsysnqn, const char *hostnqn,
+ 			GFP_KERNEL);
+ 	if (!ctrl->sqs)
+ 		goto out_free_cqs;
+-
+ 	ret = ida_simple_get(&cntlid_ida,
+-			     NVME_CNTLID_MIN, NVME_CNTLID_MAX,
+-			     GFP_KERNEL);
++			subsys->cntlid_min, NVME_CNTLID_MAX,
++			GFP_KERNEL);
+ 	if (ret < 0) {
+ 		status = NVME_SC_CONNECT_CTRL_BUSY | NVME_SC_DNR;
+ 		goto out_free_sqs;
+@@ -1418,7 +1417,7 @@ struct nvmet_subsys *nvmet_subsys_alloc(const char *subsysnqn,
+ 		kfree(subsys);
+ 		return ERR_PTR(-ENOMEM);
+ 	}
+-
++	subsys->cntlid_min = NVME_CNTLID_MIN;
+ 	kref_init(&subsys->ref);
+ 
+ 	mutex_init(&subsys->lock);
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index c51f8dd..c6c721a 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -211,6 +211,7 @@ struct nvmet_subsys {
+ 	struct list_head	namespaces;
+ 	unsigned int		nr_namespaces;
+ 	unsigned int		max_nsid;
++	u16                     cntlid_min;
+ 
+ 	struct list_head	ctrls;
+ 

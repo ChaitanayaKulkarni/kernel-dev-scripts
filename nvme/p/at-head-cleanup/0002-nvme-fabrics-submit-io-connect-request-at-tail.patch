@@ -1,0 +1,42 @@
+From 68e170446a5040df10cae4c9f44f14b787186054 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Fri, 21 Jan 2022 21:48:58 -0800
+Subject: [PATCH 2/4] nvme-fabrics: submit io-connect request at tail
+
+The connect_q is only used for performing I/O connect operations. In
+current implementation we add I/O connect request at the head of the
+connect queue for each I/O connect command. Submitting the request at
+the tail doesn't have any side effect since at any given point we will
+have only another I/O connect queue command on the connect_q, so it
+actually makes sense to process I/O connect command in the same order
+as we receive than FIFO.
+
+When I run the connect workload such as blktests/nvme/002 that creates
+many subsystems and connects each of them there is no performance
+difference observed with and without this patch.
+
+Change the io-connect request submission to the tail instaed of head.
+This will help us remove the at_head paramater for the
+__nvme_submit_sync_cmd() since argument list for the functions is large.
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/host/fabrics.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/nvme/host/fabrics.c b/drivers/nvme/host/fabrics.c
+index 8ce03cfd6c99..d15a9d95c903 100644
+--- a/drivers/nvme/host/fabrics.c
++++ b/drivers/nvme/host/fabrics.c
+@@ -451,7 +451,7 @@ int nvmf_connect_io_queue(struct nvme_ctrl *ctrl, u16 qid)
+ 	strncpy(data->hostnqn, ctrl->opts->host->nqn, NVMF_NQN_SIZE);
+ 
+ 	ret = __nvme_submit_sync_cmd(ctrl->connect_q, &cmd, &res,
+-			data, sizeof(*data), 0, qid, 1,
++			data, sizeof(*data), 0, qid, 0,
+ 			BLK_MQ_REQ_RESERVED | BLK_MQ_REQ_NOWAIT);
+ 	if (ret) {
+ 		nvmf_log_connect_error(ctrl, ret, le32_to_cpu(res.u32),
+-- 
+2.29.0
+

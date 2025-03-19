@@ -1,0 +1,65 @@
+ 1200.844705] nvme nvme0: 48/0/0 default/read/poll queues
+[ 1203.832646] nvmet: adding nsid 1 to subsystem testnqn
+++ mkdir /sys/kernel/config/nvmet/ports/1/
+++ echo -n loop
+++ echo -n 1
+++ ln -s /sys/kernel/config/nvmet/subsystems/testnqn /sys/kernel/config/nvmet/ports/1/subsystems/
+++ echo transport=loop,nqn=testnqn
+++ sleep 1
+++ mount
+++ column -t
+++ grep nvme
+++ dmesg -c
+[ 1203.841105] nvmet: creating nvm controller 1 for subsystem testnqn for NQN nqn.2014-08.org.nvmexpress:uuid:4b6ce70d-2d73-4f61-96c8-2edd9905adf7.
+[ 1203.841208] nvme1: Identify(0x6), Invalid Field in Command (sct 0x0 / sc 0x2) MORE DNR 
+[ 1203.842652] nvme nvme1: creating 48 I/O queues.
+[ 1203.846644] nvme nvme1: new ctrl: "testnqn"
+Node SN Model Namespace Usage Format FW Rev 
+nvme1n1 c93b721674e9a9487dbe Linux 1 2.15 GB / 2.15 GB 4 KiB + 0 B 5.17.0-r
+nvme0n1 foo QEMU NVMe Ctrl 1 1.07 GB / 1.07 GB 512 B + 0 B 1.0 
+NVMe status: Access Denied: Access to the namespace and/or LBA range is denied due to lack of access rights(0x4286)
+Node SN Model Namespace Usage Format FW Rev 
+nvme0n1 foo QEMU NVMe Ctrl 1 1.07 GB / 1.07 GB 512 B + 0 B 1.0 
+[ 1204.858943] FAULT_INJECTION: forcing a failure.
+               name fault_inject, interval 1, probability 100, space 0, times 1000
+[ 1204.858951] CPU: 18 PID: 310 Comm: kworker/18:1 Tainted: G           OE     5.17.0-rc2nvme+ #68
+[ 1204.858954] Hardware name: QEMU Standard PC (i440FX + PIIX, 1996), BIOS rel-1.14.0-0-g155821a1990b-prebuilt.qemu.org 04/01/2014
+[ 1204.858957] Workqueue: nvmet-wq nvme_loop_execute_work [nvme_loop]
+[ 1204.858964] Call Trace:
+[ 1204.858967]  <TASK>
+[ 1204.858969]  dump_stack_lvl+0x48/0x5e
+[ 1204.858976]  should_fail.cold+0x32/0x37
+[ 1204.858980]  nvme_should_fail+0x38/0x90 [nvme_core]
+[ 1204.858992]  nvme_loop_queue_response+0xc9/0x143 [nvme_loop]
+[ 1204.858996]  nvmet_req_complete+0x11/0x50 [nvmet]
+[ 1204.859004]  process_one_work+0x1af/0x380
+[ 1204.859009]  ? rescuer_thread+0x370/0x370
+[ 1204.859011]  worker_thread+0x50/0x3a0
+[ 1204.859014]  ? rescuer_thread+0x370/0x370
+[ 1204.859016]  kthread+0xe7/0x110
+[ 1204.859019]  ? kthread_complete_and_exit+0x20/0x20
+[ 1204.859023]  ret_from_fork+0x22/0x30
+[ 1204.859029]  </TASK>
+[ 1204.859034] nvme1: Identify(0x6), Access Denied (sct 0x2 / sc 0x86) DNR 
+[ 1204.863418] FAULT_INJECTION: forcing a failure.
+               name fault_inject, interval 1, probability 100, space 0, times 999
+[ 1204.863427] CPU: 19 PID: 353 Comm: kworker/19:1 Tainted: G           OE     5.17.0-rc2nvme+ #68
+[ 1204.863430] Hardware name: QEMU Standard PC (i440FX + PIIX, 1996), BIOS rel-1.14.0-0-g155821a1990b-prebuilt.qemu.org 04/01/2014
+[ 1204.863432] Workqueue: nvmet-wq nvme_loop_execute_work [nvme_loop]
+[ 1204.863441] Call Trace:
+[ 1204.863444]  <TASK>
+[ 1204.863446]  dump_stack_lvl+0x48/0x5e
+[ 1204.863453]  should_fail.cold+0x32/0x37
+[ 1204.863458]  nvme_should_fail+0x38/0x90 [nvme_core]
+[ 1204.863470]  nvme_loop_queue_response+0xc9/0x143 [nvme_loop]
+[ 1204.863474]  nvmet_req_complete+0x11/0x50 [nvmet]
+[ 1204.863483]  process_one_work+0x1af/0x380
+[ 1204.863488]  worker_thread+0x50/0x3a0
+[ 1204.863490]  ? rescuer_thread+0x370/0x370
+[ 1204.863492]  kthread+0xe7/0x110
+[ 1204.863496]  ? kthread_complete_and_exit+0x20/0x20
+[ 1204.863499]  ret_from_fork+0x22/0x30
+[ 1204.863505]  </TASK>
+[ 1204.863512] nvme1: Identify(0x6), Access Denied (sct 0x2 / sc 0x86) DNR 
++ NQN=testnqn
+

@@ -1,0 +1,58 @@
+From 760c0d35affb8980dba2dc1026bb4477f13b8f69 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Sat, 18 Apr 2020 22:27:22 -0700
+Subject: [PATCH 0/6] nvmet: configfs code clenaup and fix
+
+Hi,
+
+Over a period of time, configfs added different attributes and groups.
+These groups and attributes have common type to name mapping
+functionality with code and identical structures (see [1], [2] & [3]).
+Where [1] and [2] adds a different structure which can be made generic
+and can be resued by [3].
+
+This patch-series adds a new generic structure for type to name mapping
+which then used in the [1], [2] and [3] to align the code for 
+consistency with removing the code duplication of
+struct nvmet_transport name and struct nvmet_ana_state_names.
+We also introduce a pattern with for-loop-compare-success-return with
+type name map.
+
+In short we address following points :-
+
+1. Introducing generic type (identifier) to name (string) structure
+   nvmet_type_name_map, by removing the private per attribute
+   specific structures (nvmet_transport_name & nvmet_ana_state_names)
+   for defining the type to name mapping.
+2. Keeping the code consistent with the use of for loop and type-name
+   struct array iteration instead of the duplicating strings in if/else
+   latter and switch.
+3. Having consistent coding pattern for type-name
+   for-loop-check-success-return so that future introduction(s) of per
+   attribute type-name will not add inconsistencies.
+
+Regards,
+Chaitanya
+
+[1] struct nvmet_transport_name :- 
+commit <a5d18612295a0>("nvmet: refactor configfs transport type handling")
+[2] struct nvmet_ana_state_names :- 
+commit <62ac0d32f74ea>("nvmet: support configuring ANA groups")
+[3] nvmet_addr_adrfam_[store|show] :-
+commit <a07b4970f464f>(" nvmet: add a generic NVMe target")
+
+Chaitanya Kulkarni (6):
+  nvmet: add generic type-name mapping
+  nvmet: use type-name map for address family
+  nvmet: use type-name map for ana states
+  nvmet: use type-name map for address treq
+  nvmet: centralize port enable access for configfs
+  nvmet: align addrfam list to spec
+
+ drivers/nvme/target/configfs.c | 225 +++++++++++++++++----------------
+ include/linux/nvme.h           |   2 +
+ 2 files changed, 116 insertions(+), 111 deletions(-)
+
+-- 
+2.22.1
+

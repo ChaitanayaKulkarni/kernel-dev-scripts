@@ -1,0 +1,52 @@
+From 93914f9ed43e7974294dc815ce6ed68c99044f16 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Fri, 8 Apr 2022 15:50:10 -0700
+Subject: [PATCH V2 2/2] nvme-core: check non-mdts only for I/O ctrl
+
+Validate the controller type is NVME_CTRL_IO before checking the
+non mdts limits, as we don't support I/O command set for discovery and
+admin ctrl, this also masks the following warning reported by the
+nvme_log_error() when running blktest nvme/002: -
+
+[ 2005.155946] run blktests nvme/002 at 2022-04-09 16:57:47
+[ 2005.192223] loop: module loaded
+[ 2005.196429] nvmet: adding nsid 1 to subsystem blktests-subsystem-0
+[ 2005.200334] nvmet: adding nsid 1 to subsystem blktests-subsystem-1
+
+<------------------------------SNIP---------------------------------->
+
+[ 2008.958108] nvmet: adding nsid 1 to subsystem blktests-subsystem-997
+[ 2008.962082] nvmet: adding nsid 1 to subsystem blktests-subsystem-998
+[ 2008.966102] nvmet: adding nsid 1 to subsystem blktests-subsystem-999
+[ 2008.973132] nvmet: creating discovery controller 1 for subsystem nqn.2014-08.org.nvmexpress.discovery for NQN testhostnqn.
+*[ 2008.973196] nvme1: Identify(0x6), Invalid Field in Command (sct 0x0 / sc 0x2) MORE DNR*
+[ 2008.974595] nvme nvme1: new ctrl: "nqn.2014-08.org.nvmexpress.discovery"
+[ 2009.103248] nvme nvme1: Removing ctrl: NQN "nqn.2014-08.org.nvmexpress.discovery"
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/host/core.c | 8 +++++---
+ 1 file changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index e8d6a1e52083..913eb4cec048 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -3101,9 +3101,11 @@ int nvme_init_ctrl_finish(struct nvme_ctrl *ctrl)
+ 	if (ret)
+ 		return ret;
+ 
+-	ret = nvme_init_non_mdts_limits(ctrl);
+-	if (ret < 0)
+-		return ret;
++	if (ctrl->cntrltype == NVME_CTRL_IO) {
++		ret = nvme_init_non_mdts_limits(ctrl);
++		if (ret < 0)
++			return ret;
++	}
+ 
+ 	ret = nvme_configure_apst(ctrl);
+ 	if (ret < 0)
+-- 
+2.29.0
+

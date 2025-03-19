@@ -1,0 +1,128 @@
+From c99dca1f4343a32a6f79d2c5e068984b29238a1a Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Mon, 7 Dec 2020 12:51:37 -0800
+Subject: [PATCH 4/5] nvmet: add NVM command set identifier support
+
+NVMe TP 4056 allows controller to support different command sets.
+NVMe currently only supports namespaces that contain traditional
+logical blocks that may be randomly read and written. In some
+applications there is value in exposing namespaces that contain
+logical blocks that have special access rules 
+(e.g. sequentially write required namespace such as Zoned Namespace
+(ZNS)). 
+
+In order to support the Zoned Block Devices (ZBD) backend, controller
+needs to have support for ZNS Command Set Identifier (CSI).
+
+In the preparation patch we adjust the code such that it can now
+support different command sets. We update the namespace data
+structure to store the CSI value which defaults to NVME_CSI_NVM
+(default command set supported by the controller).
+
+The CSI support is required to implement the ZNS, since ZNS commands
+belongs to different command set than the default one.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/admin-cmd.c | 33 ++++++++++++++++++++-------------
+ drivers/nvme/target/core.c      | 13 ++++++++++++-
+ drivers/nvme/target/nvmet.h     |  1 +
+ 3 files changed, 33 insertions(+), 14 deletions(-)
+
+diff --git a/drivers/nvme/target/admin-cmd.c b/drivers/nvme/target/admin-cmd.c
+index 380c4f2d636c..162773a6c3ec 100644
+--- a/drivers/nvme/target/admin-cmd.c
++++ b/drivers/nvme/target/admin-cmd.c
+@@ -177,19 +177,26 @@ static void nvmet_execute_get_log_cmd_effects_ns(struct nvmet_req *req)
+ 	if (!log)
+ 		goto out;
+ 
+-	log->acs[nvme_admin_get_log_page]	= cpu_to_le32(1 << 0);
+-	log->acs[nvme_admin_identify]		= cpu_to_le32(1 << 0);
+-	log->acs[nvme_admin_abort_cmd]		= cpu_to_le32(1 << 0);
+-	log->acs[nvme_admin_set_features]	= cpu_to_le32(1 << 0);
+-	log->acs[nvme_admin_get_features]	= cpu_to_le32(1 << 0);
+-	log->acs[nvme_admin_async_event]	= cpu_to_le32(1 << 0);
+-	log->acs[nvme_admin_keep_alive]		= cpu_to_le32(1 << 0);
+-
+-	log->iocs[nvme_cmd_read]		= cpu_to_le32(1 << 0);
+-	log->iocs[nvme_cmd_write]		= cpu_to_le32(1 << 0);
+-	log->iocs[nvme_cmd_flush]		= cpu_to_le32(1 << 0);
+-	log->iocs[nvme_cmd_dsm]			= cpu_to_le32(1 << 0);
+-	log->iocs[nvme_cmd_write_zeroes]	= cpu_to_le32(1 << 0);
++	switch (req->cmd->get_log_page.csi) {
++	case NVME_CSI_NVM:
++		log->acs[nvme_admin_get_log_page]	= cpu_to_le32(1 << 0);
++		log->acs[nvme_admin_identify]		= cpu_to_le32(1 << 0);
++		log->acs[nvme_admin_abort_cmd]		= cpu_to_le32(1 << 0);
++		log->acs[nvme_admin_set_features]	= cpu_to_le32(1 << 0);
++		log->acs[nvme_admin_get_features]	= cpu_to_le32(1 << 0);
++		log->acs[nvme_admin_async_event]	= cpu_to_le32(1 << 0);
++		log->acs[nvme_admin_keep_alive]		= cpu_to_le32(1 << 0);
++
++		log->iocs[nvme_cmd_read]		= cpu_to_le32(1 << 0);
++		log->iocs[nvme_cmd_write]		= cpu_to_le32(1 << 0);
++		log->iocs[nvme_cmd_flush]		= cpu_to_le32(1 << 0);
++		log->iocs[nvme_cmd_dsm]			= cpu_to_le32(1 << 0);
++		log->iocs[nvme_cmd_write_zeroes]	= cpu_to_le32(1 << 0);
++		break;
++	default:
++		status = NVME_SC_INVALID_LOG_PAGE;
++		break;
++	}
+ 
+ 	status = nvmet_copy_to_sgl(req, 0, log, sizeof(*log));
+ 
+diff --git a/drivers/nvme/target/core.c b/drivers/nvme/target/core.c
+index 8ce4d59cc9e7..672e4009f8d6 100644
+--- a/drivers/nvme/target/core.c
++++ b/drivers/nvme/target/core.c
+@@ -681,6 +681,7 @@ struct nvmet_ns *nvmet_ns_alloc(struct nvmet_subsys *subsys, u32 nsid)
+ 
+ 	uuid_gen(&ns->uuid);
+ 	ns->buffered_io = false;
++	ns->csi = NVME_CSI_NVM;
+ 
+ 	return ns;
+ }
+@@ -1103,6 +1104,16 @@ static inline u8 nvmet_cc_iocqes(u32 cc)
+ 	return (cc >> NVME_CC_IOCQES_SHIFT) & 0xf;
+ }
+ 
++static inline bool nvmet_cc_css_check(u8 cc_css)
++{
++	switch (cc_css <<= NVME_CC_CSS_SHIFT) {
++	case NVME_CC_CSS_NVM:
++		return true;
++	default:
++		return false;
++	}
++}
++
+ static void nvmet_start_ctrl(struct nvmet_ctrl *ctrl)
+ {
+ 	lockdep_assert_held(&ctrl->lock);
+@@ -1111,7 +1122,7 @@ static void nvmet_start_ctrl(struct nvmet_ctrl *ctrl)
+ 	    nvmet_cc_iocqes(ctrl->cc) != NVME_NVM_IOCQES ||
+ 	    nvmet_cc_mps(ctrl->cc) != 0 ||
+ 	    nvmet_cc_ams(ctrl->cc) != 0 ||
+-	    nvmet_cc_css(ctrl->cc) != 0) {
++	    !nvmet_cc_css_check(nvmet_cc_css(ctrl->cc))) {
+ 		ctrl->csts = NVME_CSTS_CFS;
+ 		return;
+ 	}
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index 4cb4cdae858c..0360594abd93 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -81,6 +81,7 @@ struct nvmet_ns {
+ 	struct pci_dev		*p2p_dev;
+ 	int			pi_type;
+ 	int			metadata_size;
++	u8			csi;
+ };
+ 
+ static inline struct nvmet_ns *to_nvmet_ns(struct config_item *item)
+-- 
+2.22.1
+

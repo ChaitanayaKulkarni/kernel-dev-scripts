@@ -1,0 +1,19 @@
+From c3827e6b16f6f90918b443ed33304fe6ce3ac68f Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Tue, 13 Feb 2024 19:29:56 -0800
+Subject: [PATCH V2 0/2] *** SUBJECT HERE ***
+
+*** BLURB HERE ***
+
+Chaitanya Kulkarni (2):
+  nvme-fabrics: factor out auth code into helper
+  nvme-fabrics: use post connect auth helper
+
+ drivers/nvme/host/auth.c    | 32 ++++++++++++++++++++++++
+ drivers/nvme/host/fabrics.c | 49 ++-----------------------------------
+ drivers/nvme/host/nvme.h    |  8 ++++++
+ 3 files changed, 42 insertions(+), 47 deletions(-)
+
+-- 
+2.40.0
+

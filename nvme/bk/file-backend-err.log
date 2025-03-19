@@ -1,0 +1,14 @@
+nvme/011 (run data verification fio job on NVMeOF file-backed ns) [failed]
+    runtime  276.607s  ...  290.146s
+    something found in dmesg:
+    [  918.793327] run blktests nvme/011 at 2021-04-15 20:09:07
+    [  918.856267] nvmet: adding nsid 1 to subsystem blktests-subsystem-1
+    [  918.888212] nvmet: creating controller 1 for subsystem blktests-subsystem-1 for NQN nqn.2014-08.org.nvmexpress:uuid:e4cfc949-8f19-4db2-a232-ab360b79204a.
+    [  918.889535] nvme nvme1: Please enable CONFIG_NVME_MULTIPATH for full support of multi-port devices.
+    [  918.889591] nvmet: unhandled identify cns 6 on qid 0
+    [  918.891315] nvme nvme1: creating 64 I/O queues.
+    [  918.911644] nvme nvme1: new ctrl: "blktests-subsystem-1"
+    [ 1182.068069] nvme nvme1: Removing ctrl: NQN "blktests-subsystem-1"
+    [ 1183.517761] ------------[ cut here ]------------
+    [ 1183.517886] raw_local_irq_restore() called with IRQs enabled
+    ...

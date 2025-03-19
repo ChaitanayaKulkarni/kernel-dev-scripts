@@ -1,0 +1,154 @@
+From fe80411945e719df3bcfc29581a405cbeb0da43e Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Fri, 7 Apr 2023 17:14:40 -0700
+Subject: [PATCH 1/2] nvmet: allow bdev-ns to be cleared on enable
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/target/configfs.c    | 33 +++++++++++++++++++++++++++++++
+ drivers/nvme/target/core.c        | 13 ++++++++++++
+ drivers/nvme/target/io-cmd-bdev.c | 18 +++++++++++++++++
+ drivers/nvme/target/nvmet.h       |  2 ++
+ 4 files changed, 66 insertions(+)
+
+diff --git a/drivers/nvme/target/configfs.c b/drivers/nvme/target/configfs.c
+index 907143870da5..609df571eb45 100644
+--- a/drivers/nvme/target/configfs.c
++++ b/drivers/nvme/target/configfs.c
+@@ -600,6 +600,38 @@ static ssize_t nvmet_ns_revalidate_size_store(struct config_item *item,
+ 
+ CONFIGFS_ATTR_WO(nvmet_ns_, revalidate_size);
+ 
++static ssize_t nvmet_ns_clear_show(struct config_item *item, char *page)
++{
++	return sprintf(page, "%d\n", to_nvmet_ns(item)->clear);
++}
++
++/*
++ * Setting clear attribute will trigger zeroout operation on the ns,
++ * that will take longer time to enable the namespace.
++ */
++static ssize_t nvmet_ns_clear_store(struct config_item *item,
++		const char *page, size_t count)
++{
++	struct nvmet_ns *ns = to_nvmet_ns(item);
++	bool val;
++
++	if (kstrtobool(page, &val))
++		return -EINVAL;
++
++	mutex_lock(&ns->subsys->lock);
++	if (ns->enabled) {
++		pr_err("disable ns before setting clear value.\n");
++		mutex_unlock(&ns->subsys->lock);
++		return -EINVAL;
++	}
++
++	ns->clear = val;
++	mutex_unlock(&ns->subsys->lock);
++	return count;
++}
++
++CONFIGFS_ATTR(nvmet_ns_, clear);
++
+ static struct configfs_attribute *nvmet_ns_attrs[] = {
+ 	&nvmet_ns_attr_device_path,
+ 	&nvmet_ns_attr_device_nguid,
+@@ -608,6 +640,7 @@ static struct configfs_attribute *nvmet_ns_attrs[] = {
+ 	&nvmet_ns_attr_enable,
+ 	&nvmet_ns_attr_buffered_io,
+ 	&nvmet_ns_attr_revalidate_size,
++	&nvmet_ns_attr_clear,
+ #ifdef CONFIG_PCI_P2PDMA
+ 	&nvmet_ns_attr_p2pmem,
+ #endif
+diff --git a/drivers/nvme/target/core.c b/drivers/nvme/target/core.c
+index 3935165048e7..cce17ab6ecbb 100644
+--- a/drivers/nvme/target/core.c
++++ b/drivers/nvme/target/core.c
+@@ -549,6 +549,14 @@ bool nvmet_ns_revalidate(struct nvmet_ns *ns)
+ 	return oldsize != ns->size;
+ }
+ 
++int nvmet_clear_ns(struct nvmet_ns *ns)
++{
++	if (ns->bdev)
++		return nvmet_bdev_ns_clear(ns);
++
++	return -ENOTSUPP;
++}
++
+ int nvmet_ns_enable(struct nvmet_ns *ns)
+ {
+ 	struct nvmet_subsys *subsys = ns->subsys;
+@@ -595,6 +603,10 @@ int nvmet_ns_enable(struct nvmet_ns *ns)
+ 	if (ret)
+ 		goto out_restore_subsys_maxnsid;
+ 
++	ret = nvmet_clear_ns(ns);
++	if (ret)
++		goto out_restore_subsys_maxnsid;
++
+ 	subsys->nr_namespaces++;
+ 
+ 	nvmet_ns_changed(subsys, ns->nsid);
+@@ -688,6 +700,7 @@ struct nvmet_ns *nvmet_ns_alloc(struct nvmet_subsys *subsys, u32 nsid)
+ 
+ 	uuid_gen(&ns->uuid);
+ 	ns->buffered_io = false;
++	ns->clear = false;
+ 	ns->csi = NVME_CSI_NVM;
+ 
+ 	return ns;
+diff --git a/drivers/nvme/target/io-cmd-bdev.c b/drivers/nvme/target/io-cmd-bdev.c
+index c2d6cea0236b..5d7ea5338a7a 100644
+--- a/drivers/nvme/target/io-cmd-bdev.c
++++ b/drivers/nvme/target/io-cmd-bdev.c
+@@ -119,6 +119,24 @@ void nvmet_bdev_ns_revalidate(struct nvmet_ns *ns)
+ 	ns->size = bdev_nr_bytes(ns->bdev);
+ }
+ 
++int nvmet_bdev_ns_clear(struct nvmet_ns *ns)
++{
++	sector_t nr_sector = bdev_nr_sectors(ns->bdev);
++	sector_t sector = 0;
++	struct bio *bio = NULL;
++	int ret;
++
++	ret = __blkdev_issue_zeroout(ns->bdev, sector, nr_sector,
++			GFP_KERNEL, &bio, 0);
++	if (bio) {
++		ret = submit_bio_wait(bio);
++		if (ret)
++			pr_err("%s error: %d\n", __func__, ret);
++	}
++
++	return ret;
++}
++
+ u16 blk_to_nvme_status(struct nvmet_req *req, blk_status_t blk_sts)
+ {
+ 	u16 status = NVME_SC_SUCCESS;
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index dc60a22646f7..7b7778f413ee 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -70,6 +70,7 @@ struct nvmet_ns {
+ 
+ 	bool			buffered_io;
+ 	bool			enabled;
++	bool			clear;
+ 	struct nvmet_subsys	*subsys;
+ 	const char		*device_path;
+ 
+@@ -577,6 +578,7 @@ u16 nvmet_file_flush(struct nvmet_req *req);
+ void nvmet_ns_changed(struct nvmet_subsys *subsys, u32 nsid);
+ void nvmet_bdev_ns_revalidate(struct nvmet_ns *ns);
+ void nvmet_file_ns_revalidate(struct nvmet_ns *ns);
++int nvmet_bdev_ns_clear(struct nvmet_ns *ns);
+ bool nvmet_ns_revalidate(struct nvmet_ns *ns);
+ u16 blk_to_nvme_status(struct nvmet_req *req, blk_status_t blk_sts);
+ 
+-- 
+2.29.0
+

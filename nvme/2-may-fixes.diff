@@ -1,0 +1,52 @@
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index 56295fb14691..d2ed8ffe1f49 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -3814,8 +3814,10 @@ static ssize_t nvme_dhchap_secret_store_common(struct nvme_ctrl *ctrl,
+ 		int ret;
+ 
+ 		ret = nvme_auth_generate_key(new_dhchap_secret, &new_key);
+-		if (ret)
++		if (ret) {
++			kfree(new_dhchap_secret);
+ 			return ret;
++		}
+ 		kfree(*dhchap_secret);
+ 		*dhchap_secret = new_dhchap_secret;
+ 		prev_host_key = *orig_key;
+@@ -3823,7 +3825,8 @@ static ssize_t nvme_dhchap_secret_store_common(struct nvme_ctrl *ctrl,
+ 		*orig_key = new_key;
+ 		mutex_unlock(&ctrl->dhchap_auth_mutex);
+ 		nvme_auth_free_key(prev_host_key);
+-	}
++	} else
++		kfree(new_dhchap_secret);
+ 	/* Start re-authentication */
+ 	dev_info(ctrl->device, "re-authenticating controller\n");
+ 	queue_work(nvme_wq, &ctrl->dhchap_auth_work);
+@@ -5105,6 +5108,10 @@ int nvme_init_ctrl(struct nvme_ctrl *ctrl, struct device *dev,
+ 
+ 	BUILD_BUG_ON(NVME_DSM_MAX_RANGES * sizeof(struct nvme_dsm_range) >
+ 			PAGE_SIZE);
++	ret = nvme_auth_init_ctrl(ctrl);
++	if (ret)
++		return ret;
++
+ 	ctrl->discard_page = alloc_page(GFP_KERNEL);
+ 	if (!ctrl->discard_page)
+ 		return -ENOMEM;
+@@ -5147,13 +5154,8 @@ int nvme_init_ctrl(struct nvme_ctrl *ctrl, struct device *dev,
+ 
+ 	nvme_fault_inject_init(&ctrl->fault_inject, dev_name(ctrl->device));
+ 	nvme_mpath_init_ctrl(ctrl);
+-	ret = nvme_auth_init_ctrl(ctrl);
+-	if (ret)
+-		goto out_free_cdev;
+-
+ 	return 0;
+-out_free_cdev:
+-	cdev_device_del(&ctrl->cdev, ctrl->device);
++
+ out_free_name:
+ 	nvme_put_ctrl(ctrl);
+ 	kfree_const(ctrl->device->kobj.name);

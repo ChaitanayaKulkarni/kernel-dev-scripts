@@ -1,0 +1,19 @@
+From 311f499b28da9ada0d1c2f7eb6a3d081d8fefba7 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Thu, 8 Feb 2024 02:16:19 -0800
+Subject: [PATCH 0/4] *** SUBJECT HERE ***
+
+*** BLURB HERE ***
+
+Chaitanya Kulkarni (4):
+  nvme-fabrics: fix I/O connect error handling
+  nvme-fabrics: add macro to define connect flags
+  nvme-fabrics: don't repeat HCTX_TYPE_DEFAULT code
+  nvme-fabrics: err out on request_module failure
+
+ drivers/nvme/host/fabrics.c | 33 +++++++++++++++------------------
+ 1 file changed, 15 insertions(+), 18 deletions(-)
+
+-- 
+2.40.0
+

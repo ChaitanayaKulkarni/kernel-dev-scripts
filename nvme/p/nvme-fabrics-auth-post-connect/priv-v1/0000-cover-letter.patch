@@ -1,0 +1,228 @@
+From 9a2ec0ea3067a75a07b1158d09beacb46e0d1a0b Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Fri, 26 Jan 2024 00:58:57 -0800
+Subject: [PATCH 0/2] nvme-fabrics: auth connect code cleanup 
+
+Hi Hannes,
+
+Post I/O and admin connect command authentication handling code is
+repeated into in nvmf_connect_admin_queue() and nvmf_connect_io_queue().
+
+This adds a helper to handle post connect command authentication. Use 
+the same helper in nvmf_connect_admin_queue() and moves authentication
+handling code into nvme/host/auth.c, where it truly belongs.
+
+Since it's a cleanup, I really don't want to add traffic to the list 
+unless you are okay with it. I ran the blktests on this they are
+passing :-
+
+blktests (master) # for i in 1 2 3 4 5; do ./check nvme/04$i; done 
+nvme/041 (Create authenticated connections)                  [passed]
+    runtime  2.044s  ...  2.059s
+nvme/042 (Test dhchap key types for authenticated connections) [passed]
+    runtime  5.930s  ...  5.958s
+nvme/043 (Test hash and DH group variations for authenticated connections) [passed]
+    runtime  35.751s  ...  32.126s
+nvme/044 (Test bi-directional authentication)                [passed]
+    runtime  4.277s  ...  4.628s
+nvme/045 (Test re-authentication)                            [passed]
+    runtime  1.863s  ...  2.454s
+blktests (master) # 
+
+Below is the detailed log, what do you think ? 
+
+-ck
+
+Chaitanya Kulkarni (2):
+  nvme-fabrics: factor out auth code into helper
+  nvme-fabrics: use post connect auth helper
+
+ drivers/nvme/host/auth.c    | 32 ++++++++++++++++++++++++
+ drivers/nvme/host/fabrics.c | 50 ++-----------------------------------
+ drivers/nvme/host/nvme.h    |  6 +++++
+ 3 files changed, 40 insertions(+), 48 deletions(-)
+
+nvme (nvme-6.8) # git am 24jan/nvme-fabrics-auth-post-connect/*patch
+Patch is empty.
+When you have resolved this problem, run "git am --continue".
+If you prefer to skip this patch, run "git am --skip" instead.
+To record the empty patch as an empty commit, run "git am --allow-empty".
+To restore the original branch and stop patching, run "git am --abort".
+
+nvme (nvme-6.8) # git am --skip
+Applying: nvme-fabrics: factor out auth code into helper
+Applying: nvme-fabrics: use post connect auth helper
+nvme (nvme-6.8) # ./compile_nvme.sh 
++ umount /mnt/nvme0n1
++ clear_dmesg
+./compile_nvme.sh: line 3: clear_dmesg: command not found
+umount: /mnt/nvme0n1: no mount point specified.
++ ./delete.sh
++ NQN=testnqn
++ nvme disconnect -n testnqn
+NQN:testnqn disconnected 0 controller(s)
+
+real	0m0.005s
+user	0m0.000s
+sys	0m0.005s
++ rm -fr '/sys/kernel/config/nvmet/ports/1/subsystems/*'
++ rmdir /sys/kernel/config/nvmet/ports/1
+rmdir: failed to remove '/sys/kernel/config/nvmet/ports/1': No such file or directory
++ for subsys in /sys/kernel/config/nvmet/subsystems/*
++ for ns in ${subsys}/namespaces/*
++ echo 0
+./delete.sh: line 14: /sys/kernel/config/nvmet/subsystems/*/namespaces/*/enable: No such file or directory
++ rmdir '/sys/kernel/config/nvmet/subsystems/*/namespaces/*'
+rmdir: failed to remove '/sys/kernel/config/nvmet/subsystems/*/namespaces/*': No such file or directory
++ rmdir '/sys/kernel/config/nvmet/subsystems/*'
+rmdir: failed to remove '/sys/kernel/config/nvmet/subsystems/*': No such file or directory
++ rmdir 'config/nullb/nullb*'
+rmdir: failed to remove 'config/nullb/nullb*': No such file or directory
++ umount /mnt/nvme0n1
+umount: /mnt/nvme0n1: no mount point specified.
++ umount /mnt/backend
+umount: /mnt/backend: not mounted.
++ modprobe -r nvme_loop
++ modprobe -r nvme_fabrics
++ modprobe -r nvmet
++ modprobe -r nvme
++ modprobe -r null_blk
++ tree /sys/kernel/config
+/sys/kernel/config
+└── pci_ep
+    ├── controllers
+    └── functions
+
+3 directories, 0 files
++ sleep 1
++ modprobe -r nvme-core
++ lsmod
++ grep nvme
++ sleep 1
++ git diff
+++ nproc
++ make -j 48 M=drivers/nvme/target/ clean
+++ nproc
++ make -j 48 M=drivers/nvme/host/ clean
+++ nproc
++ make -j 48 M=drivers/nvme/ modules
+  CC [M]  drivers/nvme/target/core.o
+  CC [M]  drivers/nvme/host/core.o
+  CC [M]  drivers/nvme/common/auth.o
+  CC [M]  drivers/nvme/target/configfs.o
+  CC [M]  drivers/nvme/host/sysfs.o
+  CC [M]  drivers/nvme/host/ioctl.o
+  CC [M]  drivers/nvme/target/admin-cmd.o
+  CC [M]  drivers/nvme/host/pr.o
+  CC [M]  drivers/nvme/target/fabrics-cmd.o
+  CC [M]  drivers/nvme/host/constants.o
+  CC [M]  drivers/nvme/target/discovery.o
+  CC [M]  drivers/nvme/host/trace.o
+  CC [M]  drivers/nvme/target/io-cmd-file.o
+  CC [M]  drivers/nvme/host/multipath.o
+  CC [M]  drivers/nvme/target/io-cmd-bdev.o
+  CC [M]  drivers/nvme/host/zns.o
+  CC [M]  drivers/nvme/target/passthru.o
+  CC [M]  drivers/nvme/host/fault_inject.o
+  CC [M]  drivers/nvme/target/zns.o
+  CC [M]  drivers/nvme/host/hwmon.o
+  CC [M]  drivers/nvme/target/fabrics-cmd-auth.o
+  CC [M]  drivers/nvme/target/trace.o
+  CC [M]  drivers/nvme/target/auth.o
+  CC [M]  drivers/nvme/host/auth.o
+  CC [M]  drivers/nvme/host/pci.o
+  CC [M]  drivers/nvme/host/fabrics.o
+  CC [M]  drivers/nvme/target/loop.o
+  CC [M]  drivers/nvme/host/rdma.o
+  CC [M]  drivers/nvme/target/rdma.o
+  CC [M]  drivers/nvme/target/fc.o
+  CC [M]  drivers/nvme/host/fc.o
+  CC [M]  drivers/nvme/host/tcp.o
+  CC [M]  drivers/nvme/target/fcloop.o
+  CC [M]  drivers/nvme/target/tcp.o
+  LD [M]  drivers/nvme/common/nvme-auth.o
+  LD [M]  drivers/nvme/target/nvme-loop.o
+  LD [M]  drivers/nvme/host/nvme-fabrics.o
+  LD [M]  drivers/nvme/target/nvmet-fc.o
+  LD [M]  drivers/nvme/target/nvme-fcloop.o
+  LD [M]  drivers/nvme/target/nvmet.o
+  LD [M]  drivers/nvme/host/nvme-fc.o
+  LD [M]  drivers/nvme/host/nvme.o
+  LD [M]  drivers/nvme/target/nvmet-rdma.o
+  LD [M]  drivers/nvme/host/nvme-rdma.o
+  LD [M]  drivers/nvme/target/nvmet-tcp.o
+  LD [M]  drivers/nvme/host/nvme-tcp.o
+  LD [M]  drivers/nvme/host/nvme-core.o
+  MODPOST drivers/nvme/Module.symvers
+  LD [M]  drivers/nvme/common/nvme-auth.ko
+  CC [M]  drivers/nvme/host/nvme-core.mod.o
+  CC [M]  drivers/nvme/host/nvme.mod.o
+  CC [M]  drivers/nvme/host/nvme-fabrics.mod.o
+  CC [M]  drivers/nvme/host/nvme-rdma.mod.o
+  CC [M]  drivers/nvme/host/nvme-fc.mod.o
+  CC [M]  drivers/nvme/host/nvme-tcp.mod.o
+  CC [M]  drivers/nvme/target/nvmet.mod.o
+  CC [M]  drivers/nvme/target/nvme-loop.mod.o
+  CC [M]  drivers/nvme/target/nvmet-rdma.mod.o
+  CC [M]  drivers/nvme/target/nvme-fcloop.mod.o
+  CC [M]  drivers/nvme/target/nvmet-fc.mod.o
+  CC [M]  drivers/nvme/target/nvmet-tcp.mod.o
+  LD [M]  drivers/nvme/target/nvme-loop.ko
+  LD [M]  drivers/nvme/host/nvme-core.ko
+  LD [M]  drivers/nvme/host/nvme-fabrics.ko
+  LD [M]  drivers/nvme/target/nvmet.ko
+  LD [M]  drivers/nvme/target/nvme-fcloop.ko
+  LD [M]  drivers/nvme/target/nvmet-rdma.ko
+  LD [M]  drivers/nvme/host/nvme-tcp.ko
+  LD [M]  drivers/nvme/host/nvme.ko
+  LD [M]  drivers/nvme/target/nvmet-fc.ko
+  LD [M]  drivers/nvme/host/nvme-rdma.ko
+  LD [M]  drivers/nvme/host/nvme-fc.ko
+  LD [M]  drivers/nvme/target/nvmet-tcp.ko
++ HOST=drivers/nvme/host
++ TARGET=drivers/nvme/target
+++ uname -r
++ HOST_DEST=/lib/modules/6.8.0-rc1nvme+/kernel/drivers/nvme/host/
+++ uname -r
++ TARGET_DEST=/lib/modules/6.8.0-rc1nvme+/kernel/drivers/nvme/target/
++ cp drivers/nvme/host/nvme-core.ko drivers/nvme/host/nvme-fabrics.ko drivers/nvme/host/nvme-fc.ko drivers/nvme/host/nvme.ko drivers/nvme/host/nvme-rdma.ko drivers/nvme/host/nvme-tcp.ko /lib/modules/6.8.0-rc1nvme+/kernel/drivers/nvme/host//
++ cp drivers/nvme/target/nvme-fcloop.ko drivers/nvme/target/nvme-loop.ko drivers/nvme/target/nvmet-fc.ko drivers/nvme/target/nvmet.ko drivers/nvme/target/nvmet-rdma.ko drivers/nvme/target/nvmet-tcp.ko /lib/modules/6.8.0-rc1nvme+/kernel/drivers/nvme/target//
++ ls -lrth /lib/modules/6.8.0-rc1nvme+/kernel/drivers/nvme/host/ /lib/modules/6.8.0-rc1nvme+/kernel/drivers/nvme/target//
+/lib/modules/6.8.0-rc1nvme+/kernel/drivers/nvme/host/:
+total 912K
+-rw-r--r--. 1 root root 451K Jan 26 01:04 nvme-core.ko
+-rw-r--r--. 1 root root  55K Jan 26 01:04 nvme-fabrics.ko
+-rw-r--r--. 1 root root 112K Jan 26 01:04 nvme-fc.ko
+-rw-r--r--. 1 root root 114K Jan 26 01:04 nvme.ko
+-rw-r--r--. 1 root root  88K Jan 26 01:04 nvme-rdma.ko
+-rw-r--r--. 1 root root  86K Jan 26 01:04 nvme-tcp.ko
+
+/lib/modules/6.8.0-rc1nvme+/kernel/drivers/nvme/target//:
+total 724K
+-rw-r--r--. 1 root root  59K Jan 26 01:04 nvme-fcloop.ko
+-rw-r--r--. 1 root root  36K Jan 26 01:04 nvme-loop.ko
+-rw-r--r--. 1 root root  83K Jan 26 01:04 nvmet-fc.ko
+-rw-r--r--. 1 root root 390K Jan 26 01:04 nvmet.ko
+-rw-r--r--. 1 root root  83K Jan 26 01:04 nvmet-rdma.ko
+-rw-r--r--. 1 root root  65K Jan 26 01:04 nvmet-tcp.ko
++ sync
++ modprobe nvme
+nvme (nvme-6.8) # cdblket
+bash: cdblket: command not found...
+nvme (nvme-6.8) # cdblktests 
+blktests (master) # for i in 1 2 3 4 5; do ./check nvme/04$i; done 
+nvme/041 (Create authenticated connections)                  [passed]
+    runtime  2.044s  ...  2.059s
+nvme/042 (Test dhchap key types for authenticated connections) [passed]
+    runtime  5.930s  ...  5.958s
+nvme/043 (Test hash and DH group variations for authenticated connections) [passed]
+    runtime  35.751s  ...  32.126s
+nvme/044 (Test bi-directional authentication)                [passed]
+    runtime  4.277s  ...  4.628s
+nvme/045 (Test re-authentication)                            [passed]
+    runtime  1.863s  ...  2.454s
+blktests (master) # 
+
+-- 
+2.40.0
+

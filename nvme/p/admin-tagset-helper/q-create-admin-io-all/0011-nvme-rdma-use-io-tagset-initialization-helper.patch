@@ -1,0 +1,42 @@
+From 68d73c6ff5c8f8bd48d683fd601cca54f2d6fa03 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Sat, 22 Jan 2022 23:00:45 -0800
+Subject: [PATCH 11/14] nvme-rdma: use io tagset initialization helper
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/host/rdma.c | 13 ++++---------
+ 1 file changed, 4 insertions(+), 9 deletions(-)
+
+diff --git a/drivers/nvme/host/rdma.c b/drivers/nvme/host/rdma.c
+index 1195bb1d5b89..c2ac9039c684 100644
+--- a/drivers/nvme/host/rdma.c
++++ b/drivers/nvme/host/rdma.c
+@@ -806,20 +806,15 @@ static struct blk_mq_tag_set *nvme_rdma_alloc_tagset(struct nvme_ctrl *nctrl,
+ 				NVME_RDMA_DATA_SGL_SIZE;
+ 	} else {
+ 		set = &ctrl->tag_set;
+-		memset(set, 0, sizeof(*set));
+-		set->ops = &nvme_rdma_mq_ops;
+-		set->queue_depth = nctrl->sqsize + 1;
+-		set->reserved_tags = NVMF_RESERVED_TAGS;
+-		set->numa_node = nctrl->numa_node;
+-		set->flags = BLK_MQ_F_SHOULD_MERGE;
++		nvme_init_io_tagset(set, ctrl, nctrl->numa_node,
++				    &nvme_rdma_mq_ops, BLK_MQ_F_SHOULD_MERGE,
++				    NVMF_RESERVED_TAGS, nctrl->queue_count - 1,
++				    nctrl->sqsize + 1);
+ 		set->cmd_size = sizeof(struct nvme_rdma_request) +
+ 				NVME_RDMA_DATA_SGL_SIZE;
+ 		if (nctrl->max_integrity_segments)
+ 			set->cmd_size += sizeof(struct nvme_rdma_sgl) +
+ 					 NVME_RDMA_METADATA_SGL_SIZE;
+-		set->driver_data = ctrl;
+-		set->nr_hw_queues = nctrl->queue_count - 1;
+-		set->timeout = NVME_IO_TIMEOUT;
+ 		set->nr_maps = nctrl->opts->nr_poll_queues ? HCTX_MAX_TYPES : 2;
+ 	}
+ 
+-- 
+2.29.0
+

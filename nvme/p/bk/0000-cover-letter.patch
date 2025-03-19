@@ -1,0 +1,20 @@
+From 04c76ddf82521abe1d1068e5950735651065b68f Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Fri, 8 Apr 2022 16:00:54 -0700
+Subject: [PATCH 0/2] *** SUBJECT HERE ***
+
+*** BLURB HERE ***
+
+Chaitanya Kulkarni (2):
+  nvmet: handle admin default command set identifier
+  nvme-core: don't check non-mdts for disc ctrl
+
+ drivers/nvme/host/core.c        |  4 ++++
+ drivers/nvme/target/admin-cmd.c | 16 ++++++++--------
+ drivers/nvme/target/nvmet.h     |  2 +-
+ drivers/nvme/target/zns.c       |  2 +-
+ 4 files changed, 14 insertions(+), 10 deletions(-)
+
+-- 
+2.29.0
+

@@ -1,0 +1,39 @@
+From d70f3def2da5e20090b1afe2aec76c5b8725a308 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Wed, 16 Sep 2020 16:17:58 -0700
+Subject: [PATCH 1/2] nvmet: get transport reference for passthru ctrl
+
+Grab a reference to the transport driver to ensure it can't be unloaded
+while a passthrough controller is active.
+
+Fixes: c1fef73f793b ("nvmet: add passthru code to process commands")
+Reported-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Signed-off-by: Christoph Hellwig <hch@lst.de>
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/passthru.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/drivers/nvme/target/passthru.c b/drivers/nvme/target/passthru.c
+index 8bd7f656e240..dacfa7435d0b 100644
+--- a/drivers/nvme/target/passthru.c
++++ b/drivers/nvme/target/passthru.c
+@@ -517,6 +517,7 @@ int nvmet_passthru_ctrl_enable(struct nvmet_subsys *subsys)
+ 		subsys->ver = NVME_VS(1, 2, 1);
+ 	}
+ 
++	__module_get(subsys->passthru_ctrl->ops->module);
+ 	mutex_unlock(&subsys->lock);
+ 	return 0;
+ 
+@@ -531,6 +532,7 @@ static void __nvmet_passthru_ctrl_disable(struct nvmet_subsys *subsys)
+ {
+ 	if (subsys->passthru_ctrl) {
+ 		xa_erase(&passthru_subsystems, subsys->passthru_ctrl->cntlid);
++		module_put(subsys->passthru_ctrl->ops->module);
+ 		nvme_put_ctrl(subsys->passthru_ctrl);
+ 	}
+ 	subsys->passthru_ctrl = NULL;
+-- 
+2.22.1
+

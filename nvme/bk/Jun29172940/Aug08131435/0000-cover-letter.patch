@@ -1,0 +1,30 @@
+From 935905bc3dde0d1b411fd0a9b2b2fac47aeab86d Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Fri, 7 Aug 2020 23:01:44 -0700
+Subject: [PATCH 00/12] nvmet: passthru fixes
+
+*** BLURB HERE ***
+
+Chaitanya Kulkarni (12):
+  nvmet: for pt I/O cmds annotate req->sg_cnt likely
+  nvmet: for pt I/O commands use likely for ns check
+  nvmet: use consistent type with id->nlbaf
+  nvmet: use consistent type for op_flag
+  nvmet: get rid of the extra variable
+  nvmet: use unlikely for uncommon commands
+  nvmet: use nvme write cmd group setting op_flag
+  nvmet: prep patch for pt ctrl put wrapper
+  nvmet: fix nvme module ref count Oops
+  block: move blk_rq_bio_prep() to linux/blk-mq.h
+  nvmet: use minimized version of blk_rq_append_bio
+  nvmet: remove duplicate req completion code
+
+ block/blk.h                    | 12 -----
+ drivers/nvme/host/core.c       |  3 ++
+ drivers/nvme/target/passthru.c | 84 +++++++++++++++++++++-------------
+ include/linux/blk-mq.h         | 12 +++++
+ 4 files changed, 68 insertions(+), 43 deletions(-)
+
+-- 
+2.22.1
+

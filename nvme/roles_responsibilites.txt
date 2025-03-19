@@ -1,0 +1,192 @@
+
+Hi Jason,
+
+As promised last week here is roles and responsibilities that I've identified and contributed so far I've identified.
+
+1. NVIDIA work :-
+------------------------------------------------------------------------
+1.1. Upstream work (ordered with priority 1 being highest) :-
+************************************************************************
+1.1.1. GPU Direct storage :-
+    Work with Logan upstream and offline to make sure current p2p-DMA
+    patch-series gets merged, provided necessary review comments, ping
+    maintainers for reviews rough target is 5.17. Wait for Logan's
+    patch-series to get merged & reassess the GDS roadmap.
+1.1.2. Upstream NVIDIA Storage stack contribution/development:-
+    Review every single patch going into the NVMe-PCIe and NVMeOF
+    Kernel subsystem from NVIDIA. Provide internal reviews and get the
+    patches in good shape before they go upstream so they will be
+    accepted faster, also review every single patch going into userspace
+    ecosystem such as nvme-cli/nvmetcli/QEMU NVMe from NVIDIA.
+1.1.4. NVIDIA Specific feature requests from Vendors :-
+    Work with different vendors such as VAST Data to add new features
+    needed to make NVIDIA DPU more usable. Currently implementing
+    the block device cache support.
+1.1.5. Represent NVIDIA into NVMe Technical Working group :-
+    Attend the NVMe Technical working group weekly meeting and review
+    the Technical proposals from rest of vendors to enhance and drive
+    upstream NVMe/NVMeOF ecosystem in the right direction that is
+    beneficial for NVIDIA products such as DPU. Current plan is to
+    work on the technical proposal to support for the lightweight I/O
+    Priority that is missing from the NVMe Protocol and is much needed
+    for the cloud vendors.
+1.1.6. Continuously monitor any new features that are getting posted on
+    the linux-fsdevel, linux-xfs, linux-btrfs, linux-block, and
+    linux-nvme mailing list and figure out its impact on the NVIDIA
+    products such as DPU e.g. NVM Set RFC and in-band authentication RFC
+    posted by Amazons and Suse respectively.
+
+1.2. Internal (ordered with priority 1 being highest)  :-
+************************************************************************
+1.2.1. Work with Aviad's team and Saeed filing any missing pieces for
+    the TCP offload work.
+1.2.2. Integrate the blktests with the CI/CD framework as significant
+    test coverage is missing from the current CI/CD framework.
+1.2.3. Work with different teams in NVIDIA and find out use cases or
+       NVMe ecosystem e.g. Julie's Selene super computing team
+       as they are using NVMe Direct attached storage as Luster cache.
+
+1.3 Run following meetings until we finish the projects
+    (ordered with priority 1 being highest) :-
+************************************************************************
+1.3.1. Conduct a recurring meeting with Aviad's team for TCP offload
+    code to get merged.
+1.3.2. Conduct a recurring meeting for blktests integration.
+1.3.3. Conduct a recurring meeting with arch team to go over the new
+    Technical proposals from NVMe Technical working group.
+
+
+2. Upstream work (ordered with priority 1 being highest) :-
+------------------------------------------------------------------------
+2.1. Review, test, and fix any problems in the merge window to make sure
+     the stability of the the subsystem, making sure NVMeOF subsystem is
+     working for our existing RDMA networking products and upcoming ones
+     for TCP offload.
+2.2. Lead the Copy offload upstream discussion and mentor the team of
+     developers from Samsung get the work done.
+2.3. Work on merging REQ_OP_VERIFY.
+2.4. Send out cleanup patches and regular upstream maintainer work.
+
+
+Please let me know if I miss anything or you want to me add more work items.
+
+Objective :-
+
+Continue to be the leader in the upstream kernel development community 
+especially focused on the kernel storage stack and make sure to get invited as
+one of the 25 developers in storage stack for invitation only Linux Foundation
+conference LSFMM (Linux Kernel Storage, File Syatems and Memory Management).
+
+Find and solve storage stack related problems in upstream kernel code and
+different Technical Storge specifications such as NVMe/NVMeOF. Architect
+emgerging technologies such as computational storage to benefit NVIDIA
+products such SmartNic, TCP Offload etc. In the reviewer role target
+upstream development and move forward the features which has significant
+impact on the NVIDIA products e.g. Logan's p2p work and in-band authentication.
+    
+1. Key Contributions:-
+
+1.1 TCP Offload upstream support :-
+    Reviewed patches for TCP Offload product that includes RX/TX. Due to H/W
+    limitation there are delays in this process.
+1.2. Architectued and submitted RFC REQ_OP_VERIFY support that is essential for
+    all the major file systems such as btrfs and XFS. Offloding shows
+    significant performance improvement. RFC is approved by the community
+    on linux-fsdevel, linux-block. and linux-nvme list.
+1.1 Sotrage Stack copy offload support :-
+    Working on decade long outstanding problem of Storage Copy offload.
+    Organized a call and lead the technical discussion with the enginners from
+    different companies including hyperscalers such as Facebook, Google, 
+    Western Digital, Samsung and Oracle etc. Will be hosting a techinical
+    discussion at the LSFMM 2022 which got approved as one of the main session
+    for the conference.
+1.1. GPU Direct storage :-
+    Helped reviewed and move the Logan's patch-series forward, since we will be
+    using that as a basis for GDS. Waiting for latest version with rabase on 
+    5.18. 
+1.2. In-Band authentication support :-
+    Helped Review online and offline in-band authentication support as per asked
+    by Architecture group. Waiting for 5.18-rc1 to release so we can rebase code
+    from crypto and send out new version. This includes kernel code, blktests
+    code and nvme-cli code.
+1.2. FOLL_PIN Support for the DIO and storage stack :-
+    Worked with John Hubbard to review (includes reviwing code for 8 file
+    system's direct I/O which are not iomap based) and suggested changes to
+    speed up the RFC submission that uses page with FOLL_PIN. We submitted
+    the RFC successfully, will be conducting the talk with John at LSFMM 2022.
+1.2. Upstream NVIDIA Storage stack contribution/development:-
+    Continously monitored and fixed bugs, reviewed patches in the upstream
+    storage stack including NVMe/NVMeOF making sure stability of the kernel
+    driver on which all the connect-x products are based and future TCP offload
+    work is based on. Continuously monitor any new features that are getting
+    posted on the linux-fsdevel, linux-xfs, linux-btrfs, linux-block, and
+    linux-nvme mailing list and figure out its impact on the NVIDIA
+    products such as DPU/Execelero Storage products such NVMesh e.g. 
+    NVM Set RFC and in-band authentication RFC posted by Amazons and Suse
+    respectively. 
+1.3 blktests integration with the testframework :-
+    Worked with DevOps to integrate the blktests framework into existing test
+    framework. Just released the nvme-cli 2.0 (major release) and worked with
+    Daniel Wagner (Suse) to fix bugs to blktets will run smoothly. Previously
+    our changes broke the blktets this integration will avoid that.
+1.4. NVIDIA Specific feature requests from Vendors :-
+    Work with different vendors such as VAST Data to add new features
+    needed to make NVIDIA DPU more usable. The NVMeOF Target side caching
+    support is upstream which shows significant performance improvement ask by
+    VAST Data CTO Sven.
+1.5. Represent NVIDIA into NVMe Technical Working group and Computational
+    storage working group :-
+    Attend NVMe Technical working group weekly meeting and review the
+    Technical proposals from rest of vendors to enhance and drive upstream
+    NVMe/NVMeOF ecosystem in the right direction that is beneficial for NVIDIA
+    products such as DPU/ConnectX/TCP Offload. Currently working with NVMe
+    Computational Storage Task group to architect TP 4131 that adds
+    computational storage functionality into NVMe main spec and
+    Controller Local Memory for Fabrics transports such as TCP/RDMA where
+    application can store the data set to perform compurational operations on
+    the controller.
+1.6 Architecture and GDS group :-
+    Review patches from the Architecture group and and GDS (DPU-SW) group time
+    to time and make sure they are going in the right direction.
+
+2. Challenges / Barriers :-
+
+1. Not able to work closely with TCP offload Kernel team, discovered a large
+   gap between communication, with latest re-assignment of the work to new team
+   avoid that.
+2. Not able to find DPU H/W.
+
+
+Future Deliverabls and Goals :-
+
+1. Conduct regular meetings with TCP offload team and monitor progreess.
+   As soon as current issues resolved work on getting it upstream, target 5.19.
+2. Review Logan's series and see if we can get it merged target 5.19, review
+   in-band authentication series to get it merged target 5.19.
+3. Respin the REQ_OP_VERIFY code and sendout V1.
+4. Implement the NVMeOF Flush all support which is missing, as we have enabled
+   block device caching it is very important for data consistency.
+5. Work with arch team and implement virtio-blk .timeout feature.
+6. Work with arch team and implement the inline block layer encrption support.
+7. Work with Samsung and help them merge copy offload support.
+8. Represent NVIDIA in LSFMM and lead the discussion for copy offload.
+9. Work on ongoing nvmetcli, nvme-cli, blktests and QEMU issues and code cleanup
+   to keep the tools ecosystem stable.
+11. Work on Storage stack and reviewed kernel patches.
+10. Work on linux-nvme, linux-block, linux-fsdevel and review patches.
+12. Review patches from GDS team, arch team, potentially Excelreo side.
+13. NVIDIA Specific feature requests from Vendors.
+14. Work with the NVMe Technical working group and computational storage
+    task group to finish the architecture of the Controller Local Memory.
+    Without with we will not be able to build Fabric controller with
+    that supports computational storage engine.
+15. Work with John Hubberd and move the FOLL_PIN work forward.
+
+
+Future Delieverables and Goals :-
+
+
+
+
+-ck
+

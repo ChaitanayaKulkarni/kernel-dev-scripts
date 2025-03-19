@@ -1,0 +1,26 @@
+From a078ac1ff8175c99da6b4801fc37e6a3d2dcfb6d Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Fri, 19 May 2023 02:13:32 -0700
+Subject: [PATCH 1/3] nvme-fcloop: no need to return from void function
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/target/fcloop.c | 2 --
+ 1 file changed, 2 deletions(-)
+
+diff --git a/drivers/nvme/target/fcloop.c b/drivers/nvme/target/fcloop.c
+index e940a7d37a9d..1ab3d900f2bf 100644
+--- a/drivers/nvme/target/fcloop.c
++++ b/drivers/nvme/target/fcloop.c
+@@ -645,8 +645,6 @@ fcloop_fcp_recv_work(struct work_struct *work)
+ 	}
+ 	if (ret)
+ 		fcloop_call_host_done(fcpreq, tfcp_req, ret);
+-
+-	return;
+ }
+ 
+ static void
+-- 
+2.40.0
+

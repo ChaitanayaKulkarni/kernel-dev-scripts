@@ -1,0 +1,172 @@
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index dd18861f77c0..2f66b8fe31ee 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -119,6 +119,23 @@ static void nvme_remove_invalid_namespaces(struct nvme_ctrl *ctrl,
+ static void nvme_update_keep_alive(struct nvme_ctrl *ctrl,
+ 				   struct nvme_command *cmd);
+ 
++void nvme_ctrl_init_admin_tagset(struct blk_mq_tag_set *set, void *driver_data,
++				 int numa_node, const struct blk_mq_ops *ops,
++				 unsigned int flags)
++{
++	memset(set, 0, sizeof(*set));
++	set->driver_data = driver_data;
++	set->numa_node = numa_node;
++	set->ops = ops;
++	set->flags = flags;
++	/* TODO : if ctrl is fabrics then use NVMF_RESERVED_TAGS else 0*/
++	set->reserved_tags = reserved_tags;
++	set->queue_depth = NVME_AQ_MQ_TAG_DEPTH;
++	set->nr_hw_queues = 1;
++	set->timeout = NVME_ADMIN_TIMEOUT;
++}
++EXPORT_SYMBOL_GPL(nvme_ctrl_init_admin_tagset);
++
+ void nvme_queue_scan(struct nvme_ctrl *ctrl)
+ {
+ 	/*
+diff --git a/drivers/nvme/host/fc.c b/drivers/nvme/host/fc.c
+index 23c896a138a3..ec2afedfa991 100644
+--- a/drivers/nvme/host/fc.c
++++ b/drivers/nvme/host/fc.c
+@@ -3529,18 +3529,12 @@ nvme_fc_init_ctrl(struct device *dev, struct nvmf_ctrl_options *opts,
+ 
+ 	nvme_fc_init_queue(ctrl, 0);
+ 
+-	memset(&ctrl->admin_tag_set, 0, sizeof(ctrl->admin_tag_set));
+-	ctrl->admin_tag_set.ops = &nvme_fc_admin_mq_ops;
+-	ctrl->admin_tag_set.queue_depth = NVME_AQ_MQ_TAG_DEPTH;
+-	ctrl->admin_tag_set.reserved_tags = NVMF_RESERVED_TAGS;
+-	ctrl->admin_tag_set.numa_node = ctrl->ctrl.numa_node;
++	nvme_init_admin_tagset(&(ctrl->admin_tag_set), ctrl,
++			       ctrl->ctrl.numa_node, &nvme_fc_admin_mq_ops,
++			       BLK_MQ_F_NO_SCHED, NVMF_RESERVED_TAGS);
+ 	ctrl->admin_tag_set.cmd_size =
+ 		struct_size((struct nvme_fcp_op_w_sgl *)NULL, priv,
+ 			    ctrl->lport->ops->fcprqst_priv_sz);
+-	ctrl->admin_tag_set.driver_data = ctrl;
+-	ctrl->admin_tag_set.nr_hw_queues = 1;
+-	ctrl->admin_tag_set.timeout = NVME_ADMIN_TIMEOUT;
+-	ctrl->admin_tag_set.flags = BLK_MQ_F_NO_SCHED;
+ 
+ 	ret = blk_mq_alloc_tag_set(&ctrl->admin_tag_set);
+ 	if (ret)
+diff --git a/drivers/nvme/host/nvme.h b/drivers/nvme/host/nvme.h
+index a162f6c6da6e..c27228c6b4a2 100644
+--- a/drivers/nvme/host/nvme.h
++++ b/drivers/nvme/host/nvme.h
+@@ -924,10 +924,14 @@ int nvme_execute_passthru_rq(struct request *rq);
+ struct nvme_ctrl *nvme_ctrl_from_file(struct file *file);
+ struct nvme_ns *nvme_find_get_ns(struct nvme_ctrl *ctrl, unsigned nsid);
+ void nvme_put_ns(struct nvme_ns *ns);
++void nvme_ctrl_init_admin_tagset(struct blk_mq_tag_set *set, void *driver_data,
++				 int numa_node, const struct blk_mq_ops *ops,
++				 unsigned int flags);
++
+ 
+ static inline bool nvme_multi_css(struct nvme_ctrl *ctrl)
+ {
+ 	return (ctrl->ctrl_config & NVME_CC_CSS_MASK) == NVME_CC_CSS_CSI;
+ }
+ 
+-#endif /* _NVME_H */
++kendif /* _NVME_H */
+diff --git a/drivers/nvme/host/pci.c b/drivers/nvme/host/pci.c
+index 6a99ed680915..03fcaa0f65f9 100644
+--- a/drivers/nvme/host/pci.c
++++ b/drivers/nvme/host/pci.c
+@@ -1755,15 +1755,10 @@ static void nvme_dev_remove_admin(struct nvme_dev *dev)
+ static int nvme_alloc_admin_tags(struct nvme_dev *dev)
+ {
+ 	if (!dev->ctrl.admin_q) {
+-		dev->admin_tagset.ops = &nvme_mq_admin_ops;
+-		dev->admin_tagset.nr_hw_queues = 1;
+-
+-		dev->admin_tagset.queue_depth = NVME_AQ_MQ_TAG_DEPTH;
+-		dev->admin_tagset.timeout = NVME_ADMIN_TIMEOUT;
+-		dev->admin_tagset.numa_node = dev->ctrl.numa_node;
++		nvme_init_admin_tagset(&(dev->admin_tagset), dev,
++				       dev->ctrl.numa_node, &nvme_mq_admin_ops,
++				       BLK_MQ_F_NO_SCHED, 0);
+ 		dev->admin_tagset.cmd_size = sizeof(struct nvme_iod);
+-		dev->admin_tagset.flags = BLK_MQ_F_NO_SCHED;
+-		dev->admin_tagset.driver_data = dev;
+ 
+ 		if (blk_mq_alloc_tag_set(&dev->admin_tagset))
+ 			return -ENOMEM;
+diff --git a/drivers/nvme/host/rdma.c b/drivers/nvme/host/rdma.c
+index 0bf2ce0b1dd6..3d30c7d9b9e4 100644
+--- a/drivers/nvme/host/rdma.c
++++ b/drivers/nvme/host/rdma.c
+@@ -799,17 +799,11 @@ static struct blk_mq_tag_set *nvme_rdma_alloc_tagset(struct nvme_ctrl *nctrl,
+ 
+ 	if (admin) {
+ 		set = &ctrl->admin_tag_set;
+-		memset(set, 0, sizeof(*set));
+-		set->ops = &nvme_rdma_admin_mq_ops;
+-		set->queue_depth = NVME_AQ_MQ_TAG_DEPTH;
+-		set->reserved_tags = NVMF_RESERVED_TAGS;
+-		set->numa_node = nctrl->numa_node;
++		nvme_init_admin_tagset(set, ctrl, nctrl->numa_node,
++				&nvme_rdma_admin_mq_ops, BLK_MQ_F_NO_SCHED,
++				NVMF_RESERVED_TAGS);
+ 		set->cmd_size = sizeof(struct nvme_rdma_request) +
+ 				NVME_RDMA_DATA_SGL_SIZE;
+-		set->driver_data = ctrl;
+-		set->nr_hw_queues = 1;
+-		set->timeout = NVME_ADMIN_TIMEOUT;
+-		set->flags = BLK_MQ_F_NO_SCHED;
+ 	} else {
+ 		set = &ctrl->tag_set;
+ 		memset(set, 0, sizeof(*set));
+diff --git a/drivers/nvme/host/tcp.c b/drivers/nvme/host/tcp.c
+index 6cbcc8b4daaf..c9499e6eeb19 100644
+--- a/drivers/nvme/host/tcp.c
++++ b/drivers/nvme/host/tcp.c
+@@ -1613,16 +1613,10 @@ static struct blk_mq_tag_set *nvme_tcp_alloc_tagset(struct nvme_ctrl *nctrl,
+ 
+ 	if (admin) {
+ 		set = &ctrl->admin_tag_set;
+-		memset(set, 0, sizeof(*set));
+-		set->ops = &nvme_tcp_admin_mq_ops;
+-		set->queue_depth = NVME_AQ_MQ_TAG_DEPTH;
+-		set->reserved_tags = NVMF_RESERVED_TAGS;
+-		set->numa_node = nctrl->numa_node;
+-		set->flags = BLK_MQ_F_BLOCKING;
++		nvme_init_admin_tagset(set, ctrl, nctrl->numa_node,
++				&nvme_tcp_admin_mq_ops, BLK_MQ_F_BLOCKING,
++				NVMF_RESERVED_TAGS);
+ 		set->cmd_size = sizeof(struct nvme_tcp_request);
+-		set->driver_data = ctrl;
+-		set->nr_hw_queues = 1;
+-		set->timeout = NVME_ADMIN_TIMEOUT;
+ 	} else {
+ 		set = &ctrl->tag_set;
+ 		memset(set, 0, sizeof(*set));
+diff --git a/drivers/nvme/target/loop.c b/drivers/nvme/target/loop.c
+index 23f9d6f88804..fdee038041f8 100644
+--- a/drivers/nvme/target/loop.c
++++ b/drivers/nvme/target/loop.c
+@@ -350,17 +350,12 @@ static int nvme_loop_configure_admin_queue(struct nvme_loop_ctrl *ctrl)
+ {
+ 	int error;
+ 
+-	memset(&ctrl->admin_tag_set, 0, sizeof(ctrl->admin_tag_set));
+-	ctrl->admin_tag_set.ops = &nvme_loop_admin_mq_ops;
+-	ctrl->admin_tag_set.queue_depth = NVME_AQ_MQ_TAG_DEPTH;
+-	ctrl->admin_tag_set.reserved_tags = NVMF_RESERVED_TAGS;
+-	ctrl->admin_tag_set.numa_node = ctrl->ctrl.numa_node;
++	nvme_init_admin_tagset(&(ctrl->admin_tag_set), ctrl,
++			       ctrl->ctrl.numa_node,
++			       &nvme_loop_admin_mq_ops, BLK_MQ_F_NO_SCHED,
++			       NVMF_RESERVED_TAGS);
+ 	ctrl->admin_tag_set.cmd_size = sizeof(struct nvme_loop_iod) +
+ 		NVME_INLINE_SG_CNT * sizeof(struct scatterlist);
+-	ctrl->admin_tag_set.driver_data = ctrl;
+-	ctrl->admin_tag_set.nr_hw_queues = 1;
+-	ctrl->admin_tag_set.timeout = NVME_ADMIN_TIMEOUT;
+-	ctrl->admin_tag_set.flags = BLK_MQ_F_NO_SCHED;
+ 
+ 	ctrl->queues[0].ctrl = ctrl;
+ 	error = nvmet_sq_init(&ctrl->queues[0].nvme_sq);

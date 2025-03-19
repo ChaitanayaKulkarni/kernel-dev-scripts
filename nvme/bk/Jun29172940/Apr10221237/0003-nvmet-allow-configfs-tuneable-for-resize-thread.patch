@@ -1,0 +1,90 @@
+From 28fd498630b78fee430242ce8d0cd91dfc626d30 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Fri, 10 Apr 2020 21:39:59 -0700
+Subject: [PATCH 3/4] nvmet: allow configfs tuneable for resize thread
+
+This patch adds a new configfs attributes so that user can start/
+stop resize monitor thread as and when needed.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/configfs.c | 37 ++++++++++++++++++++++++++++++++++
+ drivers/nvme/target/nvmet.h    | 12 +++++++++++
+ 2 files changed, 49 insertions(+)
+
+diff --git a/drivers/nvme/target/configfs.c b/drivers/nvme/target/configfs.c
+index 58cabd7b6fc5..5aa1a477ad8c 100644
+--- a/drivers/nvme/target/configfs.c
++++ b/drivers/nvme/target/configfs.c
+@@ -1050,8 +1050,45 @@ static struct configfs_group_operations nvmet_subsystems_group_ops = {
+ 	.make_group		= nvmet_subsys_make,
+ };
+ 
++static ssize_t nvmet_control_group_control_resize_refresh_show(
++		struct config_item *item, char *page)
++{
++	return snprintf(page, PAGE_SIZE, "%u\n",
++			to_nvmet_control(item)->enable);
++}
++
++static ssize_t nvmet_control_group_control_resize_refresh_store(
++		struct config_item *item, const char *page, size_t count)
++{
++	struct nvmet_control *control = to_nvmet_control(item);
++	ssize_t ret;
++	bool enable;
++
++	ret = kstrtobool(page, &enable);
++	if (ret < 0)
++		return ret;
++
++	mutex_lock(&control_lock);
++	control->enable = enable;
++	if (control->enable)
++		nvmet_enable_ns_resize_monitor();
++	else
++		nvmet_disable_ns_resize_monitor();
++	mutex_unlock(&control_lock);
++
++	return ret ? ret : count;
++}
++
++CONFIGFS_ATTR(nvmet_control_group_, control_resize_refresh);
++
++static struct configfs_attribute *nvmet_control_group_attrs[] = {
++	&nvmet_control_group_attr_control_resize_refresh,
++	NULL,
++};
++
+ static const struct config_item_type nvmet_subsystems_type = {
+ 	.ct_group_ops		= &nvmet_subsystems_group_ops,
++	.ct_attrs		= nvmet_control_group_attrs,
+ 	.ct_owner		= THIS_MODULE,
+ };
+ 
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index 3998eaf90ca3..429dc9766842 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -51,6 +51,18 @@
+ #define IPO_IATTR_CONNECT_SQE(x)	\
+ 	(cpu_to_le32(offsetof(struct nvmf_connect_command, x)))
+ 
++extern struct mutex control_lock;
++
++struct nvmet_control {
++       struct config_group     group;
++       bool                    enable;
++};
++
++static inline struct nvmet_control *to_nvmet_control(struct config_item *item)
++{
++       return container_of(to_config_group(item), struct nvmet_control, group);
++}
++
+ struct nvmet_ns {
+ 	struct list_head	dev_link;
+ 	struct percpu_ref	ref;
+-- 
+2.22.1
+

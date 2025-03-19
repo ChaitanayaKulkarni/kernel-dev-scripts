@@ -1,0 +1,56 @@
+From 42a9445646af12e1e675a8e845fffc08e2f1f857 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Sun, 7 Jun 2020 22:44:22 -0700
+Subject: [PATCH] nvmet: fix hang in the nvmet_sq destroy path
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/core.c | 24 +++++++++++++++++++++++-
+ 1 file changed, 23 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/nvme/target/core.c b/drivers/nvme/target/core.c
+index 6392bcd30bd7..fc41cd11660d 100644
+--- a/drivers/nvme/target/core.c
++++ b/drivers/nvme/target/core.c
+@@ -777,6 +777,20 @@ static void nvmet_confirm_sq(struct percpu_ref *ref)
+ 	complete(&sq->confirm_done);
+ }
+ 
++static void nvmet_async_events_free_host_req(struct nvmet_ctrl *ctrl)
++{
++       struct nvmet_req *req;
++
++       mutex_lock(&ctrl->lock);
++       while (ctrl->nr_async_event_cmds) {
++               req = ctrl->async_event_cmds[--ctrl->nr_async_event_cmds];
++               mutex_unlock(&ctrl->lock);
++               nvmet_req_complete(req, NVME_SC_INTERNAL | NVME_SC_DNR);
++               mutex_lock(&ctrl->lock);
++       }
++       mutex_unlock(&ctrl->lock);
++}
++
+ void nvmet_sq_destroy(struct nvmet_sq *sq)
+ {
+ 	u16 status = NVME_SC_INTERNAL | NVME_SC_DNR;
+@@ -786,8 +800,16 @@ void nvmet_sq_destroy(struct nvmet_sq *sq)
+ 	 * If this is the admin queue, complete all AERs so that our
+ 	 * queue doesn't have outstanding requests on it.
+ 	 */
+-	if (ctrl && ctrl->sqs && ctrl->sqs[0] == sq)
++	if (ctrl && ctrl->sqs && ctrl->sqs[0] == sq) {
+ 		nvmet_async_events_process(ctrl, status);
++		/*
++		 * Target controller's host posted events needs to be explicitly
++		 * checked and cleared since there is no 1 : 1 mapping between
++		 * host posted AEN requests and target generated AENs on the
++		 * target controller's aen_list.
++		 */
++		nvmet_async_events_free_host_req(ctrl);
++	}
+ 	percpu_ref_kill_and_confirm(&sq->ref, nvmet_confirm_sq);
+ 	wait_for_completion(&sq->confirm_done);
+ 	wait_for_completion(&sq->free_done);
+-- 
+2.22.1
+

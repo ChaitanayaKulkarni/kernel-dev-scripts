@@ -1,0 +1,76 @@
+diff --git a/drivers/nvme/host/trace.c b/drivers/nvme/host/trace.c
+index 1c36fcedea20..47fdea681676 100644
+--- a/drivers/nvme/host/trace.c
++++ b/drivers/nvme/host/trace.c
+@@ -72,6 +72,51 @@ static const char *nvme_trace_admin_identify(struct trace_seq *p, u8 *cdw10)
+ 	return ret;
+ }
+ 
++static const char * const nvme_feat_str(u8 fid)
++{
++	static const char * const feat_strs[] = {
++		[0x01] = "Arbitration",
++		[0x02] = "Power Management",
++		[0x03] = "LBA Range Type",
++		[0x04] = "Temperature Threshold",
++		[0x05] = "Error Recovery",
++		[0x06] = "Volatile Write Cache",
++		[0x07] = "Number of Queues",
++		[0x08] = "Interrupt Coalescing",
++		[0x09] = "Interrupt Vector Configuration",
++		[0x0A] = "Write Atomicity Normal",
++		[0x0B] = "Async Event Confgurtation",
++		[0x0C] = "Autonomous Power State Transition",
++		[0x0D] = "Host Memory Buffer",
++		[0x0E] = "Timestamp",
++		[0x0F] = "Keep Alive Timer",
++		[0x10] = "Host Controlled Thermal Management",
++		[0x11] = "Non-Operational Power State Config",
++		[0x12] = "Read Recovery Level Config",
++		[0x13] = "Predictable Latency Mode Config",
++		[0x14] = "Predictable Latency Mode Window",
++		[0x15] = "LBA Status Information Report Interval",
++		[0x16] = "Host Behaviour Support",
++		[0x17] = "Sanitize Config",
++		[0x18] = "Endurance Group Event Configuration",
++		[0x19] = "I/O Command Set Profile",
++		[0x20] = "Key Value Configuration",
++		[0x1A] = "Spinup Control",
++		[0x7D] = "Enhanced Controller Metadata",
++		[0x7E] = "Controller Metadata",
++		[0x7F] = "Namespace Metadata",
++		[0x80] = "Software Progress Marker",
++		[0x81] = "Host Identifier",
++		[0x82] = "Resevation Notification Mask",
++		[0x83] = "Resevation Persistence",
++		[0x84] = "Namespace Write Protection Config",
++	};
++
++	if (fid < ARRAY_SIZE(feat_strs) && feat_strs[fid])
++		return feat_strs[fid];
++	return "reserved";
++}
++
+ static const char *nvme_trace_admin_set_features(struct trace_seq *p,
+ 						 u8 *cdw10)
+ {
+@@ -80,7 +125,8 @@ static const char *nvme_trace_admin_set_features(struct trace_seq *p,
+ 	u8 sv = cdw10[3] & 0x8;
+ 	u32 cdw11 = get_unaligned_le32(cdw10 + 4);
+ 
+-	trace_seq_printf(p, "fid=0x%x, sv=0x%x, cdw11=0x%x", fid, sv, cdw11);
++	trace_seq_printf(p, "fid=%s:0x%x, sv=0x%x, cdw11=0x%x",
++			nvme_feat_str(fid), fid, sv, cdw11);
+ 	trace_seq_putc(p, 0);
+ 
+ 	return ret;
+@@ -94,7 +140,8 @@ static const char *nvme_trace_admin_get_features(struct trace_seq *p,
+ 	u8 sel = cdw10[1] & 0x7;
+ 	u32 cdw11 = get_unaligned_le32(cdw10 + 4);
+ 
+-	trace_seq_printf(p, "fid=0x%x, sel=0x%x, cdw11=0x%x", fid, sel, cdw11);
++	trace_seq_printf(p, "fid=%s:0x%x, sel=0x%x, cdw11=0x%x",
++			nvme_feat_str(fid), fid, sel, cdw11);
+ 	trace_seq_putc(p, 0);
+ 
+ 	return ret;

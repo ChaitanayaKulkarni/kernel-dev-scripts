@@ -1,0 +1,39 @@
+From f17b7a463fb5c92740d556da9fca6c502e7b47ec Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Sun, 3 Jan 2021 21:59:01 -0800
+Subject: [PATCH V9 8/9] nvme-core: check ctrl css before setting up zns
+
+In the nvme-core when setting up the ZNS in nvme_update_ns_info()
+we currently don't check if ctrl supports the multi css. This can
+lead to buggy controllers not having right fields set for the
+multiple command sets.
+
+Add a check by calling nvme_multi_css() in the nvme_update_ns_info()
+to make sure controller support the multiple command sets.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/host/core.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index f320273fc672..25ebeaa6963d 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -2164,6 +2164,13 @@ static int nvme_update_ns_info(struct nvme_ns *ns, struct nvme_id_ns *id)
+ 	nvme_set_queue_limits(ns->ctrl, ns->queue);
+ 
+ 	if (ns->head->ids.csi == NVME_CSI_ZNS) {
++		if (!nvme_multi_css(ns->ctrl)) {
++			dev_warn(ns->ctrl->device,
++				"Command set not reported for nsid:%d\n",
++			ns->head->ns_id);
++			ret = -EINVAL;
++			goto out_unfreeze;
++		}
+ 		ret = nvme_update_zone_info(ns, lbaf);
+ 		if (ret)
+ 			goto out_unfreeze;
+-- 
+2.22.1
+

@@ -1,0 +1,83 @@
+From 3566d4a701298b877e80c53f33d745a3fd534e85 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Mon, 1 Jun 2020 21:57:18 -0700
+Subject: [PATCH 5/9] nvme-core: Introduce nvme_ctrl_get_by_path()
+
+nvme_ctrl_get_by_path() is analagous to blkdev_get_by_path() except it
+gets a struct nvme_ctrl from the path to its char dev (/dev/nvme0).
+It makes use of filp_open() to open the file and uses the private
+data to obtain a pointer to the struct nvme_ctrl. If the fops of the
+file do not match, -EINVAL is returned.
+
+The purpose of this function is to support NVMe-OF target passthru.
+
+Signed-off-by: Logan Gunthorpe <logang@deltatee.com>
+Reviewed-by: Max Gurtovoy <maxg@mellanox.com>
+Reviewed-by: Sagi Grimberg <sagi@grimberg.me>
+---
+ drivers/nvme/host/core.c | 30 ++++++++++++++++++++++++++++++
+ drivers/nvme/host/nvme.h |  9 +++++++++
+ 2 files changed, 39 insertions(+)
+
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index 6b7edc47d06a..fc598f1b9175 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -4346,6 +4346,36 @@ void nvme_start_queues(struct nvme_ctrl *ctrl)
+ }
+ EXPORT_SYMBOL_GPL(nvme_start_queues);
+ 
++#ifdef CONFIG_NVME_TARGET_PASSTHRU
++/*
++ * The exports that follow within this ifdef are only for
++ * use by the nvmet-passthru and should not be used for
++ * other things.
++ */
++
++struct nvme_ctrl *nvme_ctrl_get_by_path(const char *path)
++{
++	struct nvme_ctrl *ctrl;
++	struct file *f;
++
++	f = filp_open(path, O_RDWR, 0);
++	if (IS_ERR(f))
++		return ERR_CAST(f);
++
++	if (f->f_op != &nvme_dev_fops) {
++		ctrl = ERR_PTR(-EINVAL);
++		goto out_close;
++	}
++
++	ctrl = f->private_data;
++	nvme_get_ctrl(ctrl);
++
++out_close:
++	filp_close(f, NULL);
++	return ctrl;
++}
++EXPORT_SYMBOL_GPL(nvme_ctrl_get_by_path);
++#endif /* CONFIG_NVME_TARGET_PASSTHRU */
+ 
+ void nvme_sync_queues(struct nvme_ctrl *ctrl)
+ {
+diff --git a/drivers/nvme/host/nvme.h b/drivers/nvme/host/nvme.h
+index fa5c75501049..9ce3c47574c0 100644
+--- a/drivers/nvme/host/nvme.h
++++ b/drivers/nvme/host/nvme.h
+@@ -711,4 +711,13 @@ void nvme_hwmon_init(struct nvme_ctrl *ctrl);
+ static inline void nvme_hwmon_init(struct nvme_ctrl *ctrl) { }
+ #endif
+ 
++#ifdef CONFIG_NVME_TARGET_PASSTHRU
++/*
++ * The exports that follow within this ifdef are only for
++ * use by the nvmet-passthru and should not be used for
++ * other things.
++ */
++struct nvme_ctrl *nvme_ctrl_get_by_path(const char *path);
++#endif /* CONFIG_NVME_TARGET_PASSTHRU */
++
+ #endif /* _NVME_H */
+-- 
+2.22.1
+

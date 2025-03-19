@@ -1,0 +1,251 @@
+From 20874aea8993d3c5cc4643dd33a7fba157c75571 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Wed, 7 Feb 2024 22:43:25 -0800
+Subject: [PATCH] nvme: add helper to get nvme_ctrl from device
+
+Just like we have other helpers to_nvmet_port(), to_nvmet_ns(),
+ana_groups_to_port() and to_nvmet_ns(), add a helper to get nvme_ctrl
+from struct device.
+
+Note that this removes the bunch of nvme_ctrl declaration code that is
+needed to get the nvme_ctrl from struct device in the host/core.c.
+Followwing is the diff :-
+
+ drivers/nvme/host/nvme.h  |  6 ++++
+ drivers/nvme/host/sysfs.c | 70 ++++++++++++---------------------------
+ 2 files changed, 28 insertions(+), 48 deletions(-)
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/host/nvme.h  |  6 ++++
+ drivers/nvme/host/sysfs.c | 70 ++++++++++++---------------------------
+ 2 files changed, 28 insertions(+), 48 deletions(-)
+
+diff --git a/drivers/nvme/host/nvme.h b/drivers/nvme/host/nvme.h
+index c28f33169a4a..1f446601e33d 100644
+--- a/drivers/nvme/host/nvme.h
++++ b/drivers/nvme/host/nvme.h
+@@ -1177,4 +1177,10 @@ static inline const char *nvme_fabrics_opcode_str(
+ 
+ 	return nvme_opcode_str(qid, cmd->common.opcode);
+ }
++
++static inline struct nvme_ctrl *dev_to_nvme_ctrl(struct device *dev)
++{
++	return dev_get_drvdata(dev);
++}
++
+ #endif /* _NVME_H */
+diff --git a/drivers/nvme/host/sysfs.c b/drivers/nvme/host/sysfs.c
+index f2832f70e7e0..ea98e9ab8fe7 100644
+--- a/drivers/nvme/host/sysfs.c
++++ b/drivers/nvme/host/sysfs.c
+@@ -14,13 +14,9 @@ static ssize_t nvme_sysfs_reset(struct device *dev,
+ 				struct device_attribute *attr, const char *buf,
+ 				size_t count)
+ {
+-	struct nvme_ctrl *ctrl = dev_get_drvdata(dev);
+-	int ret;
++	int ret = nvme_reset_ctrl_sync(dev_to_nvme_ctrl(dev));
+ 
+-	ret = nvme_reset_ctrl_sync(ctrl);
+-	if (ret < 0)
+-		return ret;
+-	return count;
++	return ret < 0 ? ret : count;
+ }
+ static DEVICE_ATTR(reset_controller, S_IWUSR, NULL, nvme_sysfs_reset);
+ 
+@@ -28,9 +24,7 @@ static ssize_t nvme_sysfs_rescan(struct device *dev,
+ 				struct device_attribute *attr, const char *buf,
+ 				size_t count)
+ {
+-	struct nvme_ctrl *ctrl = dev_get_drvdata(dev);
+-
+-	nvme_queue_scan(ctrl);
++	nvme_queue_scan(dev_to_nvme_ctrl(dev));
+ 	return count;
+ }
+ static DEVICE_ATTR(rescan_controller, S_IWUSR, NULL, nvme_sysfs_rescan);
+@@ -38,16 +32,13 @@ static DEVICE_ATTR(rescan_controller, S_IWUSR, NULL, nvme_sysfs_rescan);
+ static ssize_t nvme_adm_passthru_err_log_enabled_show(struct device *dev,
+ 		struct device_attribute *attr, char *buf)
+ {
+-	struct nvme_ctrl *ctrl = dev_get_drvdata(dev);
+-
+-	return sysfs_emit(buf,
+-			  ctrl->passthru_err_log_enabled ? "on\n" : "off\n");
++	return sysfs_emit(buf, dev_to_nvme_ctrl(dev)->passthru_err_log_enabled ?
++							"on\n" : "off\n");
+ }
+ 
+ static ssize_t nvme_adm_passthru_err_log_enabled_store(struct device *dev,
+ 		struct device_attribute *attr, const char *buf, size_t count)
+ {
+-	struct nvme_ctrl *ctrl = dev_get_drvdata(dev);
+ 	bool passthru_err_log_enabled;
+ 	int err;
+ 
+@@ -55,7 +46,8 @@ static ssize_t nvme_adm_passthru_err_log_enabled_store(struct device *dev,
+ 	if (err)
+ 		return -EINVAL;
+ 
+-	ctrl->passthru_err_log_enabled = passthru_err_log_enabled;
++	dev_to_nvme_ctrl(dev)->passthru_err_log_enabled =
++				passthru_err_log_enabled;
+ 
+ 	return count;
+ }
+@@ -327,8 +319,7 @@ nvme_show_str_function(firmware_rev);
+ static ssize_t  field##_show(struct device *dev,				\
+ 			    struct device_attribute *attr, char *buf)		\
+ {										\
+-        struct nvme_ctrl *ctrl = dev_get_drvdata(dev);				\
+-        return sysfs_emit(buf, "%d\n", ctrl->field);				\
++        return sysfs_emit(buf, "%d\n", dev_to_nvme_ctrl(dev)->field);		\
+ }										\
+ static DEVICE_ATTR(field, S_IRUGO, field##_show, NULL);
+ 
+@@ -342,13 +333,11 @@ static ssize_t nvme_sysfs_delete(struct device *dev,
+ 				struct device_attribute *attr, const char *buf,
+ 				size_t count)
+ {
+-	struct nvme_ctrl *ctrl = dev_get_drvdata(dev);
+-
+-	if (!test_bit(NVME_CTRL_STARTED_ONCE, &ctrl->flags))
++	if (!test_bit(NVME_CTRL_STARTED_ONCE, &dev_to_nvme_ctrl(dev)->flags))
+ 		return -EBUSY;
+ 
+ 	if (device_remove_file_self(dev, attr))
+-		nvme_delete_ctrl_sync(ctrl);
++		nvme_delete_ctrl_sync(dev_to_nvme_ctrl(dev));
+ 	return count;
+ }
+ static DEVICE_ATTR(delete_controller, S_IWUSR, NULL, nvme_sysfs_delete);
+@@ -357,9 +346,7 @@ static ssize_t nvme_sysfs_show_transport(struct device *dev,
+ 					 struct device_attribute *attr,
+ 					 char *buf)
+ {
+-	struct nvme_ctrl *ctrl = dev_get_drvdata(dev);
+-
+-	return sysfs_emit(buf, "%s\n", ctrl->ops->name);
++	return sysfs_emit(buf, "%s\n", dev_to_nvme_ctrl(dev)->ops->name);
+ }
+ static DEVICE_ATTR(transport, S_IRUGO, nvme_sysfs_show_transport, NULL);
+ 
+@@ -367,8 +354,7 @@ static ssize_t nvme_sysfs_show_state(struct device *dev,
+ 				     struct device_attribute *attr,
+ 				     char *buf)
+ {
+-	struct nvme_ctrl *ctrl = dev_get_drvdata(dev);
+-	unsigned state = (unsigned)nvme_ctrl_state(ctrl);
++	unsigned state = (unsigned)nvme_ctrl_state(dev_to_nvme_ctrl(dev));
+ 	static const char *const state_name[] = {
+ 		[NVME_CTRL_NEW]		= "new",
+ 		[NVME_CTRL_LIVE]	= "live",
+@@ -391,9 +377,7 @@ static ssize_t nvme_sysfs_show_subsysnqn(struct device *dev,
+ 					 struct device_attribute *attr,
+ 					 char *buf)
+ {
+-	struct nvme_ctrl *ctrl = dev_get_drvdata(dev);
+-
+-	return sysfs_emit(buf, "%s\n", ctrl->subsys->subnqn);
++	return sysfs_emit(buf, "%s\n", dev_to_nvme_ctrl(dev)->subsys->subnqn);
+ }
+ static DEVICE_ATTR(subsysnqn, S_IRUGO, nvme_sysfs_show_subsysnqn, NULL);
+ 
+@@ -401,9 +385,7 @@ static ssize_t nvme_sysfs_show_hostnqn(struct device *dev,
+ 					struct device_attribute *attr,
+ 					char *buf)
+ {
+-	struct nvme_ctrl *ctrl = dev_get_drvdata(dev);
+-
+-	return sysfs_emit(buf, "%s\n", ctrl->opts->host->nqn);
++	return sysfs_emit(buf, "%s\n", dev_to_nvme_ctrl(dev)->opts->host->nqn);
+ }
+ static DEVICE_ATTR(hostnqn, S_IRUGO, nvme_sysfs_show_hostnqn, NULL);
+ 
+@@ -411,9 +393,7 @@ static ssize_t nvme_sysfs_show_hostid(struct device *dev,
+ 					struct device_attribute *attr,
+ 					char *buf)
+ {
+-	struct nvme_ctrl *ctrl = dev_get_drvdata(dev);
+-
+-	return sysfs_emit(buf, "%pU\n", &ctrl->opts->host->id);
++	return sysfs_emit(buf, "%pU\n", &dev_to_nvme_ctrl(dev)->opts->host->id);
+ }
+ static DEVICE_ATTR(hostid, S_IRUGO, nvme_sysfs_show_hostid, NULL);
+ 
+@@ -430,10 +410,9 @@ static DEVICE_ATTR(address, S_IRUGO, nvme_sysfs_show_address, NULL);
+ static ssize_t nvme_ctrl_loss_tmo_show(struct device *dev,
+ 		struct device_attribute *attr, char *buf)
+ {
+-	struct nvme_ctrl *ctrl = dev_get_drvdata(dev);
+-	struct nvmf_ctrl_options *opts = ctrl->opts;
++	struct nvmf_ctrl_options *opts = dev_to_nvme_ctrl(dev)->opts;
+ 
+-	if (ctrl->opts->max_reconnects == -1)
++	if (opts->max_reconnects == -1)
+ 		return sysfs_emit(buf, "off\n");
+ 	return sysfs_emit(buf, "%d\n",
+ 			  opts->max_reconnects * opts->reconnect_delay);
+@@ -442,8 +421,7 @@ static ssize_t nvme_ctrl_loss_tmo_show(struct device *dev,
+ static ssize_t nvme_ctrl_loss_tmo_store(struct device *dev,
+ 		struct device_attribute *attr, const char *buf, size_t count)
+ {
+-	struct nvme_ctrl *ctrl = dev_get_drvdata(dev);
+-	struct nvmf_ctrl_options *opts = ctrl->opts;
++	struct nvmf_ctrl_options *opts = dev_to_nvme_ctrl(dev)->opts;
+ 	int ctrl_loss_tmo, err;
+ 
+ 	err = kstrtoint(buf, 10, &ctrl_loss_tmo);
+@@ -473,7 +451,6 @@ static ssize_t nvme_ctrl_reconnect_delay_show(struct device *dev,
+ static ssize_t nvme_ctrl_reconnect_delay_store(struct device *dev,
+ 		struct device_attribute *attr, const char *buf, size_t count)
+ {
+-	struct nvme_ctrl *ctrl = dev_get_drvdata(dev);
+ 	unsigned int v;
+ 	int err;
+ 
+@@ -481,7 +458,7 @@ static ssize_t nvme_ctrl_reconnect_delay_store(struct device *dev,
+ 	if (err)
+ 		return err;
+ 
+-	ctrl->opts->reconnect_delay = v;
++	dev_to_nvme_ctrl(dev)->opts->reconnect_delay = v;
+ 	return count;
+ }
+ static DEVICE_ATTR(reconnect_delay, S_IRUGO | S_IWUSR,
+@@ -500,8 +477,7 @@ static ssize_t nvme_ctrl_fast_io_fail_tmo_show(struct device *dev,
+ static ssize_t nvme_ctrl_fast_io_fail_tmo_store(struct device *dev,
+ 		struct device_attribute *attr, const char *buf, size_t count)
+ {
+-	struct nvme_ctrl *ctrl = dev_get_drvdata(dev);
+-	struct nvmf_ctrl_options *opts = ctrl->opts;
++	struct nvmf_ctrl_options *opts = dev_to_nvme_ctrl(dev)->opts;
+ 	int fast_io_fail_tmo, err;
+ 
+ 	err = kstrtoint(buf, 10, &fast_io_fail_tmo);
+@@ -555,8 +531,7 @@ static DEVICE_ATTR_RO(dctype);
+ static ssize_t nvme_ctrl_dhchap_secret_show(struct device *dev,
+ 		struct device_attribute *attr, char *buf)
+ {
+-	struct nvme_ctrl *ctrl = dev_get_drvdata(dev);
+-	struct nvmf_ctrl_options *opts = ctrl->opts;
++	struct nvmf_ctrl_options *opts = dev_to_nvme_ctrl(dev)->opts;
+ 
+ 	if (!opts->dhchap_secret)
+ 		return sysfs_emit(buf, "none\n");
+@@ -613,8 +588,7 @@ static DEVICE_ATTR(dhchap_secret, S_IRUGO | S_IWUSR,
+ static ssize_t nvme_ctrl_dhchap_ctrl_secret_show(struct device *dev,
+ 		struct device_attribute *attr, char *buf)
+ {
+-	struct nvme_ctrl *ctrl = dev_get_drvdata(dev);
+-	struct nvmf_ctrl_options *opts = ctrl->opts;
++	struct nvmf_ctrl_options *opts = dev_to_nvme_ctrl(dev)->opts;
+ 
+ 	if (!opts->dhchap_ctrl_secret)
+ 		return sysfs_emit(buf, "none\n");
+-- 
+2.40.0
+

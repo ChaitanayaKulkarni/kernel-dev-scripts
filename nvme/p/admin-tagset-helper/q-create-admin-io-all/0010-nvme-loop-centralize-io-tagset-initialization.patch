@@ -1,0 +1,70 @@
+From 5166503c92b81d8440ece1f5f79c39faffc983ce Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Sun, 23 Jan 2022 16:45:48 -0800
+Subject: [PATCH 10/14] nvme-loop: centralize io tagset initialization
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/host/nvme.h   | 19 +++++++++++++++++++
+ drivers/nvme/target/loop.c | 15 +++++----------
+ 2 files changed, 24 insertions(+), 10 deletions(-)
+
+diff --git a/drivers/nvme/host/nvme.h b/drivers/nvme/host/nvme.h
+index b1b3105360ff..93e698fbafd1 100644
+--- a/drivers/nvme/host/nvme.h
++++ b/drivers/nvme/host/nvme.h
+@@ -955,4 +955,23 @@ static inline void nvme_init_admin_tagset(struct blk_mq_tag_set *set,
+ 	set->timeout = NVME_ADMIN_TIMEOUT;
+ }
+ 
++static inline void nvme_init_io_tagset(struct blk_mq_tag_set *set,
++				       void *driver_data, int numa_node,
++				       const struct blk_mq_ops *ops,
++				       unsigned int flags,
++				       unsigned int reserved_tags,
++				       unsigned int nr_hw_queues,
++				       unsigned int queue_depth)
++{
++	memset(set, 0, sizeof(*set));
++	set->driver_data = driver_data;
++	set->numa_node = numa_node;
++	set->ops = ops;
++	set->flags = flags;
++	set->reserved_tags = reserved_tags;
++	set->nr_hw_queues = nr_hw_queues;
++	set->queue_depth = queue_depth;
++	set->timeout = NVME_IO_TIMEOUT;
++}
++
+ #endif /* _NVME_H */
+diff --git a/drivers/nvme/target/loop.c b/drivers/nvme/target/loop.c
+index fdee038041f8..4580ec6bf571 100644
+--- a/drivers/nvme/target/loop.c
++++ b/drivers/nvme/target/loop.c
+@@ -521,18 +521,13 @@ static int nvme_loop_create_io_queues(struct nvme_loop_ctrl *ctrl)
+ 	if (ret)
+ 		return ret;
+ 
+-	memset(&ctrl->tag_set, 0, sizeof(ctrl->tag_set));
+-	ctrl->tag_set.ops = &nvme_loop_mq_ops;
+-	ctrl->tag_set.queue_depth = ctrl->ctrl.opts->queue_size;
+-	ctrl->tag_set.reserved_tags = NVMF_RESERVED_TAGS;
+-	ctrl->tag_set.numa_node = ctrl->ctrl.numa_node;
+-	ctrl->tag_set.flags = BLK_MQ_F_SHOULD_MERGE;
++	nvme_init_io_tagset(&ctrl->tag_set, ctrl, ctrl->ctrl.numa_node,
++			    &nvme_loop_mq_ops, BLK_MQ_F_SHOULD_MERGE,
++			    NVMF_RESERVED_TAGS, ctrl->ctrl.queue_count - 1,
++			    ctrl->ctrl.opts->queue_size);
++
+ 	ctrl->tag_set.cmd_size = sizeof(struct nvme_loop_iod) +
+ 		NVME_INLINE_SG_CNT * sizeof(struct scatterlist);
+-	ctrl->tag_set.driver_data = ctrl;
+-	ctrl->tag_set.nr_hw_queues = ctrl->ctrl.queue_count - 1;
+-	ctrl->tag_set.timeout = NVME_IO_TIMEOUT;
+-	ctrl->ctrl.tagset = &ctrl->tag_set;
+ 
+ 	ret = blk_mq_alloc_tag_set(&ctrl->tag_set);
+ 	if (ret)
+-- 
+2.29.0
+

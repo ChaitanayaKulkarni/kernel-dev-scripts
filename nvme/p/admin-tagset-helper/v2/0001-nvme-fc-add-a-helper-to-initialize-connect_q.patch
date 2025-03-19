@@ -1,0 +1,112 @@
+From 0ce3f8d8dbec96992de59890dc633a179b55e267 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Wed, 9 Feb 2022 02:08:14 -0800
+Subject: [PATCH] nvme-fc: add a helper to initialize connect_q
+
+Add and use helper to remove duplicate code for fabrics connect_q
+initialization for all the transports.
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/host/fc.c     | 6 ++----
+ drivers/nvme/host/nvme.h   | 8 ++++++++
+ drivers/nvme/host/rdma.c   | 7 +++----
+ drivers/nvme/host/tcp.c    | 6 ++----
+ drivers/nvme/target/loop.c | 6 ++----
+ 5 files changed, 17 insertions(+), 16 deletions(-)
+
+diff --git a/drivers/nvme/host/fc.c b/drivers/nvme/host/fc.c
+index 71b3108c22f0..23c896a138a3 100644
+--- a/drivers/nvme/host/fc.c
++++ b/drivers/nvme/host/fc.c
+@@ -2916,11 +2916,9 @@ nvme_fc_create_io_queues(struct nvme_fc_ctrl *ctrl)
+ 
+ 	ctrl->ctrl.tagset = &ctrl->tag_set;
+ 
+-	ctrl->ctrl.connect_q = blk_mq_init_queue(&ctrl->tag_set);
+-	if (IS_ERR(ctrl->ctrl.connect_q)) {
+-		ret = PTR_ERR(ctrl->ctrl.connect_q);
++	ret = nvme_ctrl_init_connect_q(&(ctrl->ctrl));
++	if (ret)
+ 		goto out_free_tag_set;
+-	}
+ 
+ 	ret = nvme_fc_create_hw_io_queues(ctrl, ctrl->ctrl.sqsize + 1);
+ 	if (ret)
+diff --git a/drivers/nvme/host/nvme.h b/drivers/nvme/host/nvme.h
+index a162f6c6da6e..f8658f984d64 100644
+--- a/drivers/nvme/host/nvme.h
++++ b/drivers/nvme/host/nvme.h
+@@ -894,6 +894,14 @@ static inline int nvme_update_zone_info(struct nvme_ns *ns, unsigned lbaf)
+ }
+ #endif
+ 
++static inline int nvme_ctrl_init_connect_q(struct nvme_ctrl *ctrl)
++{
++	ctrl->connect_q = blk_mq_init_queue(ctrl->tagset);
++	if (IS_ERR(ctrl->connect_q))
++		return PTR_ERR(ctrl->connect_q);
++	return 0;
++}
++
+ static inline struct nvme_ns *nvme_get_ns_from_dev(struct device *dev)
+ {
+ 	return dev_to_disk(dev)->private_data;
+diff --git a/drivers/nvme/host/rdma.c b/drivers/nvme/host/rdma.c
+index 850f84d204d0..d033294b063e 100644
+--- a/drivers/nvme/host/rdma.c
++++ b/drivers/nvme/host/rdma.c
+@@ -978,11 +978,10 @@ static int nvme_rdma_configure_io_queues(struct nvme_rdma_ctrl *ctrl, bool new)
+ 			goto out_free_io_queues;
+ 		}
+ 
+-		ctrl->ctrl.connect_q = blk_mq_init_queue(&ctrl->tag_set);
+-		if (IS_ERR(ctrl->ctrl.connect_q)) {
+-			ret = PTR_ERR(ctrl->ctrl.connect_q);
++
++		ret = nvme_ctrl_init_connect_q(&(ctrl->ctrl));
++		if (ret)
+ 			goto out_free_tag_set;
+-		}
+ 	}
+ 
+ 	ret = nvme_rdma_start_io_queues(ctrl);
+diff --git a/drivers/nvme/host/tcp.c b/drivers/nvme/host/tcp.c
+index 4ceb28675fdf..6cbcc8b4daaf 100644
+--- a/drivers/nvme/host/tcp.c
++++ b/drivers/nvme/host/tcp.c
+@@ -1825,11 +1825,9 @@ static int nvme_tcp_configure_io_queues(struct nvme_ctrl *ctrl, bool new)
+ 			goto out_free_io_queues;
+ 		}
+ 
+-		ctrl->connect_q = blk_mq_init_queue(ctrl->tagset);
+-		if (IS_ERR(ctrl->connect_q)) {
+-			ret = PTR_ERR(ctrl->connect_q);
++		ret = nvme_ctrl_init_connect_q(ctrl);
++		if (ret)
+ 			goto out_free_tag_set;
+-		}
+ 	}
+ 
+ 	ret = nvme_tcp_start_io_queues(ctrl);
+diff --git a/drivers/nvme/target/loop.c b/drivers/nvme/target/loop.c
+index eb1094254c82..23f9d6f88804 100644
+--- a/drivers/nvme/target/loop.c
++++ b/drivers/nvme/target/loop.c
+@@ -543,11 +543,9 @@ static int nvme_loop_create_io_queues(struct nvme_loop_ctrl *ctrl)
+ 	if (ret)
+ 		goto out_destroy_queues;
+ 
+-	ctrl->ctrl.connect_q = blk_mq_init_queue(&ctrl->tag_set);
+-	if (IS_ERR(ctrl->ctrl.connect_q)) {
+-		ret = PTR_ERR(ctrl->ctrl.connect_q);
++	ret = nvme_ctrl_init_connect_q(&(ctrl->ctrl));
++	if (ret)
+ 		goto out_free_tagset;
+-	}
+ 
+ 	ret = nvme_loop_connect_io_queues(ctrl);
+ 	if (ret)
+-- 
+2.29.0
+

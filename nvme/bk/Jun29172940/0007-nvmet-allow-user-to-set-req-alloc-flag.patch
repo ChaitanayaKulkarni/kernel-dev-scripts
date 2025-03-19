@@ -1,0 +1,121 @@
+From a3e9d99e423f18dabcae8803c2602b8a19e2f5b8 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Tue, 22 Sep 2020 20:30:14 -0700
+Subject: [PATCH 7/7] nvmet: allow user to set req alloc flag
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/configfs.c | 36 ++++++++++++++++++++++++++++++++++
+ drivers/nvme/target/core.c     |  4 ++++
+ drivers/nvme/target/nvmet.h    |  1 +
+ drivers/nvme/target/passthru.c |  3 ++-
+ 4 files changed, 43 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/nvme/target/configfs.c b/drivers/nvme/target/configfs.c
+index 37e1d7784e17..3569e1a55ee5 100644
+--- a/drivers/nvme/target/configfs.c
++++ b/drivers/nvme/target/configfs.c
+@@ -5,6 +5,7 @@
+  */
+ #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
+ #include <linux/kernel.h>
++#include <linux/blk-mq.h>
+ #include <linux/module.h>
+ #include <linux/slab.h>
+ #include <linux/stat.h>
+@@ -736,9 +737,44 @@ static ssize_t nvmet_passthru_enable_store(struct config_item *item,
+ }
+ CONFIGFS_ATTR(nvmet_passthru_, enable);
+ 
++static ssize_t nvmet_passthru_req_nowait_show(struct config_item *item,
++						char *page)
++{
++	struct nvmet_subsys *subsys = to_subsys(item->ci_parent);
++
++	return snprintf(page, PAGE_SIZE, "%d\n", subsys->req_nowait);
++}
++
++static ssize_t nvmet_passthru_req_nowait_store(struct config_item *item,
++		const char *page, size_t count)
++{
++	struct nvmet_subsys *subsys = to_subsys(item->ci_parent);
++	bool req_nowait;
++	int ret = 0;
++
++	mutex_lock(&subsys->lock);
++	if (subsys->passthru_ctrl) {
++		pr_err("disable passthru ctrl before setting req_nowait\n");
++		ret = -EBUSY;
++		goto out;
++	}
++
++	if (strtobool(page, &req_nowait)) {
++		ret = -EINVAL;
++		goto out;
++	}
++
++	subsys->req_nowait = req_nowait ? BLK_MQ_REQ_NOWAIT : 0;
++out:
++	mutex_unlock(&subsys->lock);
++	return ret ? ret : count;
++}
++CONFIGFS_ATTR(nvmet_passthru_, req_nowait);
++
+ static struct configfs_attribute *nvmet_passthru_attrs[] = {
+ 	&nvmet_passthru_attr_device_path,
+ 	&nvmet_passthru_attr_enable,
++	&nvmet_passthru_attr_req_nowait,
+ 	NULL,
+ };
+ 
+diff --git a/drivers/nvme/target/core.c b/drivers/nvme/target/core.c
+index 40861d303335..31c7f1291fa2 100644
+--- a/drivers/nvme/target/core.c
++++ b/drivers/nvme/target/core.c
+@@ -5,6 +5,7 @@
+  */
+ #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
+ #include <linux/module.h>
++#include <linux/blk-mq.h>
+ #include <linux/random.h>
+ #include <linux/rculist.h>
+ #include <linux/pci-p2pdma.h>
+@@ -1510,6 +1511,9 @@ struct nvmet_subsys *nvmet_subsys_alloc(const char *subsysnqn,
+ 	}
+ 	subsys->cntlid_min = NVME_CNTLID_MIN;
+ 	subsys->cntlid_max = NVME_CNTLID_MAX;
++#ifdef CONFIG_NVME_TARGET_PASSTHRU
++	subsys->req_nowait = BLK_MQ_REQ_NOWAIT;
++#endif
+ 	kref_init(&subsys->ref);
+ 
+ 	mutex_init(&subsys->lock);
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index 3fcf4ef3e41f..d8eafbdb2622 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -249,6 +249,7 @@ struct nvmet_subsys {
+ 	struct nvme_ctrl	*passthru_ctrl;
+ 	char			*passthru_ctrl_path;
+ 	struct config_group	passthru_group;
++	blk_mq_req_flags_t	req_nowait;
+ #endif /* CONFIG_NVME_TARGET_PASSTHRU */
+ };
+ 
+diff --git a/drivers/nvme/target/passthru.c b/drivers/nvme/target/passthru.c
+index 089251cff2f1..42336a613db0 100644
+--- a/drivers/nvme/target/passthru.c
++++ b/drivers/nvme/target/passthru.c
+@@ -243,7 +243,8 @@ static void nvmet_passthru_execute_cmd(struct nvmet_req *req)
+ 		q = ns->queue;
+ 	}
+ 
+-	rq = nvme_alloc_request_qid_any(q, req->cmd, BLK_MQ_REQ_NOWAIT);
++	rq = nvme_alloc_request_qid_any(q, req->cmd,
++					req->sq->ctrl->subsys->req_nowait);
+ 	if (IS_ERR(rq)) {
+ 		status = NVME_SC_INTERNAL;
+ 		goto out_put_ns;
+-- 
+2.22.1
+

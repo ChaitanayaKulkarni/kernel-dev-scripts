@@ -1,0 +1,64 @@
+From 935905bc3dde0d1b411fd0a9b2b2fac47aeab86d Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Fri, 7 Aug 2020 22:57:42 -0700
+Subject: [PATCH 12/12] nvmet: remove duplicate req completion code
+
+In the function nvmet_passthru_execute_cmd_work() after overriding
+id_[ctr|ns] results it completes the request by assigning the target
+request completion queue entry result from nvme request result,
+actually completing request on the transport and calling
+blk_mq_free_request().
+
+The function nvmet_passhru_req_done does the same thing, use that and
+remove the duplicate code in nvmet_passhru_execute_cmd_work().
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/passthru.c | 24 +++++++++++-------------
+ 1 file changed, 11 insertions(+), 13 deletions(-)
+
+diff --git a/drivers/nvme/target/passthru.c b/drivers/nvme/target/passthru.c
+index b26fdba9de03..3c4e0624ea28 100644
+--- a/drivers/nvme/target/passthru.c
++++ b/drivers/nvme/target/passthru.c
+@@ -143,6 +143,16 @@ static u16 nvmet_passthru_override_id_ns(struct nvmet_req *req)
+ 	return status;
+ }
+ 
++static void nvmet_passthru_req_done(struct request *rq,
++				    blk_status_t blk_status)
++{
++	struct nvmet_req *req = rq->end_io_data;
++
++	req->cqe->result = nvme_req(rq)->result;
++	nvmet_req_complete(req, nvme_req(rq)->status);
++	blk_mq_free_request(rq);
++}
++
+ static void nvmet_passthru_execute_cmd_work(struct work_struct *w)
+ {
+ 	struct nvmet_req *req = container_of(w, struct nvmet_req, p.work);
+@@ -164,19 +174,7 @@ static void nvmet_passthru_execute_cmd_work(struct work_struct *w)
+ 		}
+ 	}
+ 
+-	req->cqe->result = nvme_req(rq)->result;
+-	nvmet_req_complete(req, status);
+-	blk_mq_free_request(rq);
+-}
+-
+-static void nvmet_passthru_req_done(struct request *rq,
+-				    blk_status_t blk_status)
+-{
+-	struct nvmet_req *req = rq->end_io_data;
+-
+-	req->cqe->result = nvme_req(rq)->result;
+-	nvmet_req_complete(req, nvme_req(rq)->status);
+-	blk_mq_free_request(rq);
++	nvmet_passthru_req_done(rq, status);
+ }
+ 
+ static inline bool nvmet_write_cmd_group(__u8 opcode)
+-- 
+2.22.1
+

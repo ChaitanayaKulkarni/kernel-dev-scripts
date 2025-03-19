@@ -1,0 +1,35 @@
+From 86791808964f88328c50e9f0b974495d096225c3 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Thu, 9 Dec 2021 14:14:54 -0800
+Subject: [PATCH V2 2/2] nvme: add KConfig options for debug features
+
+Add KConfig menu option to enable and disable gencounter debug
+feature that uses config NVME_DEBUG_USE_CID_GENCTR.
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/host/Kconfig | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/drivers/nvme/host/Kconfig b/drivers/nvme/host/Kconfig
+index dc0450ca23a3..dfa2609b7006 100644
+--- a/drivers/nvme/host/Kconfig
++++ b/drivers/nvme/host/Kconfig
+@@ -1,4 +1,14 @@
+ # SPDX-License-Identifier: GPL-2.0-only
++menu "Debug (Enable driver debug features)"
++config NVME_DEBUG_USE_CID_GENCTR
++	bool "Enable command ID gen counter for spurious request completion"
++	depends on NVME_CORE
++	help
++	  The NVM Express driver will use generation conunter
++	  when calculating the command id. This is needed to debug the
++	  spurious request completions coming from a buggy controller.
++endmenu
++
+ config NVME_CORE
+ 	tristate
+ 	select BLK_DEV_INTEGRITY_T10 if BLK_DEV_INTEGRITY
+-- 
+2.29.0
+

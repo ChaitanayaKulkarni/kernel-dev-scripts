@@ -1,0 +1,37 @@
+diff --git a/fs/btrfs/extent_io.c b/fs/btrfs/extent_io.c
+index 191e358f1322..0e29eed1bf27 100644
+--- a/fs/btrfs/extent_io.c
++++ b/fs/btrfs/extent_io.c
+@@ -3130,7 +3130,6 @@ static bool btrfs_bio_add_page(struct bio *bio, struct page *page,
+ {
+ 	const sector_t sector = disk_bytenr >> SECTOR_SHIFT;
+ 	bool contig;
+-	int ret;
+ 
+ 	if (prev_bio_flags != bio_flags)
+ 		return false;
+@@ -3145,17 +3144,19 @@ static bool btrfs_bio_add_page(struct bio *bio, struct page *page,
+ 	if (btrfs_bio_fits_in_stripe(page, size, bio, bio_flags))
+ 		return false;
+ 
+-	if (bio_op(bio) == REQ_OP_ZONE_APPEND) {
++
++	if (IS_ENABLED(CONFIG_BLK_DEV_ZONED) &&
++	    bio_op(bio) == REQ_OP_ZONE_APPEND) {
+ 		struct page *first_page = bio_first_bvec_all(bio)->bv_page;
+ 
+ 		if (!btrfs_bio_fits_in_ordered_extent(first_page, bio, size))
+ 			return false;
+-		ret = bio_add_zone_append_page(bio, page, size, pg_offset);
+-	} else {
+-		ret = bio_add_page(bio, page, size, pg_offset);
++
++		return size = bio_add_zone_append_page(bio, page, size,
++						       pg_offset);
+ 	}
+ 
+-	return ret == size;
++	return size = bio_add_page(bio, page, size, pg_offset);
+ }
+ 
+ /*

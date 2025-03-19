@@ -1,0 +1,26 @@
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index f204c6f78b5b..a1ea2f736d42 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -370,7 +370,7 @@ static inline void nvme_end_req(struct request *req)
+ {
+ 	blk_status_t status = nvme_error_status(nvme_req(req)->status);
+ 
+-	if (unlikely(nvme_req(req)->status != NVME_SC_SUCCESS))
++	if (unlikely(nvme_req(req)->status && !(req->rq_flags & RQF_QUIET)))
+ 		nvme_log_error(req);
+ 	nvme_end_req_zoned(req);
+ 	nvme_trace_bio_complete(req);
+@@ -1086,9 +1086,11 @@ int __nvme_submit_sync_cmd(struct request_queue *q, struct nvme_command *cmd,
+ 	else
+ 		req = blk_mq_alloc_request_hctx(q, nvme_req_op(cmd), flags,
+ 						qid ? qid - 1 : 0);
+-
+ 	if (IS_ERR(req))
+ 		return PTR_ERR(req);
++
++	req->rq_flags |= RQF_QUIET;
++
+ 	nvme_init_request(req, cmd);
+ 
+ 	if (timeout)

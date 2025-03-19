@@ -1,0 +1,130 @@
+
+1. Test Zoned Block Device info :- 
+---------------------------------------------------------------------------------
+
+# fdisk  -l /dev/sda 
+Disk /dev/sda: 13.64 TiB, 15000173281280 bytes, 3662151680 sectors
+Disk model: HSH721415AL42M0 
+Units: sectors of 1 * 4096 = 4096 bytes
+Sector size (logical/physical): 4096 bytes / 4096 bytes
+I/O size (minimum/optimal): 4096 bytes / 4096 bytes
+# cat /sys/block/sda/queue/nr_zones 
+55880
+# cat /sys/block/sda/queue/zoned 
+host-managed
+# cat /sys/block/sda/queue/zone_append_max_bytes 
+524288
+
+2. Creating NVMeOF target backed by ZBD with dm-linear
+---------------------------------------------------------------------------------
+
+# ./zbdev.sh 1 dm-zbd
+++ FILE=/dev/nvme0n1
+++ NN=1
+++ NQN=dm-zbd
+++ let NR_DEVICES=1
+++ echo '0 29022486528 linear /dev/sda 274726912' | dmsetup create cksda
+9 directories, 4 files
+++ mkdir /sys/kernel/config/nvmet/subsystems/dm-zbd
+++ i=1
+++ mkdir /sys/kernel/config/nvmet/subsystems/dm-zbd/namespaces/1
+++ echo -n /dev/dm-0
+++ cat /sys/kernel/config/nvmet/subsystems/dm-zbd/namespaces/1/device_path
+/dev/dm-0
+++ echo 1
+++ mkdir /sys/kernel/config/nvmet/ports/1/
+++ echo -n loop
+++ echo -n 1
+++ ln -s /sys/kernel/config/nvmet/subsystems/dm-zbd /sys/kernel/config/nvmet/ports/1/subsystems/
+++ sleep 1
+++ echo transport=loop,nqn=dm-zbd
+++ sleep 1
+++ mount
+++ column -t
+++ grep nvme
+++ dmesg -c
+[233450.572565] nvmet: adding nsid 1 to subsystem dm-zbd
+[233452.269477] nvmet: creating controller 1 for subsystem dm-zbd for NQN nqn.2014-08.org.nvmexpress:uuid:853d7e82-8018-44ce-8784-ab81e7465ad9.
+[233452.283352] nvme nvme0: Please enable CONFIG_NVME_MULTIPATH for full support of multi-port devices.
+[233452.292805] nvme nvme0: creating 8 I/O queues.
+[233452.299210] nvme nvme0: new ctrl: "dm-zbd"
+
+3. dm-linear and backend SMR HDD association :-
+---------------------------------------------------------------------------------
+
+# cat /sys/kernel/config/nvmet/subsystems/dm-zbd/namespaces/1/device_path 
+/dev/dm-0
+# dmsetup ls --tree
+cksda (251:0)
+ └─ (8:0)
+# lsblk | head -3
+NAME    MAJ:MIN RM   SIZE RO TYPE MOUNTPOINT
+sda       8:0    0  13.6T  0 disk 
+└─cksda 251:0    0  13.5T  0 dm   
+
+4. NVMeOF controller :- 
+---------------------------------------------------------------------------------
+
+# nvme list 
+Node             SN                   Model                                    Namespace Usage                      Format           FW Rev  
+---------------- -------------------- ---------------------------------------- --------- -------------------------- ---------------- --------
+/dev/nvme0n1     c47724643c058020     Linux                                    1          14.86  TB /  14.86  TB      4 KiB +  0 B   5.10.0-r
+
+5. Zonefs tests results :-
+---------------------------------------------------------------------------------
+
+# ./zonefs-tests.sh /dev/nvme0n1 
+Gathering information on /dev/nvme0n1...
+zonefs-tests on /dev/nvme0n1:
+  55356 zones (0 conventional zones, 55356 sequential zones)
+  524288 512B sectors zone size (256 MiB)
+  1 max open zones
+Running tests
+  Test 0010:  mkzonefs (options)                                   ... PASS
+  Test 0011:  mkzonefs (force format)                              ... PASS
+  Test 0012:  mkzonefs (invalid device)                            ... PASS
+  Test 0013:  mkzonefs (super block zone state)                    ... PASS
+  Test 0020:  mount (default)                                      ... PASS
+  Test 0021:  mount (invalid device)                               ... PASS
+  Test 0022:  mount (check mount directory sub-directories)        ... PASS
+  Test 0023:  mount (options)                                      ... PASS
+  Test 0030:  Number of files (default)                            ... PASS
+  Test 0031:  Number of files (aggr_cnv)                           ... skip
+  Test 0032:  Number of files using stat (default)                 ... PASS
+  Test 0033:  Number of files using stat (aggr_cnv)                ... PASS
+  Test 0034:  Number of blocks using stat (default)                ... PASS
+  Test 0035:  Number of blocks using stat (aggr_cnv)               ... PASS
+  Test 0040:  Files permissions (default)                          ... PASS
+  Test 0041:  Files permissions (aggr_cnv)                         ... skip
+  Test 0042:  Files permissions (set value)                        ... PASS
+  Test 0043:  Files permissions (set value + aggr_cnv)             ... skip
+  Test 0050:  Files owner (default)                                ... PASS
+  Test 0051:  Files owner (aggr_cnv)                               ... skip
+  Test 0052:  Files owner (set value)                              ... PASS
+  Test 0053:  Files owner (set value + aggr_cnv)                   ... skip
+  Test 0060:  Files size (default)                                 ... PASS
+  Test 0061:  Files size (aggr_cnv)                                ... skip
+  Test 0070:  Conventional file truncate                           ... skip
+  Test 0071:  Conventional file truncate (aggr_cnv)                ... skip
+  Test 0072:  Conventional file unlink                             ... skip
+  Test 0073:  Conventional file unlink (aggr_cnv)                  ... skip
+  Test 0074:  Conventional file random write                       ... skip
+  Test 0075:  Conventional file random write (direct)              ... skip
+  Test 0076:  Conventional file random write (aggr_cnv)            ... skip
+  Test 0077:  Conventional file random write (aggr_cnv, direct)    ... skip
+  Test 0078:  Conventional file mmap read/write                    ... skip
+  Test 0079:  Conventional file mmap read/write (aggr_cnv)         ... skip
+  Test 0080:  Sequential file truncate                             ... PASS
+  Test 0081:  Sequential file unlink                               ... PASS
+  Test 0082:  Sequential file buffered write IO                    ... PASS
+  Test 0083:  Sequential file overwrite                            ... PASS
+  Test 0084:  Sequential file unaligned write (sync IO)            ... PASS
+  Test 0085:  Sequential file unaligned write (async IO)           ... PASS
+  Test 0086:  Sequential file append (sync)                        ... PASS
+  Test 0087:  Sequential file append (async)                       ... PASS
+  Test 0088:  Sequential file random read                          ... PASS
+  Test 0089:  Sequential file mmap read/write                      ... PASS
+  Test 0090:  sequential file 4K synchronous write                 ... PASS
+  Test 0091:  Sequential file large synchronous write              ... PASS
+
+46 / 46 tests passed

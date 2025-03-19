@@ -1,0 +1,123 @@
+
+
+1. Completed first phase of Live Migration from writting reserach paper
+   to create a standard that reflects the research paper findings and
+   architecture. Only 2% of research paper ends up being the part of
+   standard, my research paper is one of them.
+2. Submitted patches for for 3 RFCs for DMA API work.
+   Help debugged problems faced in Leon's code.
+3. I was selected by NVM Express working group to represent NVMe TWG at
+   FMS along with MSFT/Google and accepted Most Innovative technology memory 
+   technology award. I was invited on the Live Migration panel discussion
+   to represent NVIDIA with MSFT and Google.
+4. Negotiated blktests devops for NVMe tree with Jakub.
+5. Providing necessary help to NVMe TCP Team with code Reviews, upstream
+   strategy discussion, blktest reviews that are needed to merge the NVMeOF
+   TCP offload patches.                                    
+6. Represented NVIDIA at FMS, SNIA SDC, and OCP in terms of Live Migration
+   discussion future of storage discussions.
+7. NVMe SoC Architecture standardization.  
+   Leading the Standardization and architectural reviews in NVIDIA.
+   Leading the design and standardization meetings with MSFT.
+   Creating a standardization strategy.
+   Heavily involved in Architecture review.
+   Mentoring emulation team to build development platform with regular meetings
+   -Creating a basic skeleton for emulation                 
+   -Closing the gap between MSFT meeting and standardization issues
+                                                           
+8. Review, test, and fix any problems in the merge window to make sure the
+   stability of the subsystem, making sure NVMeOF subsystem is working for
+   our existing RDMA networking products and upcoming ones for TCP offload.
+
+   Regular cleanup patches and regular upstream maintainer work.
+   Running the NVMe/Storage Kernel development ecosystem mailing list.
+
+   Actively participating in the different discussion on the linux-block,
+   linux-nvme, linux-fsdevel, linux-scsi and linux-virtualization.
+
+   Being an active kernel maintainer and leading storage developer on
+   multiple mailing lists received an LSFMM invitation for the reviews and
+   kernel work done in past year.
+
+   Upstream NVIDIA Storage stack contribution/development:-
+   Review patches going into the NVMe-PCIe and NVMeOF Kernel subsystem from
+   NVIDIA. Provide internal reviews and get the patches in good shape before
+   they go upstream so they will be accepted faster, also review every single 
+   patch going into userspace ecosystem such as nvme-cli/nvmetcli/blktests/QEMU
+   NVMe from NVIDIA. 
+
+Noteble achievements :-
+-  NVIDIA Live Migration Architect did not find anything problematic on the
+   final TP text that was sent to ratification apart from few cleanup comments.
+   This shows my proficiency and technical expterties in Live Migaration 
+   project.
+-  In very short time I was able to take the control the SoC Encryption project
+   and move it in the right direction by leading the overall development and
+   standardization strategy, actively engagging with our client MSFT in order 
+   to implement the SoC standardization strategy that fits the NVIDIA's SoC
+   development goals. see the Lead Architect's feedback below [1].
+-  NVMe adming strongly recommended that I should apply for more a prominent
+   role and try to get elected on the technical board. This strategic counsel
+   underscores the recognition of our expertise and influence, emphasizing the
+   value we bring to the table in shaping and steering the technical landscape
+   within the NVMe community. This recommendation positions NVIDIA at the
+   forefront of key decision-making processes, ensuring our active involvement
+   in shaping industry standards and reinforcing our commitment to technical
+   leadership. 
+-  Negotiated next steps with Oracle for the Live Migration and agreed on
+   creating NVMe Profile 
+-  Negotiated next steps with Senior Kernel maintainers about Live Migration
+   at LSFMM 2024.
+-  Conducted BoF session of the DMA API work that Leon is doing at LSFMM 2024
+   and got the positive feedback from community.
+-  Based on significant contribution in the industry I've been nominated 
+   to oversee the development of the Adaptive Namespaces.
+
+Future goals:-
+
+1. Work on Phase II of the Live Migration including TP/TPAR development
+   to coding and create patches for linux kernel and QEMU.
+2. Lead the SoC Encryption project and take to completion.
+3. Work with CJ Newborn on NVMeNext project that includes NVMe + GPU.
+4. Conduct regular meetings with TCP offload team and monitor progress.
+   As soon as current issues resolved work on getting it upstream.
+   The patch-series on V22 much closer to merge than last year. 
+5. Work on ongoing nvmetcli, nvme-cli, blktests, QEMU issues and code
+   cleanup to keep the NVMe tools ecosystem stable.
+6. Work on linux-nvme, linux-block, linux-fsdevel linux-virtualization,
+   linux-vfio and review patches. 
+9. NVIDIA Specific feature requests from Vendors.
+10. Represent NVIDIA in LSFMM and lead the discussion for following
+    sessions :-
+    blktests and devops integration we are doing for NVMe TCP offload series.
+
+-ck
+
+[1] Andrew Elias <aelias@nvidia.com> Feedback on SoC Encryption project :-
+
+Subject: RE: Request for work review
+Date: Mon, 25 Nov 2024 01:23:54 +0000
+From: Andrew Elias <aelias@nvidia.com>
+To: Chaitanya Kulkarni <chaitanyak@nvidia.com>
+
+I am currently working with Chaitanya on the Bitlocker proposal which involves
+supporting AES-XTS encryption/decryption with an NVMe device. Chaitanya, whose
+has deep knowledge in the area of NMVe driver design and is an active member of 
+the NVMe WG has provided valuable insight and technical information to myself
+and the team as we put together the final proposal. As key NVMe expert, 
+Chaitanya has help us evaluate the following:
+
+- our design choices and the impact to the NVMe specification
+- how to proceed with the NVMe WG and identify strategic partnerships
+- identify the future roadmap and which parts NVMe WG can own (and which parts
+  may need to be owned by another standards group)
+- participating in discussions with MSFT Bitlocker expert
+ 
+NVMe expertise within NV is very limited so Chaitanya's expertise has really
+helped me and the team build confidence that we are moving down the right path.
+We have been moving quickly, so I appreciate Chaitanya's quick response and 
+willingness to accommodate last-minute meetings.
+ 
+I look forward to continue working with Chaitanya and his help to drive the NVMe
+security protection for Nvidia.
+ 

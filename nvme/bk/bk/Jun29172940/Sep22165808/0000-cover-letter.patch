@@ -1,0 +1,27 @@
+From 4975ce63cb8c9582387576a43202906057a6ada6 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Tue, 22 Sep 2020 16:48:16 -0700
+Subject: [PATCH 0/5] 
+
+*** BLURB HERE ***
+
+Chaitanya Kulkarni (5):
+  nvme-core: split nvme_alloc_request()
+  nvmet: remove op_flags for passthru commands
+  block: move blk_rq_bio_prep() to linux/blk-mq.h
+  nvmet: use minimized version of blk_rq_append_bio
+  nvmet: use inline bio for passthru fast path
+
+ block/blk.h                    | 12 --------
+ drivers/nvme/host/core.c       | 52 +++++++++++++++++++++++-----------
+ drivers/nvme/host/lightnvm.c   |  5 ++--
+ drivers/nvme/host/nvme.h       |  4 +--
+ drivers/nvme/host/pci.c        |  6 ++--
+ drivers/nvme/target/nvmet.h    |  1 +
+ drivers/nvme/target/passthru.c | 37 ++++++++++++++----------
+ include/linux/blk-mq.h         | 12 ++++++++
+ 8 files changed, 77 insertions(+), 52 deletions(-)
+
+-- 
+2.22.1
+

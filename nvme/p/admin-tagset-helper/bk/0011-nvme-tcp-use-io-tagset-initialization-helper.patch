@@ -1,0 +1,46 @@
+From d80ac6679f9bfdd6bbbae8a6fb234da02b07e1b9 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Sat, 22 Jan 2022 23:01:15 -0800
+Subject: [PATCH 11/11] nvme-tcp: use io tagset initialization helper
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/host/tcp.c | 14 +++++---------
+ 1 file changed, 5 insertions(+), 9 deletions(-)
+
+diff --git a/drivers/nvme/host/tcp.c b/drivers/nvme/host/tcp.c
+index 905bd57a14e1..28d5b8771a1d 100644
+--- a/drivers/nvme/host/tcp.c
++++ b/drivers/nvme/host/tcp.c
+@@ -1607,6 +1607,7 @@ static int nvme_tcp_start_queue(struct nvme_ctrl *nctrl, int idx)
+ static struct blk_mq_tag_set *nvme_tcp_alloc_tagset(struct nvme_ctrl *nctrl,
+ 		bool admin)
+ {
++	unsigned int io_flags = BLK_MQ_F_SHOULD_MERGE | BLK_MQ_F_BLOCKING;
+ 	struct nvme_tcp_ctrl *ctrl = to_tcp_ctrl(nctrl);
+ 	struct blk_mq_tag_set *set;
+ 	int ret;
+@@ -1618,16 +1619,11 @@ static struct blk_mq_tag_set *nvme_tcp_alloc_tagset(struct nvme_ctrl *nctrl,
+ 		set->cmd_size = sizeof(struct nvme_tcp_request);
+ 	} else {
+ 		set = &ctrl->tag_set;
+-		memset(set, 0, sizeof(*set));
+-		set->ops = &nvme_tcp_mq_ops;
+-		set->queue_depth = nctrl->sqsize + 1;
+-		set->reserved_tags = NVMF_RESERVED_TAGS;
+-		set->numa_node = nctrl->numa_node;
+-		set->flags = BLK_MQ_F_SHOULD_MERGE | BLK_MQ_F_BLOCKING;
++		nvme_ctrl_init_io_tagset(set, ctrl, nctrl->numa_node,
++					 &nvme_tcp_mq_ops, io_flags,
++					 nctrl->queue_count - 1,
++					 nctrl->sqsize + 1);
+ 		set->cmd_size = sizeof(struct nvme_tcp_request);
+-		set->driver_data = ctrl;
+-		set->nr_hw_queues = nctrl->queue_count - 1;
+-		set->timeout = NVME_IO_TIMEOUT;
+ 		set->nr_maps = nctrl->opts->nr_poll_queues ? HCTX_MAX_TYPES : 2;
+ 	}
+ 
+-- 
+2.29.0
+

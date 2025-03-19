@@ -1,0 +1,21 @@
+From 00fbbcb778c4f3ffdb688ffbc0d2829249eabeff Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Fri, 7 Apr 2023 20:30:07 -0700
+Subject: [PATCH 0/2] *** SUBJECT HERE ***
+
+*** BLURB HERE ***
+
+Chaitanya Kulkarni (2):
+  nvmet: allow bdev-ns to be cleared on enable
+  nvmet: allow file-ns to be cleared on enable
+
+ drivers/nvme/target/configfs.c    | 33 +++++++++++++++++++++++++++++++
+ drivers/nvme/target/core.c        | 16 +++++++++++++++
+ drivers/nvme/target/io-cmd-bdev.c | 18 +++++++++++++++++
+ drivers/nvme/target/io-cmd-file.c |  8 ++++++++
+ drivers/nvme/target/nvmet.h       |  3 +++
+ 5 files changed, 78 insertions(+)
+
+-- 
+2.29.0
+

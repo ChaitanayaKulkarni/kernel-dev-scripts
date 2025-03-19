@@ -1,0 +1,41 @@
+From 852ff98cbfe876a0bcd462824966b43e2295b236 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Sun, 23 Jan 2022 16:55:36 -0800
+Subject: [PATCH 13/14] nvme-pci: use io tagset initialization helper
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/host/pci.c | 13 +++++--------
+ 1 file changed, 5 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/nvme/host/pci.c b/drivers/nvme/host/pci.c
+index 251778feef56..13ed8aa6705e 100644
+--- a/drivers/nvme/host/pci.c
++++ b/drivers/nvme/host/pci.c
+@@ -2449,18 +2449,15 @@ static void nvme_dev_add(struct nvme_dev *dev)
+ 	int ret;
+ 
+ 	if (!dev->ctrl.tagset) {
+-		dev->tagset.ops = &nvme_mq_ops;
+-		dev->tagset.nr_hw_queues = dev->online_queues - 1;
++		unsigned int qdepth = min_t(unsigned int, dev->q_depth,
++					    BLK_MQ_MAX_DEPTH) - 1;
++		nvme_init_io_tagset(&dev->tagset, dev, dev->ctrl.numa_node,
++				    &nvme_mq_ops, BLK_MQ_F_SHOULD_MERGE, 0,
++				    dev->online_queues - 1, qdepth);
+ 		dev->tagset.nr_maps = 2; /* default + read */
+ 		if (dev->io_queues[HCTX_TYPE_POLL])
+ 			dev->tagset.nr_maps++;
+-		dev->tagset.timeout = NVME_IO_TIMEOUT;
+-		dev->tagset.numa_node = dev->ctrl.numa_node;
+-		dev->tagset.queue_depth = min_t(unsigned int, dev->q_depth,
+-						BLK_MQ_MAX_DEPTH) - 1;
+ 		dev->tagset.cmd_size = sizeof(struct nvme_iod);
+-		dev->tagset.flags = BLK_MQ_F_SHOULD_MERGE;
+-		dev->tagset.driver_data = dev;
+ 
+ 		/*
+ 		 * Some Apple controllers requires tags to be unique
+-- 
+2.29.0
+

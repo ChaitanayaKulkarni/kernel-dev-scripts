@@ -1,0 +1,105 @@
+From 4e694092c47df77bd487cded7028648db26e5e77 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Wed, 2 Oct 2019 00:19:08 -0700
+Subject: [PATCH 3/6] nvmet: implement polling for bdev-ns
+
+This patch implements polling for the block device backed NVMeOF
+target namespace.
+
+In the I/O submission code path, for each I/O request we queue the
+polling work (nvmet_bdev_io_poll_work()) after submitting the bio and
+return from the submission thread.
+
+The new function nvmet_bdev_io_poll_work() runs in a tight loop calling
+blk_poll() followed by the io_schedule().
+
+In the I/O completion path, completion callback signals the polling work
+routine about the completion of this I/O so that it can exit the loop.
+
+By default, we only enable polling for the READ/WRITE I/Os.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/io-cmd-bdev.c | 32 ++++++++++++++++++++++++++++++-
+ 1 file changed, 31 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/nvme/target/io-cmd-bdev.c b/drivers/nvme/target/io-cmd-bdev.c
+index 0aa51e8cf80b..86183a6a438c 100644
+--- a/drivers/nvme/target/io-cmd-bdev.c
++++ b/drivers/nvme/target/io-cmd-bdev.c
+@@ -139,13 +139,28 @@ static void nvmet_bio_done(struct bio *bio)
+ {
+ 	struct nvmet_req *req = bio->bi_private;
+ 
++	if (req->b.polled)
++		complete(&req->b.waiting);
++
+ 	nvmet_req_complete(req, blk_to_nvme_status(req, bio->bi_status));
+ 	if (bio != &req->b.inline_bio)
+ 		bio_put(bio);
+ }
+ 
++static void nvmet_bdev_io_poll_work(struct work_struct *w)
++{
++	struct nvmet_req *req = container_of(w, struct nvmet_req, b.work);
++	struct request_queue *q = bdev_get_queue(req->ns->bdev);
++
++	while (!completion_done(&req->b.waiting)) {
++		blk_poll(q, req->b.cookie, true);
++		io_schedule();
++	}
++}
++
+ static void nvmet_bdev_execute_rw(struct nvmet_req *req)
+ {
++	struct request_queue *q = bdev_get_queue(req->ns->bdev);
+ 	int sg_cnt = req->sg_cnt;
+ 	struct bio *bio;
+ 	struct scatterlist *sg;
+@@ -202,7 +217,18 @@ static void nvmet_bdev_execute_rw(struct nvmet_req *req)
+ 		sg_cnt--;
+ 	}
+ 
+-	submit_bio(bio);
++	/* don't even try to poll if q doen't support polling */
++	if (test_bit(QUEUE_FLAG_POLL, &q->queue_flags)) {
++		init_completion(&req->b.waiting);
++		INIT_WORK(&req->b.work, nvmet_bdev_io_poll_work);
++	} else {
++		req->b.polled = false;
++	}
++
++	req->b.cookie = submit_bio(bio);
++
++	if (req->b.polled)
++		queue_work(io_poll_wq, &req->b.work);
+ }
+ 
+ static void nvmet_bdev_execute_flush(struct nvmet_req *req)
+@@ -320,19 +346,23 @@ u16 nvmet_bdev_parse_io_cmd(struct nvmet_req *req)
+ 	switch (cmd->common.opcode) {
+ 	case nvme_cmd_read:
+ 	case nvme_cmd_write:
++		req->b.polled = true;
+ 		req->execute = nvmet_bdev_execute_rw;
+ 		req->data_len = nvmet_rw_len(req);
+ 		return 0;
+ 	case nvme_cmd_flush:
++		req->b.polled = false;
+ 		req->execute = nvmet_bdev_execute_flush;
+ 		req->data_len = 0;
+ 		return 0;
+ 	case nvme_cmd_dsm:
++		req->b.polled = false;
+ 		req->execute = nvmet_bdev_execute_dsm;
+ 		req->data_len = (le32_to_cpu(cmd->dsm.nr) + 1) *
+ 			sizeof(struct nvme_dsm_range);
+ 		return 0;
+ 	case nvme_cmd_write_zeroes:
++		req->b.polled = false;
+ 		req->execute = nvmet_bdev_execute_write_zeroes;
+ 		req->data_len = 0;
+ 		return 0;
+-- 
+2.22.1
+

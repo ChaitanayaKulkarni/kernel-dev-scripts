@@ -1,0 +1,115 @@
+From decd31d35713adf2e0312b54678b35d8d7e4f47d Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Fri, 11 Dec 2020 20:20:12 -0800
+Subject: [PATCH V9 5/9] nvmet: add bio get helper for different backends
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+With the addition of the zns backend now we have three different
+backends with inline bio optimization. That leads to having duplicate
+code for allocating or initializing the bio in all three backends:
+generic bdev, passsthru, and generic zns.
+
+Add a helper function to reduce the duplicate code such that helper
+function accepts the bi_end_io callback which gets initialize for the
+non-inline bio_alloc() case. This is due to the special case needed for
+the passthru backend non-inline bio allocation bio_alloc() where we set
+the bio->bi_end_io = bio_put, having this parameter avoids the extra
+branch in the passthru fast path. For rest of the backends, we set the
+same bi_end_io callback for inline and non-inline cases, that is for
+generic bdev we set to nvmet_bio_done() and for generic zns we set to
+NULL.                            
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/io-cmd-bdev.c |  7 +------
+ drivers/nvme/target/nvmet.h       | 16 ++++++++++++++++
+ drivers/nvme/target/passthru.c    |  8 +-------
+ drivers/nvme/target/zns.c         |  8 +-------
+ 4 files changed, 19 insertions(+), 20 deletions(-)
+
+diff --git a/drivers/nvme/target/io-cmd-bdev.c b/drivers/nvme/target/io-cmd-bdev.c
+index 6178ef643962..72746e29cb0d 100644
+--- a/drivers/nvme/target/io-cmd-bdev.c
++++ b/drivers/nvme/target/io-cmd-bdev.c
+@@ -266,12 +266,7 @@ static void nvmet_bdev_execute_rw(struct nvmet_req *req)
+ 
+ 	sector = nvmet_lba_to_sect(req->ns, req->cmd->rw.slba);
+ 
+-	if (req->transfer_len <= NVMET_MAX_INLINE_DATA_LEN) {
+-		bio = &req->b.inline_bio;
+-		bio_init(bio, req->inline_bvec, ARRAY_SIZE(req->inline_bvec));
+-	} else {
+-		bio = bio_alloc(GFP_KERNEL, min(sg_cnt, BIO_MAX_PAGES));
+-	}
++	bio = nvmet_req_bio_get(req, NULL);
+ 	bio_set_dev(bio, req->ns->bdev);
+ 	bio->bi_iter.bi_sector = sector;
+ 	bio->bi_private = req;
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index 7361665585a2..3fc84f79cce1 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -652,4 +652,20 @@ nvmet_bdev_execute_zone_append(struct nvmet_req *req)
+ }
+ #endif /* CONFIG_BLK_DEV_ZONED */
+ 
++static inline struct bio *nvmet_req_bio_get(struct nvmet_req *req,
++					    bio_end_io_t *bi_end_io)
++{
++	struct bio *bio;
++
++	if (req->transfer_len <= NVMET_MAX_INLINE_DATA_LEN) {
++		bio = &req->b.inline_bio;
++		bio_init(bio, req->inline_bvec, ARRAY_SIZE(req->inline_bvec));
++		return bio;
++	}
++
++	bio = bio_alloc(GFP_KERNEL, req->sg_cnt);
++	bio->bi_end_io = bi_end_io;
++	return bio;
++}
++
+ #endif /* _NVMET_H */
+diff --git a/drivers/nvme/target/passthru.c b/drivers/nvme/target/passthru.c
+index b9776fc8f08f..54f765b566ee 100644
+--- a/drivers/nvme/target/passthru.c
++++ b/drivers/nvme/target/passthru.c
+@@ -194,13 +194,7 @@ static int nvmet_passthru_map_sg(struct nvmet_req *req, struct request *rq)
+ 	if (req->sg_cnt > BIO_MAX_PAGES)
+ 		return -EINVAL;
+ 
+-	if (req->transfer_len <= NVMET_MAX_INLINE_DATA_LEN) {
+-		bio = &req->p.inline_bio;
+-		bio_init(bio, req->inline_bvec, ARRAY_SIZE(req->inline_bvec));
+-	} else {
+-		bio = bio_alloc(GFP_KERNEL, min(req->sg_cnt, BIO_MAX_PAGES));
+-		bio->bi_end_io = bio_put;
+-	}
++	bio = nvmet_req_bio_get(req, bio_put);
+ 	bio->bi_opf = req_op(rq);
+ 
+ 	for_each_sg(req->sg, sg, req->sg_cnt, i) {
+diff --git a/drivers/nvme/target/zns.c b/drivers/nvme/target/zns.c
+index 2a71f56e568d..c32e93a3c7e1 100644
+--- a/drivers/nvme/target/zns.c
++++ b/drivers/nvme/target/zns.c
+@@ -296,13 +296,7 @@ void nvmet_bdev_execute_zone_append(struct nvmet_req *req)
+ 		return;
+ 	}
+ 
+-	if (req->transfer_len <= NVMET_MAX_INLINE_DATA_LEN) {
+-		bio = &req->b.inline_bio;
+-		bio_init(bio, req->inline_bvec, ARRAY_SIZE(req->inline_bvec));
+-	} else {
+-		bio = bio_alloc(GFP_KERNEL, req->sg_cnt);
+-	}
+-
++	bio = nvmet_req_bio_get(req, NULL);
+ 	bio_set_dev(bio, req->ns->bdev);
+ 	bio->bi_iter.bi_sector = sect;
+ 	bio->bi_opf = REQ_OP_ZONE_APPEND | REQ_SYNC | REQ_IDLE;
+-- 
+2.22.1
+

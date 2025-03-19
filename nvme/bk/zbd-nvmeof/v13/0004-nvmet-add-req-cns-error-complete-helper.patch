@@ -1,0 +1,78 @@
+From bd7ebe770e54044e93e3350215615c9b6fe73d49 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Tue, 6 Apr 2021 22:11:40 -0700
+Subject: [PATCH V13 4/4] nvmet: add req cns error complete helper
+
+We report error and complete the request when identify cns value
+is not handled in nvmet_execute_identify(),
+nvmet_execute_identify_cns_cs_ctrl(), and
+nvmet_execute_identify_cns_cs_ns().
+
+Add a helper nvmet_req_cns_error_compplete() to remove the duplicate
+code from all the above three functions.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/admin-cmd.c |  5 +----
+ drivers/nvme/target/nvmet.h     | 18 ++++++++++--------
+ 2 files changed, 11 insertions(+), 12 deletions(-)
+
+diff --git a/drivers/nvme/target/admin-cmd.c b/drivers/nvme/target/admin-cmd.c
+index bf4876df624a..da9dee38bdce 100644
+--- a/drivers/nvme/target/admin-cmd.c
++++ b/drivers/nvme/target/admin-cmd.c
+@@ -717,10 +717,7 @@ static void nvmet_execute_identify(struct nvmet_req *req)
+ 		return nvmet_execute_identify_desclist(req);
+ 	}
+ 
+-	pr_err("unhandled identify cns %d on qid %d\n",
+-	       req->cmd->identify.cns, req->sq->qid);
+-	req->error_loc = offsetof(struct nvme_identify, cns);
+-	nvmet_req_complete(req, NVME_SC_INVALID_FIELD | NVME_SC_DNR);
++	nvmet_req_cns_error_compplete(req);
+ }
+ 
+ /*
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index cf542bf5df31..752a4a9ab759 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -590,6 +590,14 @@ static inline struct nvme_ctrl *nvmet_passthru_ctrl(struct nvmet_subsys *subsys)
+ }
+ #endif /* CONFIG_NVME_TARGET_PASSTHRU */
+ 
++static inline void nvmet_req_cns_error_compplete(struct nvmet_req *req)
++{
++	pr_err("unhandled identify cns %d on qid %d\n",
++	       req->cmd->identify.cns, req->sq->qid);
++	req->error_loc = offsetof(struct nvme_identify, cns);
++	nvmet_req_complete(req, NVME_SC_INVALID_FIELD | NVME_SC_DNR);
++}
++
+ #ifdef CONFIG_BLK_DEV_ZONED
+ bool nvmet_bdev_zns_enable(struct nvmet_ns *ns);
+ void nvmet_execute_identify_cns_cs_ctrl(struct nvmet_req *req);
+@@ -605,18 +613,12 @@ static inline bool nvmet_bdev_zns_enable(struct nvmet_ns *ns)
+ static inline void
+ nvmet_execute_identify_cns_cs_ctrl(struct nvmet_req *req)
+ {
+-	pr_err("unhandled identify cns %d on qid %d\n",
+-	       req->cmd->identify.cns, req->sq->qid);
+-	req->error_loc = offsetof(struct nvme_identify, cns);
+-	nvmet_req_complete(req, NVME_SC_INVALID_FIELD | NVME_SC_DNR);
++	nvmet_req_cns_error_compplete(req);
+ }
+ static inline void
+ nvmet_execute_identify_cns_cs_ns(struct nvmet_req *req)
+ {
+-	pr_err("unhandled identify cns %d on qid %d\n",
+-	       req->cmd->identify.cns, req->sq->qid);
+-	req->error_loc = offsetof(struct nvme_identify, cns);
+-	nvmet_req_complete(req, NVME_SC_INVALID_FIELD | NVME_SC_DNR);
++	nvmet_req_cns_error_compplete(req);
+ }
+ static inline void
+ nvmet_bdev_execute_zone_mgmt_recv(struct nvmet_req *req)
+-- 
+2.22.1
+

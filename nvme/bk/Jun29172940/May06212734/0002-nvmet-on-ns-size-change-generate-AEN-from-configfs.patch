@@ -1,0 +1,59 @@
+From 2d592e209813217e1b75b9d7ef30ec0ad04a7306 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Sat, 25 Apr 2020 15:44:14 -0700
+Subject: [PATCH 2/3] nvmet: on ns size change generate AEN from configfs
+
+Add a new attribute resize_check for the namespace which allows users
+to revalidate and generate the AEN if needed. This attribute is needed
+so that we can install userspace rules with systemd service based on
+inotify/fsnotify/uevent. The registered callback for such a service will
+end up writing to this attribute to generate AEN if needed.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/configfs.c | 22 ++++++++++++++++++++++
+ 1 file changed, 22 insertions(+)
+
+diff --git a/drivers/nvme/target/configfs.c b/drivers/nvme/target/configfs.c
+index 58cabd7b6fc5..9e6b2e4318e8 100644
+--- a/drivers/nvme/target/configfs.c
++++ b/drivers/nvme/target/configfs.c
+@@ -543,6 +543,27 @@ static ssize_t nvmet_ns_buffered_io_store(struct config_item *item,
+ 
+ CONFIGFS_ATTR(nvmet_ns_, buffered_io);
+ 
++static ssize_t nvmet_ns_resize_check_store(struct config_item *item,
++		const char *page, size_t count)
++{
++	struct nvmet_ns *ns = to_nvmet_ns(item);
++	bool val;
++
++	if (strtobool(page, &val))
++		return -EINVAL;
++
++	if (!val)
++		return count;
++
++	mutex_lock(&ns->subsys->lock);
++	if (ns->enabled && nvmet_ns_revalidate(ns))
++		nvmet_ns_changed(ns->subsys, ns->nsid);
++	mutex_unlock(&ns->subsys->lock);
++	return count;
++}
++
++CONFIGFS_ATTR_WO(nvmet_ns_, resize_check);
++
+ static struct configfs_attribute *nvmet_ns_attrs[] = {
+ 	&nvmet_ns_attr_device_path,
+ 	&nvmet_ns_attr_device_nguid,
+@@ -550,6 +571,7 @@ static struct configfs_attribute *nvmet_ns_attrs[] = {
+ 	&nvmet_ns_attr_ana_grpid,
+ 	&nvmet_ns_attr_enable,
+ 	&nvmet_ns_attr_buffered_io,
++	&nvmet_ns_attr_resize_check,
+ #ifdef CONFIG_PCI_P2PDMA
+ 	&nvmet_ns_attr_p2pmem,
+ #endif
+-- 
+2.22.1
+

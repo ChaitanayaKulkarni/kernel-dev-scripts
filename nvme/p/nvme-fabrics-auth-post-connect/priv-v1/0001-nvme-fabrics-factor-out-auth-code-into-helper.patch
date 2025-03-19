@@ -1,0 +1,124 @@
+From 4201007b252cfadb5a4db05abd3bc3728df318c9 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Fri, 26 Jan 2024 00:51:37 -0800
+Subject: [PATCH 1/2] nvme-fabrics: factor out auth code into helper
+
+Post connect command authentication handling code is repeated into in
+nvmf_connect_admin_queue() and nvmf_connect_io_queue().
+
+Add a helper to handle post connect command authentication helper.
+Use the same helper in nvmf_connect_admin_queue().
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/host/auth.c    | 32 ++++++++++++++++++++++++++++++++
+ drivers/nvme/host/fabrics.c | 25 +------------------------
+ drivers/nvme/host/nvme.h    |  6 ++++++
+ 3 files changed, 39 insertions(+), 24 deletions(-)
+
+diff --git a/drivers/nvme/host/auth.c b/drivers/nvme/host/auth.c
+index 72c0525c75f5..e9bbf19dc244 100644
+--- a/drivers/nvme/host/auth.c
++++ b/drivers/nvme/host/auth.c
+@@ -988,6 +988,38 @@ void nvme_auth_stop(struct nvme_ctrl *ctrl)
+ }
+ EXPORT_SYMBOL_GPL(nvme_auth_stop);
+ 
++u16 nvme_auth_post_connect(struct nvme_ctrl *ctrl, u16 qid, u32 result)
++{
++	int ret;
++
++	if (!(result & (NVME_CONNECT_AUTHREQ_ATR | NVME_CONNECT_AUTHREQ_ASCR)))
++		return NVME_SC_SUCCESS;
++
++	/* Secure concatenation is not implemented */
++	if (result & NVME_CONNECT_AUTHREQ_ASCR) {
++		dev_warn(ctrl->device,
++			  "qid %u: secure concatenation is not supported\n",
++			  qid);
++		return NVME_SC_AUTH_REQUIRED;
++	}
++	/* Authentication required */
++	ret = nvme_auth_negotiate(ctrl, qid);
++	if (ret) {
++		dev_warn(ctrl->device,
++			 "qid %u: authentication setup failed\n", qid);
++		return NVME_SC_AUTH_REQUIRED;
++	}
++	ret = nvme_auth_wait(ctrl, qid);
++	if (ret) {
++		dev_warn(ctrl->device, "qid %u: authentication failed\n", qid);
++		return ret;
++	}
++	if (!qid)
++		dev_info(ctrl->device, "qid 0: authenticated\n");
++	return ret;
++}
++EXPORT_SYMBOL_GPL(nvme_auth_post_connect);
++
+ void nvme_auth_free(struct nvme_ctrl *ctrl)
+ {
+ 	int i;
+diff --git a/drivers/nvme/host/fabrics.c b/drivers/nvme/host/fabrics.c
+index 373ed08e6b92..24f0d298825b 100644
+--- a/drivers/nvme/host/fabrics.c
++++ b/drivers/nvme/host/fabrics.c
+@@ -460,30 +460,7 @@ int nvmf_connect_admin_queue(struct nvme_ctrl *ctrl)
+ 
+ 	result = le32_to_cpu(res.u32);
+ 	ctrl->cntlid = result & 0xFFFF;
+-	if (result & (NVME_CONNECT_AUTHREQ_ATR | NVME_CONNECT_AUTHREQ_ASCR)) {
+-		/* Secure concatenation is not implemented */
+-		if (result & NVME_CONNECT_AUTHREQ_ASCR) {
+-			dev_warn(ctrl->device,
+-				 "qid 0: secure concatenation is not supported\n");
+-			ret = NVME_SC_AUTH_REQUIRED;
+-			goto out_free_data;
+-		}
+-		/* Authentication required */
+-		ret = nvme_auth_negotiate(ctrl, 0);
+-		if (ret) {
+-			dev_warn(ctrl->device,
+-				 "qid 0: authentication setup failed\n");
+-			ret = NVME_SC_AUTH_REQUIRED;
+-			goto out_free_data;
+-		}
+-		ret = nvme_auth_wait(ctrl, 0);
+-		if (ret)
+-			dev_warn(ctrl->device,
+-				 "qid 0: authentication failed\n");
+-		else
+-			dev_info(ctrl->device,
+-				 "qid 0: authenticated\n");
+-	}
++	ret = nvme_auth_post_connect(ctrl, 0, result);
+ out_free_data:
+ 	kfree(data);
+ 	return ret;
+diff --git a/drivers/nvme/host/nvme.h b/drivers/nvme/host/nvme.h
+index 030c80818240..0359c8cdcb20 100644
+--- a/drivers/nvme/host/nvme.h
++++ b/drivers/nvme/host/nvme.h
+@@ -1084,6 +1084,7 @@ void nvme_auth_stop(struct nvme_ctrl *ctrl);
+ int nvme_auth_negotiate(struct nvme_ctrl *ctrl, int qid);
+ int nvme_auth_wait(struct nvme_ctrl *ctrl, int qid);
+ void nvme_auth_free(struct nvme_ctrl *ctrl);
++u16 nvme_auth_post_connect(struct nvme_ctrl *ctrl, u16 qid, u32 result);
+ #else
+ static inline int nvme_auth_init_ctrl(struct nvme_ctrl *ctrl)
+ {
+@@ -1106,6 +1107,11 @@ static inline int nvme_auth_wait(struct nvme_ctrl *ctrl, int qid)
+ 	return NVME_SC_AUTH_REQUIRED;
+ }
+ static inline void nvme_auth_free(struct nvme_ctrl *ctrl) {};
++static inline u16 nvme_auth_post_connect(struct nvme_ctrl *ctrl, u16 qid,
++		u32 result)
++{
++	return 0;
++}
+ #endif
+ 
+ u32 nvme_command_effects(struct nvme_ctrl *ctrl, struct nvme_ns *ns,
+-- 
+2.40.0
+

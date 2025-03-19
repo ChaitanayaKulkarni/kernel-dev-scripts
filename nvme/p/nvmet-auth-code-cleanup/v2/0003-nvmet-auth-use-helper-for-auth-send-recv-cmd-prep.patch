@@ -1,0 +1,61 @@
+From 16cb863ed3b138c1ef4ef7b249015003aa89f44c Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Sun, 21 May 2023 21:23:27 -0700
+Subject: [PATCH V2 3/4] nvmet-auth: use helper for auth send/recv cmd prep
+
+Add a common helper to factor out secp/spsp values check and transfer
+buffer allocation in nvmet_execute_auth_send() and
+nvmet_execute_auth_receive().
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/target/fabrics-cmd-auth.c | 19 +++++++++++--------
+ 1 file changed, 11 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/nvme/target/fabrics-cmd-auth.c b/drivers/nvme/target/fabrics-cmd-auth.c
+index 778961e231a3..d331c22ed26e 100644
+--- a/drivers/nvme/target/fabrics-cmd-auth.c
++++ b/drivers/nvme/target/fabrics-cmd-auth.c
+@@ -41,6 +41,15 @@ static u16 nvmet_auth_alloc_transfer_buffer(struct nvmet_req *req, void **buf,
+ 	return *buf ? NVME_SC_SUCCESS : NVME_SC_INTERNAL;
+ }
+ 
++static u16 nvmet_auth_common_prep(struct nvmet_req *req, void **buf, u32 *len)
++{
++	u16 status = nvmet_auth_check_secp_spsp(req);
++
++	if (status)
++		return status;
++	return nvmet_auth_alloc_transfer_buffer(req, buf, len);
++}
++
+ static void nvmet_auth_expired_work(struct work_struct *work)
+ {
+ 	struct nvmet_sq *sq = container_of(to_delayed_work(work),
+@@ -216,10 +225,7 @@ void nvmet_execute_auth_send(struct nvmet_req *req)
+ 	u32 tl;
+ 	u16 status;
+ 
+-	status = nvmet_auth_check_secp_spsp(req);
+-	if (status)
+-		goto done;
+-	status = nvmet_auth_alloc_transfer_buffer(req, &d, &tl);
++	status = nvmet_auth_common_prep(req, &d, &tl);
+ 	if (status)
+ 		goto done;
+ 
+@@ -440,10 +446,7 @@ void nvmet_execute_auth_receive(struct nvmet_req *req)
+ 	u32 al;
+ 	u16 status;
+ 
+-	status = nvmet_auth_check_secp_spsp(req);
+-	if (status)
+-		goto done;
+-	status = nvmet_auth_alloc_transfer_buffer(req, &d, &al);
++	status = nvmet_auth_common_prep(req, &d, &al);
+ 	if (status)
+ 		goto done;
+ 	if (!nvmet_check_transfer_len(req, al)) {
+-- 
+2.40.0
+

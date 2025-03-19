@@ -1,0 +1,51 @@
+From 7f0d7797d8456590aa9b1d52181744431023ec57 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Sun, 9 Aug 2020 13:22:44 -0700
+Subject: [PATCH 10/14] nvmet: prep patch for pt ctrl put wrapper
+
+This is a preparation patch to cnetralize the passthru put controller
+action. Next patch actully fixes the bug in passthru code which needs
+this helper to avoid the duplication of the code.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/passthru.c | 9 +++++++--
+ 1 file changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/nvme/target/passthru.c b/drivers/nvme/target/passthru.c
+index a703f3f14b35..32f4951a1df7 100644
+--- a/drivers/nvme/target/passthru.c
++++ b/drivers/nvme/target/passthru.c
+@@ -486,6 +486,11 @@ u16 nvmet_parse_passthru_admin_cmd(struct nvmet_req *req)
+ 	}
+ }
+ 
++static void nvme_pt_put_ctrl(struct nvme_ctrl *ctrl)
++{
++	nvme_put_ctrl(ctrl);
++}
++
+ int nvmet_passthru_ctrl_enable(struct nvmet_subsys *subsys)
+ {
+ 	struct nvme_ctrl *ctrl;
+@@ -536,7 +541,7 @@ int nvmet_passthru_ctrl_enable(struct nvmet_subsys *subsys)
+ 	return 0;
+ 
+ out_put_ctrl:
+-	nvme_put_ctrl(ctrl);
++	nvme_pt_put_ctrl(ctrl);
+ out_unlock:
+ 	mutex_unlock(&subsys->lock);
+ 	return ret;
+@@ -546,7 +551,7 @@ static void __nvmet_passthru_ctrl_disable(struct nvmet_subsys *subsys)
+ {
+ 	if (subsys->passthru_ctrl) {
+ 		xa_erase(&passthru_subsystems, subsys->passthru_ctrl->cntlid);
+-		nvme_put_ctrl(subsys->passthru_ctrl);
++		nvme_pt_put_ctrl(subsys->passthru_ctrl);
+ 	}
+ 	subsys->passthru_ctrl = NULL;
+ 	subsys->ver = NVMET_DEFAULT_VS;
+-- 
+2.22.1
+

@@ -1,0 +1,63 @@
+From 0b6f894660f73a3866a5fb1133610f5e395c24ea Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Wed, 26 Apr 2023 06:02:46 -0700
+Subject: [PATCH 2/2] nvme-tcp: use queue map common code helper
+
+Use previously added controller queue map initialization helper for tcp
+transport where default, read, and poll queues are set followed by their
+offset.
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/host/tcp.c | 34 +---------------------------------
+ 1 file changed, 1 insertion(+), 33 deletions(-)
+
+diff --git a/drivers/nvme/host/tcp.c b/drivers/nvme/host/tcp.c
+index 8010a302a0c4..20fceb569385 100644
+--- a/drivers/nvme/host/tcp.c
++++ b/drivers/nvme/host/tcp.c
+@@ -2431,40 +2431,8 @@ static blk_status_t nvme_tcp_queue_rq(struct blk_mq_hw_ctx *hctx,
+ static void nvme_tcp_map_queues(struct blk_mq_tag_set *set)
+ {
+ 	struct nvme_tcp_ctrl *ctrl = to_tcp_ctrl(set->driver_data);
+-	struct nvmf_ctrl_options *opts = ctrl->ctrl.opts;
+-
+-	if (opts->nr_write_queues && ctrl->io_queues[HCTX_TYPE_READ]) {
+-		/* separate read/write queues */
+-		set->map[HCTX_TYPE_DEFAULT].nr_queues =
+-			ctrl->io_queues[HCTX_TYPE_DEFAULT];
+-		set->map[HCTX_TYPE_DEFAULT].queue_offset = 0;
+-		set->map[HCTX_TYPE_READ].nr_queues =
+-			ctrl->io_queues[HCTX_TYPE_READ];
+-		set->map[HCTX_TYPE_READ].queue_offset =
+-			ctrl->io_queues[HCTX_TYPE_DEFAULT];
+-	} else {
+-		/* shared read/write queues */
+-		set->map[HCTX_TYPE_DEFAULT].nr_queues =
+-			ctrl->io_queues[HCTX_TYPE_DEFAULT];
+-		set->map[HCTX_TYPE_DEFAULT].queue_offset = 0;
+-		set->map[HCTX_TYPE_READ].nr_queues =
+-			ctrl->io_queues[HCTX_TYPE_DEFAULT];
+-		set->map[HCTX_TYPE_READ].queue_offset = 0;
+-	}
+-	blk_mq_map_queues(&set->map[HCTX_TYPE_DEFAULT]);
+-	blk_mq_map_queues(&set->map[HCTX_TYPE_READ]);
+-
+-	if (opts->nr_poll_queues && ctrl->io_queues[HCTX_TYPE_POLL]) {
+-		/* map dedicated poll queues only if we have queues left */
+-		set->map[HCTX_TYPE_POLL].nr_queues =
+-				ctrl->io_queues[HCTX_TYPE_POLL];
+-		set->map[HCTX_TYPE_POLL].queue_offset =
+-			ctrl->io_queues[HCTX_TYPE_DEFAULT] +
+-			ctrl->io_queues[HCTX_TYPE_READ];
+-		blk_mq_map_queues(&set->map[HCTX_TYPE_POLL]);
+-	}
+ 
+-	nvme_ctrl_print_io_queues(&ctrl->ctrl, ctrl->io_queues);
++	nvmf_ctrl_map_queues(&ctrl->ctrl, set, ctrl->io_queues);
+ }
+ 
+ static int nvme_tcp_poll(struct blk_mq_hw_ctx *hctx, struct io_comp_batch *iob)
+-- 
+2.40.0
+

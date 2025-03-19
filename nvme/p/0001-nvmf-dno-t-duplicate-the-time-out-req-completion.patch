@@ -1,0 +1,77 @@
+From ace9419e53bcdb0c8e8cb9215da6f05e1322a9a1 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Tue, 29 Mar 2022 15:56:22 -0700
+Subject: [PATCH] nvmf: dno't duplicate the time out req completion
+
+The RDAMA and TCP transport both complete the timed out request in the
+same manner and hence code is duplicated. Add and use the helper
+nvmf_complete_timed_out_request() to remove the duplicate code.
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+Hi Christoph/Sagi,
+
+Perhaps newly added nvmf_complete_timed_out_request() should be moved
+to host/fabrics.c and need to be exported with EXPORT_SYMBOL_GPL() ?
+
+-ck
+---
+ drivers/nvme/host/fabrics.h | 8 ++++++++
+ drivers/nvme/host/rdma.c    | 5 +----
+ drivers/nvme/host/tcp.c     | 5 +----
+ 3 files changed, 10 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/nvme/host/fabrics.h b/drivers/nvme/host/fabrics.h
+index c3203ff1c654..734dee9b20fc 100644
+--- a/drivers/nvme/host/fabrics.h
++++ b/drivers/nvme/host/fabrics.h
+@@ -186,6 +186,14 @@ static inline char *nvmf_ctrl_subsysnqn(struct nvme_ctrl *ctrl)
+ 	return ctrl->subsys->subnqn;
+ }
+ 
++static inline void nvmf_complete_timed_out_request(struct request *rq)
++{
++	if (blk_mq_request_started(rq) && !blk_mq_request_completed(rq)) {
++		nvme_req(rq)->status = NVME_SC_HOST_ABORTED_CMD;
++		blk_mq_complete_request(rq);
++	}
++}
++
+ int nvmf_reg_read32(struct nvme_ctrl *ctrl, u32 off, u32 *val);
+ int nvmf_reg_read64(struct nvme_ctrl *ctrl, u32 off, u64 *val);
+ int nvmf_reg_write32(struct nvme_ctrl *ctrl, u32 off, u32 val);
+diff --git a/drivers/nvme/host/rdma.c b/drivers/nvme/host/rdma.c
+index c49b9c3c46f2..3cb5ef6bd802 100644
+--- a/drivers/nvme/host/rdma.c
++++ b/drivers/nvme/host/rdma.c
+@@ -2009,10 +2009,7 @@ static void nvme_rdma_complete_timed_out(struct request *rq)
+ 	struct nvme_rdma_queue *queue = req->queue;
+ 
+ 	nvme_rdma_stop_queue(queue);
+-	if (blk_mq_request_started(rq) && !blk_mq_request_completed(rq)) {
+-		nvme_req(rq)->status = NVME_SC_HOST_ABORTED_CMD;
+-		blk_mq_complete_request(rq);
+-	}
++	nvmf_complete_timed_out_request(rq);
+ }
+ 
+ static enum blk_eh_timer_return
+diff --git a/drivers/nvme/host/tcp.c b/drivers/nvme/host/tcp.c
+index 10fc45d95b86..cf3804ce5d79 100644
+--- a/drivers/nvme/host/tcp.c
++++ b/drivers/nvme/host/tcp.c
+@@ -2275,10 +2275,7 @@ static void nvme_tcp_complete_timed_out(struct request *rq)
+ 	struct nvme_ctrl *ctrl = &req->queue->ctrl->ctrl;
+ 
+ 	nvme_tcp_stop_queue(ctrl, nvme_tcp_queue_id(req->queue));
+-	if (blk_mq_request_started(rq) && !blk_mq_request_completed(rq)) {
+-		nvme_req(rq)->status = NVME_SC_HOST_ABORTED_CMD;
+-		blk_mq_complete_request(rq);
+-	}
++	nvmf_complete_timed_out_request(rq);
+ }
+ 
+ static enum blk_eh_timer_return
+-- 
+2.29.0
+

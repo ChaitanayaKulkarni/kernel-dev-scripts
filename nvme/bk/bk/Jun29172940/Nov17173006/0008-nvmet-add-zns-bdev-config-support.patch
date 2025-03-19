@@ -1,0 +1,32 @@
+From dc36593d2f39c823c65e874894822a0dbf018401 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Tue, 17 Nov 2020 11:09:28 -0800
+Subject: [PATCH 8/9] nvmet: add zns bdev config support
+
+For zbd based bdev backend we need to override the ns->blksize_shift
+with the physical block size instead of using the logical block size
+so that SMR drives will not result in an error.
+
+Update the nvmet_bdev_ns_enable() to reflect that.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/io-cmd-bdev.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/drivers/nvme/target/io-cmd-bdev.c b/drivers/nvme/target/io-cmd-bdev.c
+index 125dde3f410e..ec8fb1eafa5e 100644
+--- a/drivers/nvme/target/io-cmd-bdev.c
++++ b/drivers/nvme/target/io-cmd-bdev.c
+@@ -86,6 +86,8 @@ int nvmet_bdev_ns_enable(struct nvmet_ns *ns)
+ 	if (IS_ENABLED(CONFIG_BLK_DEV_INTEGRITY_T10))
+ 		nvmet_bdev_ns_enable_integrity(ns);
+ 
++	nvmet_bdev_zns_config(ns);
++
+ 	return 0;
+ }
+ 
+-- 
+2.22.1
+

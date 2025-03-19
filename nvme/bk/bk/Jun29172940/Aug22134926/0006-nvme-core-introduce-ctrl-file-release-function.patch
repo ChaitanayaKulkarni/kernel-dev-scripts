@@ -1,0 +1,40 @@
+From 99cf0206c588d801283d1ef9aa3da5d12cd7ac67 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Wed, 19 Aug 2020 15:01:41 -0700
+Subject: [PATCH V2 06/11] nvme-core: introduce ctrl file release function
+
+This is a prep patch that adds nvme_dev_release controller file
+operations callbacks which is needed to release module refcount.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/host/core.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index 39a33f3ec3d5..d06337716b97 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -3243,6 +3243,11 @@ static int nvme_dev_open(struct inode *inode, struct file *file)
+ 	return 0;
+ }
+ 
++static int nvme_dev_release(struct inode *inode, struct file *file)
++{
++	return 0;
++}
++
+ static int nvme_dev_user_cmd(struct nvme_ctrl *ctrl, void __user *argp)
+ {
+ 	struct nvme_ns *ns;
+@@ -3305,6 +3310,7 @@ static long nvme_dev_ioctl(struct file *file, unsigned int cmd,
+ static const struct file_operations nvme_dev_fops = {
+ 	.owner		= THIS_MODULE,
+ 	.open		= nvme_dev_open,
++	.release	= nvme_dev_release,
+ 	.unlocked_ioctl	= nvme_dev_ioctl,
+ 	.compat_ioctl	= compat_ptr_ioctl,
+ };
+-- 
+2.22.1
+

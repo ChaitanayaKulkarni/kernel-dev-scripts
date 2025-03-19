@@ -1,0 +1,11 @@
+[write-and-verify]
+rw=randwrite
+bs=4k
+direct=1
+ioengine=libaio
+iodepth=4
+norandommap
+randrepeat=1
+verify=crc32c
+size=900m
+group_reporting

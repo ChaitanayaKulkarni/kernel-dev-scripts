@@ -1,0 +1,93 @@
+diff --git a/drivers/nvme/target/core.c b/drivers/nvme/target/core.c
+index ef424f7e0ed6..d642d0f40b0a 100644
+--- a/drivers/nvme/target/core.c
++++ b/drivers/nvme/target/core.c
+@@ -1522,9 +1522,9 @@ static void nvmet_fatal_error_handler(struct work_struct *work)
+ 	ctrl->ops->delete_ctrl(ctrl);
+ }
+ 
+-struct nvmet_ctrl *nvmet_alloc_ctrl(struct nvmet_alloc_ctrl_args *args)
++struct nvmet_ctrl *nvmet_alloc_ctrl(struct nvmet_alloc_ctrl_args *args,
++				    struct nvmet_req *req)
+ {
+-	struct nvmet_req *req = args->req;
+ 	struct nvmet_subsys *subsys;
+ 	struct nvmet_ctrl *ctrl;
+ 	u32 kato = args->kato;
+@@ -1632,7 +1632,7 @@ struct nvmet_ctrl *nvmet_alloc_ctrl(struct nvmet_alloc_ctrl_args *args)
+ 	if (args->hostid)
+ 		uuid_copy(&ctrl->hostid, args->hostid);
+ 
+-	dhchap_status = nvmet_setup_auth(ctrl);
++	dhchap_status = nvmet_setup_auth(ctrl, req);
+ 	if (dhchap_status) {
+ 		pr_err("Failed to setup authentication, dhchap status %u\n",
+ 		       dhchap_status);
+@@ -1651,7 +1651,7 @@ struct nvmet_ctrl *nvmet_alloc_ctrl(struct nvmet_alloc_ctrl_args *args)
+ 		nvmet_is_disc_subsys(ctrl->subsys) ? "discovery" : "nvm",
+ 		ctrl->cntlid, ctrl->subsys->subsysnqn, ctrl->hostnqn,
+ 		ctrl->pi_support ? " T10-PI is enabled" : "",
+-		nvmet_has_auth(ctrl) ? " with DH-HMAC-CHAP" : "");
++		nvmet_has_auth(ctrl, req) ? " with DH-HMAC-CHAP" : "");
+ 
+ 	return ctrl;
+ 
+diff --git a/drivers/nvme/target/fabrics-cmd.c b/drivers/nvme/target/fabrics-cmd.c
+index d1e03c120893..3b3af19f8aaf 100644
+--- a/drivers/nvme/target/fabrics-cmd.c
++++ b/drivers/nvme/target/fabrics-cmd.c
+@@ -305,7 +305,7 @@ static void nvmet_execute_admin_connect(struct nvmet_req *req)
+ 	args.hostid = &d->hostid;
+ 	args.kato = c->kato;
+ 
+-	ctrl = nvmet_alloc_ctrl(&args);
++	ctrl = nvmet_alloc_ctrl(&args, req);
+ 	if (!ctrl)
+ 		goto out;
+ 
+@@ -315,7 +315,7 @@ static void nvmet_execute_admin_connect(struct nvmet_req *req)
+ 		goto out;
+ 	}
+ 
+-	args.result = cpu_to_le32(nvmet_connect_result(ctrl));
++	args.result = cpu_to_le32(nvmet_connect_result(ctrl, req));
+ out:
+ 	kfree(d);
+ complete:
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index 845af16561ab..3dcc01da1abe 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -594,7 +594,8 @@ struct nvmet_alloc_ctrl_args {
+ 	u16			status;
+ };
+ 
+-struct nvmet_ctrl *nvmet_alloc_ctrl(struct nvmet_alloc_ctrl_args *args);
++struct nvmet_ctrl *nvmet_alloc_ctrl(struct nvmet_alloc_ctrl_args *args,
++				    struct nvmet_req *req);
+ struct nvmet_ctrl *nvmet_ctrl_find_get(const char *subsysnqn,
+ 				       const char *hostnqn, u16 cntlid,
+ 				       struct nvmet_req *req);
+@@ -888,6 +889,9 @@ int nvmet_auth_ctrl_hash(struct nvmet_req *req, u8 *response,
+ 			 unsigned int hash_len);
+ static inline bool nvmet_has_auth(struct nvmet_ctrl *ctrl, struct nvmet_req *req)
+ {
++	if (!req)
++		return false;
++
+ 	return ctrl->host_key != NULL && !nvmet_queue_tls_keyid(req->sq);
+ }
+ int nvmet_auth_ctrl_exponential(struct nvmet_req *req,
+diff --git a/drivers/nvme/target/pci-epf.c b/drivers/nvme/target/pci-epf.c
+index ac30b42cc622..fe7053809308 100644
+--- a/drivers/nvme/target/pci-epf.c
++++ b/drivers/nvme/target/pci-epf.c
+@@ -2013,7 +2013,7 @@ static int nvmet_pci_epf_create_ctrl(struct nvmet_pci_epf *nvme_epf,
+ 	args.hostnqn = hostnqn;
+ 	args.ops = &nvmet_pci_epf_fabrics_ops;
+ 
+-	ctrl->tctrl = nvmet_alloc_ctrl(&args);
++	ctrl->tctrl = nvmet_alloc_ctrl(&args, NULL);
+ 	if (!ctrl->tctrl) {
+ 		dev_err(ctrl->dev, "Failed to create target controller\n");
+ 		ret = -ENOMEM;

@@ -1,0 +1,30 @@
+From d40d01547142d39471c93f7260096f8a18180b9e Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Thu, 6 Aug 2020 22:57:34 -0700
+Subject: [PATCH 05/10] nvmet: for pt I/O commands use likely for ns check
+
+I/O commands (nvme_cmd_read, nvme_cmd_write) are most common commands
+when accessing passthru controller. For I/O commands ns is always
+present. Annotate post request submission ns check if with likely.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/passthru.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/nvme/target/passthru.c b/drivers/nvme/target/passthru.c
+index fd1f754de5b4..b675662654ae 100644
+--- a/drivers/nvme/target/passthru.c
++++ b/drivers/nvme/target/passthru.c
+@@ -268,7 +268,7 @@ static void nvmet_passthru_execute_cmd(struct nvmet_req *req)
+ 				      nvmet_passthru_req_done);
+ 	}
+ 
+-	if (ns)
++	if (likely(ns))
+ 		nvme_put_ns(ns);
+ 
+ 	return;
+-- 
+2.22.1
+

@@ -1,0 +1,20 @@
+From e7ebcd8144a33955baf571dd79a00adca0d3896a Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Fri, 10 Dec 2021 10:18:38 -0800
+Subject: [PATCH V2 0/3] *** SUBJECT HERE ***
+
+*** BLURB HERE ***
+
+Chaitanya Kulkarni (3):
+  nvme-core: make cid gencounter configurable
+  nvme-core: stub genctr quirk check into helper
+  nvme: add KConfig options for debug features
+
+ drivers/nvme/host/Kconfig | 10 ++++++++++
+ drivers/nvme/host/core.c  |  4 +---
+ drivers/nvme/host/nvme.h  | 40 +++++++++++++++++++++++++++++++++++++++
+ 3 files changed, 51 insertions(+), 3 deletions(-)
+
+-- 
+2.29.0
+

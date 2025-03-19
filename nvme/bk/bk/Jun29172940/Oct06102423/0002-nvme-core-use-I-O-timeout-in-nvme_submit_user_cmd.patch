@@ -1,0 +1,37 @@
+From 9ffc46e222b5410ede0e2ed8ba2966a3f97ed9ee Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Sat, 12 Sep 2020 21:54:40 -0700
+Subject: [PATCH V4 2/7] nvme-core: use I/O timeout in nvme_submit_user_cmd
+
+In the function nvme_submit_user_cmd() it uses ADMIN_TIMEOUT when
+caller doesn't specify value for the timeout variable. This function is
+also called from the user I/O command contexts (nvme_submit_io,
+nvme_user_cmdXXX)) where NVME_IO_TIMEOUT can be used instead of
+ADMIN_TIMEOUT.
+
+For now we don't set the request queue's queuedata for admin command.
+
+Use newly introduced helper function nvme_default_timeout() to set the
+block layer request timeout value.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/host/core.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index a3340fb20965..ba839402e31f 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -1067,7 +1067,7 @@ static int nvme_submit_user_cmd(struct request_queue *q,
+ 	if (IS_ERR(req))
+ 		return PTR_ERR(req);
+ 
+-	req->timeout = timeout ? timeout : ADMIN_TIMEOUT;
++	nvme_default_timeout(req, timeout);
+ 	nvme_req(req)->flags |= NVME_REQ_USERCMD;
+ 
+ 	if (ubuffer && bufflen) {
+-- 
+2.22.1
+

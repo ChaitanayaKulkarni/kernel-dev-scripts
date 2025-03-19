@@ -1,0 +1,35 @@
+From fc8f67e2a00cf34895c146d7aa1840f7f71d8b79 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Mon, 22 May 2023 04:45:24 -0700
+Subject: [PATCH 3/4] nvme-fabrics: set NVME_SC_AUTH_REQUIRED on error
+
+Use same pattern present in nvmf_connect_io_queue() that sets the
+NVME_SC_AUTH_REQUIRED when nvme_auth_wait() fails in
+nvmf_connect_admin_queue().
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/host/fabrics.c | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/nvme/host/fabrics.c b/drivers/nvme/host/fabrics.c
+index 9d3df63eb49a..2eab513f35f1 100644
+--- a/drivers/nvme/host/fabrics.c
++++ b/drivers/nvme/host/fabrics.c
+@@ -495,10 +495,11 @@ int nvmf_connect_admin_queue(struct nvme_ctrl *ctrl)
+ 			goto out_free_data;
+ 		}
+ 		ret = nvme_auth_wait(ctrl, 0);
+-		if (ret)
++		if (ret) {
+ 			dev_warn(ctrl->device,
+ 				 "qid 0: authentication failed\n");
+-		else
++			ret = NVME_SC_AUTH_REQUIRED;
++		} else
+ 			dev_info(ctrl->device,
+ 				 "qid 0: authenticated\n");
+ 	}
+-- 
+2.40.0
+

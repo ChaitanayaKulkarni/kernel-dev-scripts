@@ -1,0 +1,43 @@
+From c7523c87092a9a07590e36c9b41413556865dcc3 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Sat, 27 Jun 2020 20:31:41 -0700
+Subject: [PATCH V2 0/3] nvme: use xarray for ctrl->ns tracking
+
+Hi,
+
+As per out last discussion I tried running the numbers with the crntalize
+spinlock they look suboptimal. What happens is when passthru controller has
+1024 namespaces and from target we call nvme_find_get_ns() in the fast patch
+all the threads get serialized on the xa_lock(&ctrl->namespaces) which leads
+to the scalability issue.
+
+This version has an hack which allows use to use the existing locking 
+of the xarray and yet keep the current design with decoupling the code
+for refcounts in the nvme_ns_remove().
+
+Would like to know your thoughts whenever you get sometime.
+
+I'm making this as my weekend project untill blktrace works finishes,
+so no rush :).
+
+Regards,
+Chaitanya
+
+Chaitanya Kulkarni (3):
+  xarray: add xa_load callback version
+  nvme-core: use xarray for ctrl ns tracking
+  nvmet: use xarray for ctrl ns storing
+
+ drivers/nvme/host/core.c        | 226 +++++++++++++++++++-------------
+ drivers/nvme/host/multipath.c   |  15 +--
+ drivers/nvme/host/nvme.h        |   5 +-
+ drivers/nvme/target/admin-cmd.c |  25 ++--
+ drivers/nvme/target/core.c      |  72 +++++-----
+ drivers/nvme/target/nvmet.h     |   3 +-
+ include/linux/xarray.h          |   2 +
+ lib/xarray.c                    |  30 +++++
+ 8 files changed, 213 insertions(+), 165 deletions(-)
+
+-- 
+2.26.0
+

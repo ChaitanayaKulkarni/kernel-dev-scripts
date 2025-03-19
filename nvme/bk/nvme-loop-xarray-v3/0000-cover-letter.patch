@@ -1,0 +1,35 @@
+From 8f833cbc0652e3965c116de3c02645419b943f82 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Thu, 8 Oct 2020 17:02:17 -0700
+Subject: [PATCH V3 0/1] nvme-loop: use xarray for ctrl tracking
+
+Hi,
+
+Currently ctrl tracking is done using the list & a global lock
+respectively. Since this lock is only used to protect the list mgmt we
+can safely get rid of the lock and use XArray.
+
+This patch series replaces ctrl list & its lock with XArray.
+
+* Changes from V2:-
+
+1. Get rid of the xa_load() in the nvme_loop_free_ctrl() and use xa_erase().
+2. Add I/O queue destroy helper when error unwind in nvme_loop_create_ctrl().
+3. Remove xa_init() for nvme_loop_ctrls xarray.
+4. Remove unlrelated code for NVMF_OPT_CTRL_LOSS_TMO. 
+5. Remove the port Xarray patch.
+
+* Changes from V1 :-
+1. Rebase and retest on latest nvme-5.10.
+2. Generate this series on the top of 
+   http://lists.infradead.org/pipermail/linux-nvme/2020-September/020023.html
+
+Chaitanya Kulkarni (1):
+  nvme-loop: use xarray for loop ctrl tracking
+
+ drivers/nvme/target/loop.c | 66 +++++++++++++++++++++++---------------
+ 1 file changed, 41 insertions(+), 25 deletions(-)
+
+-- 
+2.22.1
+

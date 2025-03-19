@@ -1,0 +1,62 @@
+From f5acedae4a48f16844542cc5eb89903d5747256f Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Thu, 4 Mar 2021 13:00:16 -0800
+Subject: [PATCH V10 9/9] nvme-core: add a helper to print css related error
+
+Right now there are two functions which are printing same error if
+multi command sets is not supported by the namespace in the question.
+
+Instead of repeating the code for error handling (dev_warn() + err code,
+add a helper.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/host/core.c | 18 +++++++++---------
+ 1 file changed, 9 insertions(+), 9 deletions(-)
+
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index 3a372db00b9f..93421bb531b6 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -93,6 +93,12 @@ static void nvme_put_subsystem(struct nvme_subsystem *subsys);
+ static void nvme_remove_invalid_namespaces(struct nvme_ctrl *ctrl,
+ 					   unsigned nsid);
+ 
++static int nvme_ns_css_print_err(struct nvme_ctrl *ctrl, unsigned int nsid)
++{
++	dev_warn(ctrl->device, "Command set not reported for nsid:%u\n", nsid);
++	return -EINVAL;
++}
++
+ /*
+  * Prepare a queue for teardown.
+  *
+@@ -1408,11 +1414,8 @@ static int nvme_identify_ns_descs(struct nvme_ctrl *ctrl, unsigned nsid,
+ 		len += sizeof(*cur);
+ 	}
+ 
+-	if (nvme_multi_css(ctrl) && !csi_seen) {
+-		dev_warn(ctrl->device, "Command set not reported for nsid:%d\n",
+-			 nsid);
+-		status = -EINVAL;
+-	}
++	if (nvme_multi_css(ctrl) && !csi_seen)
++		status = nvme_ns_css_print_err(ctrl, nsid);
+ 
+ free_data:
+ 	kfree(data);
+@@ -2218,10 +2221,7 @@ static int nvme_update_ns_info(struct nvme_ns *ns, struct nvme_id_ns *id)
+ 
+ 	if (ns->head->ids.csi == NVME_CSI_ZNS) {
+ 		if (!nvme_multi_css(ns->ctrl)) {
+-			dev_warn(ns->ctrl->device,
+-				"Command set not reported for nsid:%d\n",
+-			ns->head->ns_id);
+-			ret = -EINVAL;
++			ret = nvme_ns_css_print_err(ns->ctrl, ns->head->ns_id);
+ 			goto out_unfreeze;
+ 		}
+ 		ret = nvme_update_zone_info(ns, lbaf);
+-- 
+2.22.1
+

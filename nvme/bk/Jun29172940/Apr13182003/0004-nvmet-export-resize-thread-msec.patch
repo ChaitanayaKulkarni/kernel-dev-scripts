@@ -1,0 +1,68 @@
+From d21b0b8336a112248adae9187cf529f182650a77 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Mon, 13 Apr 2020 17:25:04 -0700
+Subject: [PATCH V3 4/7] nvmet: export resize thread msec
+
+This patch adds a new configfs attributes so that user can msec
+resize monitor thread as and when needed.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/configfs.c | 26 ++++++++++++++++++++++++++
+ drivers/nvme/target/nvmet.h    |  1 +
+ 2 files changed, 27 insertions(+)
+
+diff --git a/drivers/nvme/target/configfs.c b/drivers/nvme/target/configfs.c
+index f6fbe59fc60c..57c973773180 100644
+--- a/drivers/nvme/target/configfs.c
++++ b/drivers/nvme/target/configfs.c
+@@ -1078,8 +1078,34 @@ static ssize_t nvmet_control_group_control_resize_refresh_store(
+ 
+ CONFIGFS_ATTR(nvmet_control_group_, control_resize_refresh);
+ 
++static ssize_t nvmet_control_group_control_resize_timeout_show(
++		struct config_item *item, char *page)
++{
++	return snprintf(page, PAGE_SIZE, "%u\n",
++			to_nvmet_control(item)->msec);
++}
++
++static ssize_t nvmet_control_group_control_resize_timeout_store(
++		struct config_item *item, const char *page, size_t count)
++{
++	struct nvmet_control_configfs *control = to_nvmet_control(item);
++	u32 msec;
++
++	if (kstrtou32(page, 10, &msec))
++		return -EINVAL;
++
++	mutex_lock(&monitor->control_lock);
++	control->msec = msec;
++	monitor->msec = msec;
++	mutex_unlock(&monitor->control_lock);
++	return count;
++}
++
++CONFIGFS_ATTR(nvmet_control_group_, control_resize_timeout);
++
+ static struct configfs_attribute *nvmet_control_group_attrs[] = {
+ 	&nvmet_control_group_attr_control_resize_refresh,
++	&nvmet_control_group_attr_control_resize_timeout,
+ 	NULL,
+ };
+ 
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index 796acd4226a1..d14f792f327e 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -65,6 +65,7 @@ extern struct nvmet_resize_monitor *monitor;
+ struct nvmet_control_configfs {
+ 	bool                    enable;
+ 	struct config_group     group;
++	u32			msec;
+ };
+ 
+ static inline struct nvmet_control_configfs *to_nvmet_control(
+-- 
+2.22.1
+

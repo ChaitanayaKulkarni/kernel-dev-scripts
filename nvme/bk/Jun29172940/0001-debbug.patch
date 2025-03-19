@@ -1,0 +1,68 @@
+From 2633d07cb2cecad6df27c2ef2bd4e3bb8b116acf Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Tue, 8 Dec 2020 22:14:42 -0800
+Subject: [PATCH] debbug
+
+---
+ drivers/block/null_blk_main.c     | 4 +---
+ drivers/nvme/target/io-cmd-bdev.c | 8 ++++++++
+ 2 files changed, 9 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/block/null_blk_main.c b/drivers/block/null_blk_main.c
+index 4685ea401d5b..d3161bb4e456 100644
+--- a/drivers/block/null_blk_main.c
++++ b/drivers/block/null_blk_main.c
+@@ -1586,9 +1586,6 @@ static void null_del_dev(struct nullb *nullb)
+ 
+ static void null_config_discard(struct nullb *nullb)
+ {
+-	if (nullb->dev->discard == false)
+-		return;
+-
+ 	if (nullb->dev->zoned) {
+ 		nullb->dev->discard = false;
+ 		pr_info("discard option is ignored in zoned mode\n");
+@@ -1599,6 +1596,7 @@ static void null_config_discard(struct nullb *nullb)
+ 	nullb->q->limits.discard_alignment = nullb->dev->blocksize;
+ 	blk_queue_max_discard_sectors(nullb->q, UINT_MAX >> 9);
+ 	blk_queue_flag_set(QUEUE_FLAG_DISCARD, nullb->q);
++	blk_queue_max_write_zeroes_sectors(nullb->q, UINT_MAX >> 9);
+ }
+ 
+ static const struct block_device_operations null_bio_ops = {
+diff --git a/drivers/nvme/target/io-cmd-bdev.c b/drivers/nvme/target/io-cmd-bdev.c
+index 0f71c30f2dcd..a7b23562b1fd 100644
+--- a/drivers/nvme/target/io-cmd-bdev.c
++++ b/drivers/nvme/target/io-cmd-bdev.c
+@@ -263,6 +263,8 @@ static void nvmet_bdev_execute_rw(struct nvmet_req *req)
+ 		op |= REQ_NOMERGE;
+ 
+ 	sector = nvmet_lba_to_sect(req->ns, req->cmd->rw.slba);
++	pr_info("%s %d sector_%llu \n",
++			__func__, __LINE__, sector);
+ 
+ 	if (req->transfer_len <= NVMET_MAX_INLINE_DATA_LEN) {
+ 		bio = &req->b.inline_bio;
+@@ -349,6 +351,9 @@ static u16 nvmet_bdev_discard_range(struct nvmet_req *req,
+ 	struct nvmet_ns *ns = req->ns;
+ 	int ret;
+ 
++
++	pr_info("%s %d sector %llu\n", __func__, __LINE__,
++			nvmet_lba_to_sect(ns, range->slba));
+ 	ret = __blkdev_issue_discard(ns->bdev,
+ 			nvmet_lba_to_sect(ns, range->slba),
+ 			le32_to_cpu(range->nlb) << (ns->blksize_shift - 9),
+@@ -423,6 +428,9 @@ static void nvmet_bdev_execute_write_zeroes(struct nvmet_req *req)
+ 	nr_sector = (((sector_t)le16_to_cpu(write_zeroes->length) + 1) <<
+ 		(req->ns->blksize_shift - 9));
+ 
++	pr_info("%s %d sector_%llu nr_sector %llu\n",
++			__func__, __LINE__, sector, nr_sector);
++
+ 	ret = __blkdev_issue_zeroout(req->ns->bdev, sector, nr_sector,
+ 			GFP_KERNEL, &bio, 0);
+ 	if (bio) {
+-- 
+2.22.1
+

@@ -1,0 +1,108 @@
+From 104b23f8d9117794ddbaf3382365091aa3026084 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Sat, 20 May 2023 22:36:25 -0700
+Subject: [PATCH V2 1/4] nvmet-auth: use common helper to check secp/spsp
+
+Add a common helper to factor out secp/spsp values check in
+nvmet_execute_auth_send() and nvmet_execute_auth_receive().
+
+No functional change in this patch.
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+Reviewed-by: Christoph Hellwig <hch@lst.de>
+---
+ drivers/nvme/target/fabrics-cmd-auth.c | 60 +++++++++++---------------
+ 1 file changed, 24 insertions(+), 36 deletions(-)
+
+diff --git a/drivers/nvme/target/fabrics-cmd-auth.c b/drivers/nvme/target/fabrics-cmd-auth.c
+index 586458f765f1..42594e086de7 100644
+--- a/drivers/nvme/target/fabrics-cmd-auth.c
++++ b/drivers/nvme/target/fabrics-cmd-auth.c
+@@ -12,6 +12,23 @@
+ #include <crypto/kpp.h>
+ #include "nvmet.h"
+ 
++static u16 nvmet_auth_check_secp_spsp(struct nvmet_req *req)
++{
++	if (req->cmd->auth_send.secp != NVME_AUTH_DHCHAP_PROTOCOL_IDENTIFIER) {
++		req->error_loc = offsetof(struct nvmf_auth_send_command, secp);
++		return NVME_SC_INVALID_FIELD | NVME_SC_DNR;
++	}
++	if (req->cmd->auth_send.spsp0 != 0x01) {
++		req->error_loc = offsetof(struct nvmf_auth_send_command, spsp0);
++		return NVME_SC_INVALID_FIELD | NVME_SC_DNR;
++	}
++	if (req->cmd->auth_send.spsp1 != 0x01) {
++		req->error_loc = offsetof(struct nvmf_auth_send_command, spsp1);
++		return NVME_SC_INVALID_FIELD | NVME_SC_DNR;
++	}
++	return NVME_SC_SUCCESS;
++}
++
+ static void nvmet_auth_expired_work(struct work_struct *work)
+ {
+ 	struct nvmet_sq *sq = container_of(to_delayed_work(work),
+@@ -185,26 +202,12 @@ void nvmet_execute_auth_send(struct nvmet_req *req)
+ 	struct nvmf_auth_dhchap_success2_data *data;
+ 	void *d;
+ 	u32 tl;
+-	u16 status = 0;
++	u16 status;
+ 
+-	if (req->cmd->auth_send.secp != NVME_AUTH_DHCHAP_PROTOCOL_IDENTIFIER) {
+-		status = NVME_SC_INVALID_FIELD | NVME_SC_DNR;
+-		req->error_loc =
+-			offsetof(struct nvmf_auth_send_command, secp);
+-		goto done;
+-	}
+-	if (req->cmd->auth_send.spsp0 != 0x01) {
+-		status = NVME_SC_INVALID_FIELD | NVME_SC_DNR;
+-		req->error_loc =
+-			offsetof(struct nvmf_auth_send_command, spsp0);
+-		goto done;
+-	}
+-	if (req->cmd->auth_send.spsp1 != 0x01) {
+-		status = NVME_SC_INVALID_FIELD | NVME_SC_DNR;
+-		req->error_loc =
+-			offsetof(struct nvmf_auth_send_command, spsp1);
++	status = nvmet_auth_check_secp_spsp(req);
++	if (status)
+ 		goto done;
+-	}
++
+ 	tl = le32_to_cpu(req->cmd->auth_send.tl);
+ 	if (!tl) {
+ 		status = NVME_SC_INVALID_FIELD | NVME_SC_DNR;
+@@ -432,26 +435,11 @@ void nvmet_execute_auth_receive(struct nvmet_req *req)
+ 	struct nvmet_ctrl *ctrl = req->sq->ctrl;
+ 	void *d;
+ 	u32 al;
+-	u16 status = 0;
++	u16 status;
+ 
+-	if (req->cmd->auth_receive.secp != NVME_AUTH_DHCHAP_PROTOCOL_IDENTIFIER) {
+-		status = NVME_SC_INVALID_FIELD | NVME_SC_DNR;
+-		req->error_loc =
+-			offsetof(struct nvmf_auth_receive_command, secp);
+-		goto done;
+-	}
+-	if (req->cmd->auth_receive.spsp0 != 0x01) {
+-		status = NVME_SC_INVALID_FIELD | NVME_SC_DNR;
+-		req->error_loc =
+-			offsetof(struct nvmf_auth_receive_command, spsp0);
+-		goto done;
+-	}
+-	if (req->cmd->auth_receive.spsp1 != 0x01) {
+-		status = NVME_SC_INVALID_FIELD | NVME_SC_DNR;
+-		req->error_loc =
+-			offsetof(struct nvmf_auth_receive_command, spsp1);
++	status = nvmet_auth_check_secp_spsp(req);
++	if (status)
+ 		goto done;
+-	}
+ 	al = le32_to_cpu(req->cmd->auth_receive.al);
+ 	if (!al) {
+ 		status = NVME_SC_INVALID_FIELD | NVME_SC_DNR;
+-- 
+2.40.0
+

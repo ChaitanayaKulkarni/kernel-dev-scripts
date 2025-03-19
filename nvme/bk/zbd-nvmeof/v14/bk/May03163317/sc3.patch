@@ -1,0 +1,126 @@
+From 34127e9c2a48d6de998d90920735856d4c9e82a3 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Mon, 15 Jul 2019 13:17:53 -0700
+Subject: [RFC PATCH 3/4] nvmet: add REQ_OP_SIMPLE_COPY support
+
+This patch adds suppor for NVMeOF target to handle Simple Copy command.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/admin-cmd.c   | 13 ++++++-
+ drivers/nvme/target/io-cmd-bdev.c | 62 +++++++++++++++++++++++++++++++
+ 2 files changed, 74 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/nvme/target/admin-cmd.c b/drivers/nvme/target/admin-cmd.c
+index 831a062d27cb..0de84e4a8596 100644
+--- a/drivers/nvme/target/admin-cmd.c
++++ b/drivers/nvme/target/admin-cmd.c
+@@ -355,11 +355,22 @@ static void nvmet_execute_identify_ctrl(struct nvmet_req *req)
+ 	id->nn = cpu_to_le32(ctrl->subsys->max_nsid);
+ 	id->mnan = cpu_to_le32(NVMET_MAX_NAMESPACES);
+ 	id->oncs = cpu_to_le16(NVME_CTRL_ONCS_DSM |
+-			NVME_CTRL_ONCS_WRITE_ZEROES);
++			NVME_CTRL_ONCS_WRITE_ZEROES |
++			NVME_CTRL_ONCS_SIMPLE_COPY);
+ 
+ 	/* XXX: don't report vwc if the underlying device is write through */
+ 	id->vwc = NVME_CTRL_VWC_PRESENT;
+ 
++
++	/* max (copy length, single source range length, source range count) */
++
++	/* XXX: Why can't namespace have these values ? so that mixed namespaces
++	 * with and without simple copy command support can be used for NVMeOF.
++	 */
++	id->mcl = 0xFFFFFFFF;
++	id->mssrl = 0xFFFFFFFF;
++	id->msrc = 0xFF;
++
+ 	/*
+ 	 * We can't support atomic writes bigger than a LBA without support
+ 	 * from the backend device.
+diff --git a/drivers/nvme/target/io-cmd-bdev.c b/drivers/nvme/target/io-cmd-bdev.c
+index de0bff70ebb6..403cf7cb9081 100644
+--- a/drivers/nvme/target/io-cmd-bdev.c
++++ b/drivers/nvme/target/io-cmd-bdev.c
+@@ -272,6 +272,63 @@ static void nvmet_bdev_execute_discard(struct nvmet_req *req)
+ 	}
+ }
+ 
++static u16 nvmet_bdev_simple_copy_range(struct nvmet_req *req,
++		sector_t dest_sect, sector_t sect, sector_t nr_sect,
++		struct bio **bio)
++{
++	struct nvmet_ns *ns = req->ns;
++	int ret;
++
++	ret = __blkdev_simple_copy(ns->bdev, sect, dest_sect, nr_sect,
++			GFP_KERNEL, bio);
++	if (ret && ret != -EOPNOTSUPP)
++		/* XXX : set the req->error_slba here */
++		return errno_to_nvme_status(req, ret);
++	return NVME_SC_SUCCESS;
++}
++
++static void nvmet_bdev_execute_simple_cppy(struct nvmet_req *req)
++{
++	unsigned int nr_ranges = le32_to_cpu(req->cmd->simple_copy.cdw12) >> 24;
++	u64 sdlba = le64_to_cpu(req->cmd->simple_copy.sdlba);
++	sector_t dest_sect = sdlba << (req->ns->blksize_shift - 9);
++	struct nvme_simple_copy_src_range range;
++	struct nvmet_ns *ns = req->ns;
++	struct bio *bio = NULL;
++	sector_t nr_sect;
++	sector_t sect;
++	int i;
++	u16 status;
++
++	for (i = 0; i <= nr_ranges; i++) {
++		status = nvmet_copy_from_sgl(req, i * sizeof(range), &range,
++				sizeof(range));
++		if (status)
++			break;
++
++		sect = le64_to_cpu(range.slba) << (ns->blksize_shift - 9);
++		nr_sect = le32_to_cpu(range.nlb) << (ns->blksize_shift - 9);
++		status = nvmet_bdev_simple_copy_range(req, sect, dest_sect,
++						      nr_sect, &bio);
++		if (status)
++			break;
++		dest_sect += nr_sect;
++	}
++
++	if (bio) {
++		bio->bi_private = req;
++		bio->bi_end_io = nvmet_bio_done;
++		if (status) {
++			bio->bi_status = BLK_STS_IOERR;
++			bio_endio(bio);
++		} else {
++			submit_bio(bio);
++		}
++	} else {
++		nvmet_req_complete(req, status);
++	}
++}
++
+ static void nvmet_bdev_execute_dsm(struct nvmet_req *req)
+ {
+ 	switch (le32_to_cpu(req->cmd->dsm.attributes)) {
+@@ -330,6 +387,11 @@ u16 nvmet_bdev_parse_io_cmd(struct nvmet_req *req)
+ 		req->data_len = (le32_to_cpu(cmd->dsm.nr) + 1) *
+ 			sizeof(struct nvme_dsm_range);
+ 		return 0;
++	case nvme_cmd_simple_copy:
++		req->execute = nvmet_bdev_execute_simple_cppy;
++		req->data_len =
++			(le32_to_cpu(req->cmd->simple_copy.cdw12) >> 24) + 1;
++		return 0;
+ 	case nvme_cmd_write_zeroes:
+ 		req->execute = nvmet_bdev_execute_write_zeroes;
+ 		req->data_len = 0;
+-- 
+2.17.0
+
+
+

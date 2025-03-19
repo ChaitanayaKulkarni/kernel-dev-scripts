@@ -1,0 +1,69 @@
+From 054dc95217d9eb33f516a8e11c41f7c119514ae4 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Mon, 17 Jan 2022 18:13:15 -0800
+Subject: [PATCH 2/3] nvmet: add helper to open block device
+
+In order to support block device backend in the buffered I/O mode
+we keep the ns->bdev handle open so we can reavalidate the ns->size
+in nvmet_file_ns_revalidate() using bdev_nr_bytes(). Also, instead of
+duplicating the code for opening block device we move the existing code
+into the nvme_bdev_open() helper and call from nvmet_bdev_ns_enable().
+
+This newly added helper will be called in the next patch to open and set
+the ns->size and ns->blksize_shift values when block device is
+configured with buffere I/O mode from file backend code.
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/target/io-cmd-bdev.c | 14 ++++++++++++--
+ drivers/nvme/target/nvmet.h       |  1 +
+ 2 files changed, 13 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/nvme/target/io-cmd-bdev.c b/drivers/nvme/target/io-cmd-bdev.c
+index 70ca9dfc1771..58907304587e 100644
+--- a/drivers/nvme/target/io-cmd-bdev.c
++++ b/drivers/nvme/target/io-cmd-bdev.c
+@@ -72,9 +72,9 @@ static void nvmet_bdev_ns_enable_integrity(struct nvmet_ns *ns)
+ 	}
+ }
+ 
+-int nvmet_bdev_ns_enable(struct nvmet_ns *ns)
++int nvmet_bdev_open(struct nvmet_ns *ns)
+ {
+-	int ret;
++	int ret = 0;
+ 
+ 	ns->bdev = blkdev_get_by_path(ns->device_path,
+ 			FMODE_READ | FMODE_WRITE, NULL);
+@@ -89,6 +89,16 @@ int nvmet_bdev_ns_enable(struct nvmet_ns *ns)
+ 	}
+ 	ns->size = bdev_nr_bytes(ns->bdev);
+ 	ns->blksize_shift = blksize_bits(bdev_logical_block_size(ns->bdev));
++	return ret;
++}
++
++int nvmet_bdev_ns_enable(struct nvmet_ns *ns)
++{
++	int ret;
++
++	ret = nvmet_bdev_open(ns);
++	if (ret)
++		return ret;
+ 
+ 	ns->pi_type = 0;
+ 	ns->metadata_size = 0;
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index af193423c10b..534fe2b32e99 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -533,6 +533,7 @@ extern struct rw_semaphore nvmet_ana_sem;
+ 
+ bool nvmet_host_allowed(struct nvmet_subsys *subsys, const char *hostnqn);
+ 
++int nvmet_bdev_open(struct nvmet_ns *ns);
+ int nvmet_bdev_ns_enable(struct nvmet_ns *ns);
+ int nvmet_file_ns_enable(struct nvmet_ns *ns);
+ void nvmet_bdev_ns_disable(struct nvmet_ns *ns);
+-- 
+2.29.0
+

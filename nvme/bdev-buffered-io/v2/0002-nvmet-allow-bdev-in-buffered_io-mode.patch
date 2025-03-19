@@ -1,0 +1,34 @@
+From a4681437f3340b825d50f6645ba2d3b3690d9547 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Thu, 27 Jan 2022 17:50:27 -0800
+Subject: [PATCH V2 2/2] nvmet: allow bdev in buffered_io mode
+
+Allow block device to be configured in the buffered I/O mode by using
+the file backend. In this way now we can use cache for the block
+device namespace which shows significant performance improvement.
+
+We update the block device ns enable function and return early when
+buffered_io flag is set.
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/target/io-cmd-bdev.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/drivers/nvme/target/io-cmd-bdev.c b/drivers/nvme/target/io-cmd-bdev.c
+index 70ca9dfc1771..7f6dee625f7b 100644
+--- a/drivers/nvme/target/io-cmd-bdev.c
++++ b/drivers/nvme/target/io-cmd-bdev.c
+@@ -76,6 +76,9 @@ int nvmet_bdev_ns_enable(struct nvmet_ns *ns)
+ {
+ 	int ret;
+ 
++	if (ns->buffered_io)
++		return -ENOTBLK;
++
+ 	ns->bdev = blkdev_get_by_path(ns->device_path,
+ 			FMODE_READ | FMODE_WRITE, NULL);
+ 	if (IS_ERR(ns->bdev)) {
+-- 
+2.29.0
+

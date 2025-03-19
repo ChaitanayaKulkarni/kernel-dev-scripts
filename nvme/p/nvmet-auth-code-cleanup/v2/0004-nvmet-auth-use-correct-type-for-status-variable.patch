@@ -1,0 +1,40 @@
+From 6692f4da10486f75556014f2adc4eff9c98a2f09 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Sat, 3 Jun 2023 22:59:12 -0700
+Subject: [PATCH V2 4/4] nvmet-auth: use correct type for status variable
+
+In structructure nvmet_sq dhchap_step member is responsible to hold
+following values :-
+
+        NVME_AUTH_DHCHAP_FAILURE_FAILED                 = 0x01,
+        NVME_AUTH_DHCHAP_FAILURE_NOT_USABLE             = 0x02,
+        NVME_AUTH_DHCHAP_FAILURE_CONCAT_MISMATCH        = 0x03,
+        NVME_AUTH_DHCHAP_FAILURE_HASH_UNUSABLE          = 0x04,
+        NVME_AUTH_DHCHAP_FAILURE_DHGROUP_UNUSABLE       = 0x05,
+        NVME_AUTH_DHCHAP_FAILURE_INCORRECT_PAYLOAD      = 0x06,
+        NVME_AUTH_DHCHAP_FAILURE_INCORRECT_MESSAGE      = 0x07,
+
+These values can never be negative, hence change int type of
+dhchap_step to u16 in the nvmet_sq declaration.
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/target/nvmet.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index 6cf723bc664e..66d8673c3ebf 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -113,7 +113,7 @@ struct nvmet_sq {
+ 	struct delayed_work	auth_expired_work;
+ 	u16			dhchap_tid;
+ 	u16			dhchap_status;
+-	int			dhchap_step;
++	u16			dhchap_step;
+ 	u8			*dhchap_c1;
+ 	u8			*dhchap_c2;
+ 	u32			dhchap_s1;
+-- 
+2.40.0
+

@@ -1,0 +1,93 @@
+From 764182bde3071ddbe72814593ed40d5326eae4b0 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Fri, 10 Apr 2020 16:41:57 -0700
+Subject: [PATCH V3 1/2] nvmet: allow user to set ns resize monitor
+
+This patch adds a new configfs ns attributes so that user can
+enable/disable generating AEN per namespace.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/configfs.c | 24 ++++++++++++++++++++++++
+ drivers/nvme/target/core.c     |  3 ++-
+ drivers/nvme/target/nvmet.h    |  1 +
+ 3 files changed, 27 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/nvme/target/configfs.c b/drivers/nvme/target/configfs.c
+index df14df8edecb..4eb8b3b28d5e 100644
+--- a/drivers/nvme/target/configfs.c
++++ b/drivers/nvme/target/configfs.c
+@@ -543,6 +543,29 @@ static ssize_t nvmet_ns_buffered_io_store(struct config_item *item,
+ 
+ CONFIGFS_ATTR(nvmet_ns_, buffered_io);
+ 
++static ssize_t nvmet_ns_resize_monitor_show(struct config_item *item,
++		char *page)
++{
++	return sprintf(page, "%d\n", to_nvmet_ns(item)->resize_monitor);
++}
++
++static ssize_t nvmet_ns_resize_monitor_store(struct config_item *item,
++		const char *page, size_t count)
++{
++	struct nvmet_ns *ns = to_nvmet_ns(item);
++	bool val;
++
++	if (strtobool(page, &val))
++		return -EINVAL;
++
++	mutex_lock(&ns->subsys->lock);
++	ns->resize_monitor = val;
++	mutex_unlock(&ns->subsys->lock);
++	return count;
++}
++
++CONFIGFS_ATTR(nvmet_ns_, resize_monitor);
++
+ static struct configfs_attribute *nvmet_ns_attrs[] = {
+ 	&nvmet_ns_attr_device_path,
+ 	&nvmet_ns_attr_device_nguid,
+@@ -550,6 +573,7 @@ static struct configfs_attribute *nvmet_ns_attrs[] = {
+ 	&nvmet_ns_attr_ana_grpid,
+ 	&nvmet_ns_attr_enable,
+ 	&nvmet_ns_attr_buffered_io,
++	&nvmet_ns_attr_resize_monitor,
+ #ifdef CONFIG_PCI_P2PDMA
+ 	&nvmet_ns_attr_p2pmem,
+ #endif
+diff --git a/drivers/nvme/target/core.c b/drivers/nvme/target/core.c
+index 725de1bb0890..3da672a100e4 100644
+--- a/drivers/nvme/target/core.c
++++ b/drivers/nvme/target/core.c
+@@ -531,7 +531,7 @@ static void __nvmet_handle_resize_ns(struct nvmet_subsys *s)
+ 
+ 	mutex_lock(&s->lock);
+ 	list_for_each_entry_rcu(ns, &s->namespaces, dev_link, 1) {
+-		if (nvmet_ns_revalidate(ns))
++		if (ns->resize_monitor && nvmet_ns_revalidate(ns))
+ 			nvmet_ns_changed(ns->subsys, ns->nsid);
+ 	}
+ 	mutex_unlock(&s->lock);
+@@ -714,6 +714,7 @@ struct nvmet_ns *nvmet_ns_alloc(struct nvmet_subsys *subsys, u32 nsid)
+ 
+ 	uuid_gen(&ns->uuid);
+ 	ns->buffered_io = false;
++	ns->resize_monitor = true;
+ 
+ 	return ns;
+ }
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index 92d8d3a1a572..3180457fc451 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -80,6 +80,7 @@ struct nvmet_ns {
+ 	struct block_device	*bdev;
+ 	struct file		*file;
+ 	bool			readonly;
++	bool			resize_monitor;
+ 	u32			nsid;
+ 	u32			blksize_shift;
+ 	loff_t			size;
+-- 
+2.22.1
+

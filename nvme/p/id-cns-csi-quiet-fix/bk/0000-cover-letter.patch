@@ -1,0 +1,21 @@
+From 23f7ff1daba5bd8394490531f640041601413438 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Fri, 8 Apr 2022 22:49:57 -0700
+Subject: [PATCH 0/3] *** SUBJECT HERE ***
+
+*** BLURB HERE ***
+
+Chaitanya Kulkarni (3):
+  nvme-core: mark internal passthru req REQ_QUIET
+  nvmet: handle admin default command set identifier
+  nvme-core: don't check non-mdts for disc ctrl
+
+ drivers/nvme/host/core.c        |  7 ++++++-
+ drivers/nvme/target/admin-cmd.c | 16 ++++++++--------
+ drivers/nvme/target/nvmet.h     |  2 +-
+ drivers/nvme/target/zns.c       |  2 +-
+ 4 files changed, 16 insertions(+), 11 deletions(-)
+
+-- 
+2.29.0
+

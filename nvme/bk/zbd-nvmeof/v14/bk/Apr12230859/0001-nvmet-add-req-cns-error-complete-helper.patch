@@ -1,0 +1,55 @@
+From 99a8a33dfec790d6bb249d660b01f19cbf099d80 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Thu, 8 Apr 2021 12:04:05 -0700
+Subject: [PATCH V14 1/4] nvmet: add req cns error complete helper
+
+We report error and complete the request when identify cns value is not
+handled in nvmet_execute_identify(). This error reporting is also needed
+for for Zone Block Device backend for NVMeOF target.
+
+In this preparation patch add a helper nvmet_req_cns_error_compplete()
+to report an error and complete the request when idenitfy command cns
+has unhandled value.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/admin-cmd.c | 5 +----
+ drivers/nvme/target/nvmet.h     | 8 ++++++++
+ 2 files changed, 9 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/nvme/target/admin-cmd.c b/drivers/nvme/target/admin-cmd.c
+index f4cc32674edd..3c58b7a9fa68 100644
+--- a/drivers/nvme/target/admin-cmd.c
++++ b/drivers/nvme/target/admin-cmd.c
+@@ -659,10 +659,7 @@ static void nvmet_execute_identify(struct nvmet_req *req)
+ 		return nvmet_execute_identify_desclist(req);
+ 	}
+ 
+-	pr_err("unhandled identify cns %d on qid %d\n",
+-	       req->cmd->identify.cns, req->sq->qid);
+-	req->error_loc = offsetof(struct nvme_identify, cns);
+-	nvmet_req_complete(req, NVME_SC_INVALID_FIELD | NVME_SC_DNR);
++	nvmet_req_cns_error_compplete(req);
+ }
+ 
+ /*
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index 5566ed403576..f25c27ad31e2 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -616,4 +616,12 @@ static inline sector_t nvmet_lba_to_sect(struct nvmet_ns *ns, __le64 lba)
+ 	return le64_to_cpu(lba) << (ns->blksize_shift - SECTOR_SHIFT);
+ }
+ 
++static inline void nvmet_req_cns_error_compplete(struct nvmet_req *req)
++{
++	pr_err("unhandled identify cns %d on qid %d\n",
++	       req->cmd->identify.cns, req->sq->qid);
++	req->error_loc = offsetof(struct nvme_identify, cns);
++	nvmet_req_complete(req, NVME_SC_INVALID_FIELD | NVME_SC_DNR);
++}
++
+ #endif /* _NVMET_H */
+-- 
+2.22.1
+

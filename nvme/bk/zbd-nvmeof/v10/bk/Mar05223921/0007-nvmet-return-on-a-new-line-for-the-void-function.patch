@@ -1,0 +1,68 @@
+From aa0eb5dd266bf55c219df1f0f17d5c748543b396 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Wed, 3 Mar 2021 20:10:23 -0800
+Subject: [PATCH V10 7/9] nvmet: return on a new line for the void function
+
+The function nvmet_execute_identify() is void but use of return in the
+switch case simplifies the code a lot.
+
+The functions nvmet_execute_identify_ns(),
+nvmet_execute_identify_cns_cs_ns(), nvmet_execute_identify_ctrl(),
+nvmet_execute_identify_cns_cs_ctrl(), nvmet_execute_identify_nslist(),
+and nvmet_execute_identify_desclist() are also void and they do their
+own error handling.
+
+Use a separate return statement after the call for each of the above
+function which makes it clear that we are not ignoring the values from
+these functions but actually returning from the nvmet_execute_identify().
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/admin-cmd.c | 24 ++++++++++++++++--------
+ 1 file changed, 16 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/nvme/target/admin-cmd.c b/drivers/nvme/target/admin-cmd.c
+index 05ef362d70b7..b699a9d11b8c 100644
+--- a/drivers/nvme/target/admin-cmd.c
++++ b/drivers/nvme/target/admin-cmd.c
+@@ -718,21 +718,29 @@ static void nvmet_execute_identify(struct nvmet_req *req)
+ 
+ 	switch (req->cmd->identify.cns) {
+ 	case NVME_ID_CNS_NS:
+-		return nvmet_execute_identify_ns(req);
++		nvmet_execute_identify_ns(req);
++		return;
+ 	case NVME_ID_CNS_CS_NS:
+-		if (req->cmd->identify.csi == NVME_CSI_ZNS)
+-			return nvmet_execute_identify_cns_cs_ns(req);
++		if (req->cmd->identify.csi == NVME_CSI_ZNS) {
++			nvmet_execute_identify_cns_cs_ns(req);
++			return;
++		}
+ 		break;
+ 	case NVME_ID_CNS_CTRL:
+-		return nvmet_execute_identify_ctrl(req);
++		nvmet_execute_identify_ctrl(req);
++		return;
+ 	case NVME_ID_CNS_CS_CTRL:
+-		if (req->cmd->identify.csi == NVME_CSI_ZNS)
+-			return nvmet_execute_identify_cns_cs_ctrl(req);
++		if (req->cmd->identify.csi == NVME_CSI_ZNS) {
++			nvmet_execute_identify_cns_cs_ctrl(req);
++			return;
++		}
+ 		break;
+ 	case NVME_ID_CNS_NS_ACTIVE_LIST:
+-		return nvmet_execute_identify_nslist(req);
++		nvmet_execute_identify_nslist(req);
++		return;
+ 	case NVME_ID_CNS_NS_DESC_LIST:
+-		return nvmet_execute_identify_desclist(req);
++		nvmet_execute_identify_desclist(req);
++		return;
+ 	}
+ 
+ 	pr_err("unhandled identify cns %d on qid %d\n",
+-- 
+2.22.1
+

@@ -1,0 +1,32 @@
+From df8adaee479c8680c56409edc80c57e7b560dc9d Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Thu, 6 Aug 2020 23:04:45 -0700
+Subject: [PATCH V2 02/11] nvmet: use consistent type with id->nlbaf
+
+In function nvmet_passthru_override_id_ns() while iterating
+over namespace lba format loop variable is declared as int that is
+inconsistent with the id->nlbaf type which is u8.
+
+Make loop variable of the same type as id->nlbaf.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/passthru.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/nvme/target/passthru.c b/drivers/nvme/target/passthru.c
+index 18e96eda39b1..15dd63e14227 100644
+--- a/drivers/nvme/target/passthru.c
++++ b/drivers/nvme/target/passthru.c
+@@ -112,7 +112,7 @@ static u16 nvmet_passthru_override_id_ns(struct nvmet_req *req)
+ {
+ 	u16 status = NVME_SC_SUCCESS;
+ 	struct nvme_id_ns *id;
+-	int i;
++	u8 i;
+ 
+ 	id = kzalloc(sizeof(*id), GFP_KERNEL);
+ 	if (!id)
+-- 
+2.22.1
+

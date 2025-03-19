@@ -1,0 +1,144 @@
+diff --git a/drivers/nvme/target/passthru.c b/drivers/nvme/target/passthru.c
+index 5b3631f4f3ea..cddd61272091 100644
+--- a/drivers/nvme/target/passthru.c
++++ b/drivers/nvme/target/passthru.c
+@@ -213,43 +213,50 @@ static int nvmet_passthru_map_sg(struct nvmet_req *req, struct request *rq)
+ 	return 0;
+ }
+ 
+-static void nvmet_passthru_execute_cmd(struct nvmet_req *req)
++static inline struct request *nvme_get_req(struct request_queue *q,
++					  struct nvmet_req *req)
+ {
+-	struct nvme_ctrl *ctrl = nvmet_req_passthru_ctrl(req);
+-	struct request_queue *q = ctrl->admin_q;
+-	struct nvme_ns *ns = NULL;
+ 	struct request *rq = NULL;
+-	u32 effects;
+-	u16 status;
+-	int ret;
+-
+-	if (likely(req->sq->qid != 0)) {
+-		u32 nsid = le32_to_cpu(req->cmd->common.nsid);
+-
+-		ns = nvme_find_get_ns(ctrl, nsid);
+-		if (unlikely(!ns)) {
+-			pr_err("failed to get passthru ns nsid:%u\n", nsid);
+-			status = NVME_SC_INVALID_NS | NVME_SC_DNR;
+-			goto out;
+-		}
+-
+-		q = ns->queue;
+-	}
+ 
+ 	rq = nvme_alloc_request_qid_any(q, req->cmd, BLK_MQ_REQ_NOWAIT);
+-	if (IS_ERR(rq)) {
+-		status = NVME_SC_INTERNAL;
+-		goto out_put_ns;
+-	}
++	if (IS_ERR(rq))
++		return NULL
+ 
+ 	if (req->sg_cnt) {
+ 		ret = nvmet_passthru_map_sg(req, rq);
+ 		if (unlikely(ret)) {
+ 			status = NVME_SC_INTERNAL;
+-			goto out_put_req;
++			blk_mq_free_request(rq);
++			return NULL;
+ 		}
+ 	}
+ 
++	return rq;
++}
++
++static void inline nvmet_passthru_execute_req(struct request *rq,
++					      struct nvmet_ns *ns,
++					      struct nvmet_*req)
++{
++	rq->end_io_data = req;
++	blk_execute_rq_nowait(rq->q, ns ? ns->disk : NULL, rq, 0,
++			nvmet_passthru_req_done);
++}
++
++static void nvmet_passthru_execute_admin_cmd(struct nvmet_req *req)
++{
++	struct nvme_ctrl *ctrl = nvmet_req_passthru_ctrl(req);
++	struct request *rq = NULL;
++	u32 effects;
++	u16 status;
++	int ret;
++
++	rq = nvme_get_req(ctrl->admin_q, req);
++	if (!rq) {
++		status = NVME_SC_INTERNAL;
++		goto out;
++	}
++
+ 	/*
+ 	 * If there are effects for the command we are about to execute, or
+ 	 * an end_req function we need to use nvme_execute_passthru_rq()
+@@ -263,21 +270,43 @@ static void nvmet_passthru_execute_cmd(struct nvmet_req *req)
+ 		req->p.rq = rq;
+ 		schedule_work(&req->p.work);
+ 	} else {
+-		rq->end_io_data = req;
+-		blk_execute_rq_nowait(rq->q, ns ? ns->disk : NULL, rq, 0,
+-				      nvmet_passthru_req_done);
++		nvmet_passthru_execute_req(rq, NULL, req);
+ 	}
+ 
+-	if (ns)
+-		nvme_put_ns(ns);
++	return;
+ 
++out:
++	nvmet_req_complete(req, status);
++}
++
++static void nvmet_passthru_execute_io_cmd(struct nvmet_req *req)
++{
++	struct nvme_ctrl *ctrl = nvmet_req_passthru_ctrl(req);
++	struct nvme_ns *ns = NULL;
++	struct request *rq = NULL;
++	u16 status;
++	int ret;
++
++	ns = nvme_find_get_ns(ctrl, le32_to_cpu(req->cmd->common.nsid));
++	if (unlikely(!ns)) {
++		pr_err("failed to get passthru ns nsid:%u\n", nsid);
++		status = NVME_SC_INVALID_NS | NVME_SC_DNR;
++		goto out;
++	}
++
++	rq = nvme_get_req(ns->queue, req);
++	if (!rq) {
++		status = NVME_SC_INTERNAL;
++		goto out_put_ns;
++	}
++
++	nvmet_passthru_execute_req(rq, ns, req);
++
++	nvme_put_ns(ns);
+ 	return;
+ 
+-out_put_req:
+-	blk_mq_free_request(rq);
+ out_put_ns:
+-	if (ns)
+-		nvme_put_ns(ns);
++	nvme_put_ns(ns);
+ out:
+ 	nvmet_req_complete(req, status);
+ }
+@@ -346,7 +375,9 @@ u16 nvmet_parse_passthru_io_cmd(struct nvmet_req *req)
+ 		return NVME_SC_INVALID_OPCODE | NVME_SC_DNR;
+ 	}
+ 
+-	return nvmet_setup_passthru_command(req);
++	req->p.use_workqueue = false;
++	req->execute = nvmet_passthru_execute_io_cmd;
++	return NVME_SC_SUCCESS;
+ }
+ 
+ /*

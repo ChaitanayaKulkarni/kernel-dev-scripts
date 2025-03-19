@@ -1,0 +1,18 @@
+From 93914f9ed43e7974294dc815ce6ed68c99044f16 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Mon, 11 Apr 2022 05:11:08 -0700
+Subject: [PATCH V2 0/2] *** SUBJECT HERE ***
+
+*** BLURB HERE ***
+
+Chaitanya Kulkarni (2):
+  nvme-core: mark internal passthru req REQ_QUIET
+  nvme-core: check non-mdts only for I/O ctrl
+
+ drivers/nvme/host/core.c | 12 ++++++++----
+ drivers/nvme/host/pci.c  |  2 ++
+ 2 files changed, 10 insertions(+), 4 deletions(-)
+
+-- 
+2.29.0
+

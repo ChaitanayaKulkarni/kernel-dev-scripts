@@ -1,0 +1,85 @@
+From 34127e9c2a48d6de998d90920735856d4c9e82a3 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Mon, 15 Jul 2019 13:17:53 -0700
+Subject: [RFC PATCH 4/4] null_blk: add REQ_OP_SIMPLE_COPY support
+
+This patch allows null_blk to handle the REQ_OP_SIMPLE_COPY
+when null_blk is not configured with membacked option.
+
+* TODO: add support when null_blk is configured with membacked mode.
+* TODO: add support when null_blk is configured as zoned device.
+* TODO: add comprehensive testcases into blktests for code coverage.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/block/null_blk_main.c | 31 +++++++++++++++++++++++++++++++
+ 1 file changed, 31 insertions(+)
+
+diff --git a/drivers/block/null_blk_main.c b/drivers/block/null_blk_main.c
+index 0e7da5015ccd..bcbb8ec1270d 100644
+--- a/drivers/block/null_blk_main.c
++++ b/drivers/block/null_blk_main.c
+@@ -1208,6 +1208,27 @@ static inline void nullb_complete_cmd(struct nullb_cmd *cmd)
+ 	}
+ }
+ 
++static blk_status_t null_simple_copy(struct nullb_cmd *cmd)
++{
++	unsigned int len = blk_rq_bytes(cmd->rq);
++	sector_t sector = blk_rq_pos(cmd->rq);
++	struct bio *bio = cmd->rq->bio;
++
++	__rq_for_each_bio(bio, cmd->rq) {
++		pr_info("%20s src_sector %10llu orig_src_sector %10llu "
++			"orig_dst_sector %10llu "
++			"curr_dst_sector %llu len %10u\n",
++			__func__,
++			sector,
++			bio->copy.orig_src_sector,
++			bio->copy.orig_dst_sector,
++			bio->copy.curr_dst_sector,
++			len);
++	}
++
++	return BLK_STS_OK;
++}
++
+ static blk_status_t null_handle_cmd(struct nullb_cmd *cmd, sector_t sector,
+ 				    sector_t nr_sectors, enum req_opf op)
+ {
+@@ -1226,6 +1247,9 @@ static blk_status_t null_handle_cmd(struct nullb_cmd *cmd, sector_t sector,
+ 		goto out;
+ 	}
+ 
++	if (op == REQ_OP_SIMPLE_COPY)
++		null_simple_copy(cmd);
++
+ 	if (nullb->dev->badblocks.shift != -1) {
+ 		cmd->error = null_handle_badblocks(cmd, sector, nr_sectors);
+ 		if (cmd->error != BLK_STS_OK)
+@@ -1418,6 +1442,12 @@ static void null_config_discard(struct nullb *nullb)
+ 	blk_queue_flag_set(QUEUE_FLAG_DISCARD, nullb->q);
+ }
+ 
++static void null_config_simple_copy(struct nullb *nullb)
++{
++	blk_queue_flag_set(QUEUE_FLAG_SIMPLE_COPY, nullb->q);
++	blk_queue_max_simple_copy_sectors(nullb->q, 1024);
++}
++
+ static int null_open(struct block_device *bdev, fmode_t mode)
+ {
+ 	return 0;
+@@ -1712,6 +1742,7 @@ static int null_add_dev(struct nullb_device *dev)
+ 	blk_queue_physical_block_size(nullb->q, dev->blocksize);
+ 
+ 	null_config_discard(nullb);
++	null_config_simple_copy(nullb);
+ 
+ 	sprintf(nullb->disk_name, "nullb%d", nullb->index);
+ 
+-- 
+2.17.0
+
+
+

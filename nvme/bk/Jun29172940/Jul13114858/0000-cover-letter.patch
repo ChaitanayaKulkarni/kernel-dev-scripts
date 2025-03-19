@@ -1,0 +1,31 @@
+From 1b133cf9ab8067f7f390452ec4fd81df11d34025 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Mon, 13 Jul 2020 10:54:43 -0700
+Subject: [PATCH V3 0/4] *** SUBJECT HERE ***
+
+*** BLURB HERE ***
+
+Chaitanya Kulkarni (4):
+  xarray: add xa_load_rcu() version
+  nvme-core: use xarray for ctrl ns tracking
+  nvme: centralize queue mgmt actions
+  nvmet: use xarray for ctrl ns storing
+
+ drivers/nvme/host/core.c        | 290 ++++++++++++++------------------
+ drivers/nvme/host/fc.c          |   4 +-
+ drivers/nvme/host/multipath.c   |  15 +-
+ drivers/nvme/host/nvme.h        |  23 +--
+ drivers/nvme/host/pci.c         |  29 ++--
+ drivers/nvme/host/rdma.c        |   7 +-
+ drivers/nvme/host/tcp.c         |   8 +-
+ drivers/nvme/target/admin-cmd.c |  17 +-
+ drivers/nvme/target/core.c      |  58 ++-----
+ drivers/nvme/target/loop.c      |   2 +-
+ drivers/nvme/target/nvmet.h     |   3 +-
+ include/linux/xarray.h          |   1 +
+ lib/xarray.c                    |  24 +++
+ 13 files changed, 218 insertions(+), 263 deletions(-)
+
+-- 
+2.26.0
+

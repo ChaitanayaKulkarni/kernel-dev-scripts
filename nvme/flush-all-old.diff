@@ -1,0 +1,233 @@
+From: Chaitanya Kulkarni @ 2018-06-23 18:01 UTC (permalink / raw)
+
+
+This patch implements the flush command behavior described in
+"NVMe 1.3a  TP 4035" for NSID value of FFFFFFFFh. Now flush command
+applies to all the namespaces attached to the controller processing the
+Flush command when the value 0xFFFFFFFF is set in the NSID field.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni at wdc.com>
+---
+ drivers/nvme/target/admin-cmd.c   |  2 +-
+ drivers/nvme/target/core.c        | 33 ++++++++++++++++++--
+ drivers/nvme/target/io-cmd-bdev.c | 52 +++++++++++++++++++++++++++++--
+ drivers/nvme/target/io-cmd-file.c | 30 ++++++++++++++++++
+ drivers/nvme/target/nvmet.h       | 11 +++++++
+ 5 files changed, 121 insertions(+), 7 deletions(-)
+
+diff --git a/drivers/nvme/target/admin-cmd.c b/drivers/nvme/target/admin-cmd.c
+index e2c6f8b39388..2ad52e5cdaed 100644
+--- a/drivers/nvme/target/admin-cmd.c
++++ b/drivers/nvme/target/admin-cmd.c
+@@ -256,7 +256,7 @@ static void nvmet_execute_identify_ctrl(struct nvmet_req *req)
+ 			NVME_CTRL_ONCS_WRITE_ZEROES);
+ 
+ 	/* XXX: don't report vwc if the underlying device is write through */
+-	id->vwc = NVME_CTRL_VWC_PRESENT;
++	id->vwc = NVME_CTRL_VWC_PRESENT | 1 << 2 | 1 << 1;
+ 
+ 	/*
+ 	 * We can't support atomic writes bigger than a LBA without support
+diff --git a/drivers/nvme/target/core.c b/drivers/nvme/target/core.c
+index f0e8b8250344..9c798a9ad989 100644
+--- a/drivers/nvme/target/core.c
++++ b/drivers/nvme/target/core.c
+@@ -544,6 +544,25 @@ int nvmet_sq_init(struct nvmet_sq *sq)
+ }
+ EXPORT_SYMBOL_GPL(nvmet_sq_init);
+ 
++static void nvmet_file_flush_all_work(struct work_struct *w)
++{
++	struct nvmet_req *req = container_of(w, struct nvmet_req, f.work);
++	u16 status;
++
++	status = nvmet_bdev_execute_flush_all(req);
++
++	if (!status)
++		status = nvmet_file_execute_flush_all(req);
++
++	nvmet_req_complete(req, status);
++}
++
++static void nvmet_execute_flush_all(struct nvmet_req *req)
++{
++	INIT_WORK(&req->f.work, nvmet_file_flush_all_work);
++	schedule_work(&req->f.work);
++}
++
+ static u16 nvmet_parse_io_cmd(struct nvmet_req *req)
+ {
+ 	struct nvme_command *cmd = req->cmd;
+@@ -553,9 +572,17 @@ static u16 nvmet_parse_io_cmd(struct nvmet_req *req)
+ 	if (unlikely(ret))
+ 		return ret;
+ 
+-	req->ns = nvmet_find_namespace(req->sq->ctrl, cmd->rw.nsid);
+-	if (unlikely(!req->ns))
+-		return NVME_SC_INVALID_NS | NVME_SC_DNR;
++	if (likely(!nvmet_cmd_flush_all(req))) {
++		req->ns = nvmet_find_namespace(req->sq->ctrl, cmd->rw.nsid);
++		if (unlikely(!req->ns))
++			return NVME_SC_INVALID_NS | NVME_SC_DNR;
++	}
++
++	if (unlikely(nvmet_cmd_flush_all(req))) {
++		req->execute = nvmet_execute_flush_all;
++		req->data_len = 0;
++		return NVME_SC_SUCCESS;
++	}
+ 
+ 	if (req->ns->file)
+ 		return nvmet_file_parse_io_cmd(req);
+diff --git a/drivers/nvme/target/io-cmd-bdev.c b/drivers/nvme/target/io-cmd-bdev.c
+index e0b0f7df70c2..12001ed9f520 100644
+--- a/drivers/nvme/target/io-cmd-bdev.c
++++ b/drivers/nvme/target/io-cmd-bdev.c
+@@ -48,8 +48,11 @@ static void nvmet_bio_done(struct bio *bio)
+ {
+ 	struct nvmet_req *req = bio->bi_private;
+ 
+-	nvmet_req_complete(req,
+-		bio->bi_status ? NVME_SC_INTERNAL | NVME_SC_DNR : 0);
++	if (unlikely(nvmet_cmd_flush_all(req)))
++		complete(&req->complete);
++	else
++		nvmet_req_complete(req,
++			bio->bi_status ? NVME_SC_INTERNAL | NVME_SC_DNR : 0);
+ 
+ 	if (bio != &req->b.inline_bio)
+ 		bio_put(bio);
+@@ -111,7 +114,7 @@ static void nvmet_bdev_execute_rw(struct nvmet_req *req)
+ 	blk_poll(bdev_get_queue(req->ns->bdev), cookie);
+ }
+ 
+-static void nvmet_bdev_execute_flush(struct nvmet_req *req)
++static struct bio *nvmet_bdev_init_flush_bio(struct nvmet_req *req)
+ {
+ 	struct bio *bio = &req->b.inline_bio;
+ 
+@@ -121,9 +124,52 @@ static void nvmet_bdev_execute_flush(struct nvmet_req *req)
+ 	bio->bi_end_io = nvmet_bio_done;
+ 	bio->bi_opf = REQ_OP_WRITE | REQ_PREFLUSH;
+ 
++	return bio;
++}
++
++static void nvmet_bdev_execute_flush(struct nvmet_req *req)
++{
++	struct bio *bio = nvmet_bdev_init_flush_bio(req);
++
+ 	submit_bio(bio);
+ }
+ 
++u16 nvmet_bdev_execute_flush_all(struct nvmet_req *req)
++{
++	struct nvmet_subsys *subsys = req->sq->ctrl->subsys;
++	u16 status = NVME_SC_SUCCESS;
++	struct nvmet_ns *ns;
++	struct bio *bio;
++
++	init_completion(&req->complete);
++
++	rcu_read_lock();
++	list_for_each_entry_rcu(ns, &subsys->namespaces, dev_link) {
++		if (!ns->bdev)
++			continue;
++		percpu_ref_get(&ns->ref);
++		req->ns = ns;
++		rcu_read_unlock();
++
++		bio = nvmet_bdev_init_flush_bio(req);
++		submit_bio(bio);
++		wait_for_completion(&req->complete);
++
++		rcu_read_lock();
++		percpu_ref_put(&ns->ref);
++		req->ns = NULL;
++
++		if (req->b.inline_bio.bi_status) {
++			status = NVME_SC_INTERNAL | NVME_SC_DNR;
++			break;
++		}
++
++		reinit_completion(&req->complete);
++	}
++	rcu_read_unlock();
++	return status;
++}
++
+ static u16 nvmet_bdev_discard_range(struct nvmet_ns *ns,
+ 		struct nvme_dsm_range *range, struct bio **bio)
+ {
+diff --git a/drivers/nvme/target/io-cmd-file.c b/drivers/nvme/target/io-cmd-file.c
+index 74855c8e3a27..88822991b403 100644
+--- a/drivers/nvme/target/io-cmd-file.c
++++ b/drivers/nvme/target/io-cmd-file.c
+@@ -207,6 +207,36 @@ static void nvmet_file_execute_rw_buffered_io(struct nvmet_req *req)
+ 	queue_work(file_wq, &req->f.work);
+ }
+ 
++u16 nvmet_file_execute_flush_all(struct nvmet_req *req)
++{
++	struct nvmet_subsys *subsys = req->sq->ctrl->subsys;
++	u16 status = NVME_SC_SUCCESS;
++	struct nvmet_ns *ns;
++	int ret;
++
++	rcu_read_lock();
++	list_for_each_entry_rcu(ns, &subsys->namespaces, dev_link) {
++		if (!ns->file)
++			continue;
++		percpu_ref_get(&ns->ref);
++		req->ns = ns;
++		rcu_read_unlock();
++
++		ret = vfs_fsync(req->ns->file, 1);
++
++		rcu_read_lock();
++		percpu_ref_put(&ns->ref);
++		req->ns = NULL;
++
++		if (ret < 0) {
++			status = NVME_SC_INTERNAL | NVME_SC_DNR;
++			break;
++		}
++	}
++	rcu_read_unlock();
++	return status;
++}
++
+ static void nvmet_file_flush_work(struct work_struct *w)
+ {
+ 	struct nvmet_req *req = container_of(w, struct nvmet_req, f.work);
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index bfd9e2c8cb59..64493023f938 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -268,6 +268,7 @@ struct nvmet_req {
+ 
+ 	void (*execute)(struct nvmet_req *req);
+ 	const struct nvmet_fabrics_ops *ops;
++	struct completion	complete;
+ };
+ 
+ extern struct workqueue_struct *file_wq;
+@@ -381,9 +382,19 @@ int nvmet_file_ns_enable(struct nvmet_ns *ns);
+ void nvmet_bdev_ns_disable(struct nvmet_ns *ns);
+ void nvmet_file_ns_disable(struct nvmet_ns *ns);
+ 
++u16 nvmet_bdev_execute_flush_all(struct nvmet_req *req);
++u16 nvmet_file_execute_flush_all(struct nvmet_req *req);
++
+ static inline u32 nvmet_rw_len(struct nvmet_req *req)
+ {
+ 	return ((u32)le16_to_cpu(req->cmd->rw.length) + 1) <<
+ 			req->ns->blksize_shift;
+ }
++
++static inline int nvmet_cmd_flush_all(struct nvmet_req *req)
++{
++	return (req->cmd->common.opcode == nvme_cmd_flush) &&
++		(le32_to_cpu(req->cmd->rw.nsid) == 0xFFFFFFFF);
++}
++

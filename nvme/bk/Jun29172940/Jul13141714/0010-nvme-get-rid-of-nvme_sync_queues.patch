@@ -1,0 +1,93 @@
+From bc599af118147efe8901740c430540000de7397c Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Mon, 13 Jul 2020 14:10:50 -0700
+Subject: [PATCH 10/11] nvme: get rid of nvme_sync_queues()
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/host/core.c | 13 +++----------
+ drivers/nvme/host/nvme.h |  2 +-
+ drivers/nvme/host/pci.c  |  6 +++---
+ 3 files changed, 7 insertions(+), 14 deletions(-)
+
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index c0826a18bd55..09abf2ca33f5 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -4487,6 +4487,9 @@ void nvme_queue_act(struct nvme_ctrl *ctrl, enum nvme_queue_act op)
+ 		case NVME_START_QUEUES:
+ 			blk_mq_unquiesce_queue(ns->queue);
+ 			break;
++		case NVME_SYNC_QUEUES:
++			blk_sync_queue(ns->queue);
++			break;
+ 		default:
+ 			pr_warn("invalid %s op 0x%x\n", __func__, op);
+ 			break;
+@@ -4508,16 +4511,6 @@ void nvme_wait_freeze_timeout(struct nvme_ctrl *ctrl, long timeout)
+ }
+ EXPORT_SYMBOL_GPL(nvme_wait_freeze_timeout);
+ 
+-void nvme_sync_queues(struct nvme_ctrl *ctrl)
+-{
+-	struct nvme_ns *ns;
+-	unsigned long idx;
+-
+-	xa_for_each(&ctrl->namespaces, idx, ns)
+-		blk_sync_queue(ns->queue);
+-}
+-EXPORT_SYMBOL_GPL(nvme_sync_queues);
+-
+ /*
+  * Check we didn't inadvertently grow the command structure sizes:
+  */
+diff --git a/drivers/nvme/host/nvme.h b/drivers/nvme/host/nvme.h
+index 419070d0c442..8d74eabee41d 100644
+--- a/drivers/nvme/host/nvme.h
++++ b/drivers/nvme/host/nvme.h
+@@ -552,10 +552,10 @@ enum nvme_queue_act {
+ 	NVME_START_FREEZE_QUEUES,
+ 	NVME_STOP_QUEUES,
+ 	NVME_START_QUEUES,
++	NVME_SYNC_QUEUES,
+ };
+ 
+ void nvme_queue_act(struct nvme_ctrl *ctrl, enum nvme_queue_act op);
+-void nvme_sync_queues(struct nvme_ctrl *ctrl);
+ void nvme_wait_freeze_timeout(struct nvme_ctrl *ctrl, long timeout);
+ 
+ #define NVME_QID_ANY -1
+diff --git a/drivers/nvme/host/pci.c b/drivers/nvme/host/pci.c
+index b7e14b86e00a..238ff4c77de7 100644
+--- a/drivers/nvme/host/pci.c
++++ b/drivers/nvme/host/pci.c
+@@ -2532,7 +2532,7 @@ static void nvme_reset_work(struct work_struct *work)
+ 	 */
+ 	if (dev->ctrl.ctrl_config & NVME_CC_ENABLE)
+ 		nvme_dev_disable(dev, false);
+-	nvme_sync_queues(&dev->ctrl);
++	nvme_queue_act(&dev->ctrl, NVME_SYNC_QUEUES);
+ 
+ 	mutex_lock(&dev->shutdown_lock);
+ 	result = nvme_pci_enable(dev);
+@@ -2859,7 +2859,7 @@ static void nvme_reset_prepare(struct pci_dev *pdev)
+ 	 * with ->remove().
+ 	 */
+ 	nvme_disable_prepare_reset(dev, false);
+-	nvme_sync_queues(&dev->ctrl);
++	nvme_queue_act(&dev->ctrl, NVME_SYNC_QUEUES);
+ }
+ 
+ static void nvme_reset_done(struct pci_dev *pdev)
+@@ -2965,7 +2965,7 @@ static int nvme_suspend(struct device *dev)
+ 
+ 	nvme_queue_act(ctrl, NVME_START_FREEZE_QUEUES);
+ 	nvme_queue_act(ctrl, NVME_WAIT_FREEZE_QUEUES);
+-	nvme_sync_queues(ctrl);
++	nvme_queue_act(ctrl, NVME_SYNC_QUEUES);
+ 
+ 	if (ctrl->state != NVME_CTRL_LIVE)
+ 		goto unfreeze;
+-- 
+2.26.0
+

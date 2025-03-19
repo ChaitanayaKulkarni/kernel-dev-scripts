@@ -1,0 +1,32 @@
+From 291ab691103a4dc74fcf352bbd28999a58d41b40 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Mon, 16 Dec 2019 13:52:44 -0800
+Subject: [PATCH] drivers/nvme/host/core.c: Convert to use disk_set_capacity 
+
+block/genhd provides disk_set_capacity() for sending
+RESIZE notifications via uevents. This notification is
+newly added to NVME devices
+
+Signed-off-by: Balbir Singh <sblbir@amazon.com>
+---
+ drivers/nvme/host/core.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index 667f18f465be..cb214e914fc2 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -1808,7 +1808,7 @@ static void nvme_update_disk_info(struct gendisk *disk,
+ 	    ns->lba_shift > PAGE_SHIFT)
+ 		capacity = 0;
+ 
+-	set_capacity(disk, capacity);
++	disk_set_capacity(disk, capacity);
+ 
+ 	nvme_config_discard(disk, ns);
+ 	nvme_config_write_zeroes(disk, ns);
+-- 
+2.16.5
+
+
+

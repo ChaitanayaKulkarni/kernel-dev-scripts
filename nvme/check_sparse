@@ -1,0 +1,1 @@
+makej C=2 M=drivers/nvme/ 2>&1  | grep -v bio.h | grep -v tcp | grep -v seq_buf | grep -v fc.c | grep -v rdma.c | grep -v nodemask | grep -v blkdev.h | grep -v fcloop

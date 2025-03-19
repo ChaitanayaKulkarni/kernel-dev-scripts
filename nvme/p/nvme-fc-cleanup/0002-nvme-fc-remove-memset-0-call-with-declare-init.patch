@@ -1,0 +1,37 @@
+From 5cb42e711178daff6b970965d8d9a49b14743369 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Fri, 12 Aug 2022 11:00:44 -0700
+Subject: [PATCH 2/2] nvme-fc: remove memset 0 call with declare init
+
+Remove the memset zerout call and initialize the app_id array at the
+time of initialization in function fc_app_store().
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/host/fc.c | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/drivers/nvme/host/fc.c b/drivers/nvme/host/fc.c
+index a557432b795e..40f60e22984a 100644
+--- a/drivers/nvme/host/fc.c
++++ b/drivers/nvme/host/fc.c
+@@ -3884,7 +3884,7 @@ static ssize_t fc_appid_store(struct device *dev,
+ 	u64 cgrp_id;
+ 	int appid_len = 0;
+ 	int cgrpid_len = 0;
+-	char app_id[FC_APPID_LEN];
++	char app_id[FC_APPID_LEN] = { };
+ 	int ret = 0;
+ 
+ 	if (buf[count - 1] == '\n')
+@@ -3900,7 +3900,6 @@ static ssize_t fc_appid_store(struct device *dev,
+ 	if (appid_len > FC_APPID_LEN)
+ 		return -EINVAL;
+ 
+-	memset(app_id, 0x0, sizeof(app_id));
+ 	memcpy(app_id, &buf[cgrpid_len + 1], appid_len);
+ 	ret = blkcg_set_fc_appid(app_id, cgrp_id, sizeof(app_id));
+ 	if (ret < 0)
+-- 
+2.29.0
+

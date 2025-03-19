@@ -1,0 +1,122 @@
+#include <linux/blkdev.h>
+#include <linux/module.h>
+#include <linux/sched/signal.h>
+#include <linux/kthread.h>
+#include <linux/list.h>
+#include <linux/random.h>
+#include <linux/delay.h>
+#include <uapi/linux/sched/types.h>
+
+struct test {
+	struct list_head list;
+	int id;
+};
+
+static inline void list_swap_rcu(struct list_head *entry1,
+			     struct list_head *entry2)
+{
+	struct list_head *pos = entry2->prev;
+
+	list_del_rcu(entry2);
+	list_replace_rcu(entry1, entry2);
+	if (pos == entry1)
+		pos = entry2;
+	list_add_rcu(entry1, pos);
+}
+
+void test(int id[])
+{
+	struct test t[10];
+	struct test *cur, *next = NULL;
+	struct list_head *node;
+	struct list_head namespaces;
+	bool added = false;
+	int i;
+	int r;
+	int j;
+
+
+	INIT_LIST_HEAD(&namespaces);
+	pr_info("ns->prev  0x%x &ns 0x%x ns->next 0x%x\n",
+			namespaces.prev, &namespaces, namespaces.next);
+	pr_info("&ns->prev 0x%x &ns 0x%x &ns->next 0x%x\n",
+			&namespaces.prev, &namespaces, &namespaces.next);
+	for (i = 0; i < 5; i++) {
+		get_random_bytes(&r, sizeof(r));
+		t[i].id = id[i];
+		INIT_LIST_HEAD(&t[i].list);
+
+
+		pr_info("%s %d\n", list_next_or_null_rcu(cur));
+
+		pr_info("######################## %d\n", t[i].id);
+		if (list_empty(&namespaces)) {
+			list_add_rcu(&t[i].list, &namespaces); 				
+			continue;
+		}
+		j = 0;
+		added  = false;
+		list_for_each_entry_rcu(cur, &namespaces, list, 1) {
+			pr_info("tid %d < cur %d \n", t[i].id, cur->id);
+			if (t[i].id < cur->id) {
+				list_add_tail_rcu(&t[i].list, &cur->list);
+				pr_info("%s %d add before\n", __func__, __LINE__);
+				added = true;
+				break;
+			}
+#if 0
+			pr_info("t[%d] prev   0x%x  t->list 0x%x next      0x%x\n", 
+					j, t[j].list.prev, t[j].list, t[j].list.next);
+			pr_info("t[%d] &prev  0x%x &t->list 0x%x &next     0x%x\n", 
+					j, &t[j].list.prev, &t[j].list, &t[j].list.next);
+
+			pr_info("ns->prev    0x%x &ns      0x%x ns->next  0x%x\n",
+					namespaces.prev, &namespaces, namespaces.next);
+			pr_info("&ns->prev   0x%x &ns      0x%x &ns->next 0x%x\n",
+					&namespaces.prev, &namespaces, &namespaces.next);
+			pr_info("ns->prev 0x%x ns 0x%x ns->next 0x%x\n",
+					namespaces.prev,  &namespaces, namespaces.next);
+			pr_info(" cur prev 0x%x cur next 0x%x\n", 
+					&cur->list.prev, &cur->list.next);
+			pr_info(" node prev 0x%x node next 0x%x\n",
+					node ? node->prev : NULL,
+					node ? node->next : NULL);
+#endif
+			j++;
+		}
+		if (!added) {
+			pr_info("%s %d add after\n", __func__, __LINE__);
+			list_add_tail_rcu(&t[i].list, &cur->list);
+		}
+		pr_info("*************************\n");
+	}
+
+
+	pr_info("%s %d------------------------------------------\n", __func__, __LINE__);
+	list_for_each_entry(cur, &namespaces, list)
+		pr_info("%s %d %d\n", __func__, __LINE__, cur->id);
+}
+
+static int __init perf_init(void)
+{
+	int id[] = {1, 2, 3, 4, 5 };
+	int id1[] = { 5, 4, 3, 2, 1 };
+	int id2[] = { 1, 5, 4, 2, 3 };
+	int id3[] = { 3, 5, 4, 2, 1 };
+
+	test(id);
+	test(id1);
+	test(id2);
+	test(id3);
+
+	return 0;
+}
+
+static void __exit perf_exit(void)
+{
+}
+
+MODULE_LICENSE("GPL");
+MODULE_VERSION("1.0");
+module_init(perf_init);
+module_exit(perf_exit);

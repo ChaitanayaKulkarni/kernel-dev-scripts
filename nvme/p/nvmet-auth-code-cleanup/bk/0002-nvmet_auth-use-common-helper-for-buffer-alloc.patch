@@ -1,0 +1,93 @@
+From 2aa826e1b15de6b6aca753eb45f23a6cc0c67f17 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Sun, 21 May 2023 00:26:53 -0700
+Subject: [PATCH 2/2] nvmet_auth: use common helper for buffer alloc
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/target/fabrics-cmd-auth.c | 43 ++++++++++++--------------
+ 1 file changed, 19 insertions(+), 24 deletions(-)
+
+diff --git a/drivers/nvme/target/fabrics-cmd-auth.c b/drivers/nvme/target/fabrics-cmd-auth.c
+index 6ad322b3d0a9..010410bfe934 100644
+--- a/drivers/nvme/target/fabrics-cmd-auth.c
++++ b/drivers/nvme/target/fabrics-cmd-auth.c
+@@ -29,6 +29,18 @@ static u16 nvmet_auth_check_secp_spsp(struct nvmet_req *req)
+ 	return NVME_SC_SUCCESS;
+ }
+ 
++static u16 nvmet_auth_alloc_transfer_buffer(struct nvmet_req *req, void **buf)
++{
++	u32 transfer_len = le32_to_cpu(req->cmd->auth_receive.al);
++
++	if (!transfer_len) {
++		req->error_loc = offsetof(struct nvmf_auth_receive_command, al);
++		return NVME_SC_INVALID_FIELD | NVME_SC_DNR;
++	}
++	*buf = kmalloc(transfer_len, GFP_KERNEL);
++	return *buf ? NVME_SC_SUCCESS : NVME_SC_INTERNAL;
++}
++
+ static void nvmet_auth_expired_work(struct work_struct *work)
+ {
+ 	struct nvmet_sq *sq = container_of(to_delayed_work(work),
+@@ -207,25 +219,15 @@ void nvmet_execute_auth_send(struct nvmet_req *req)
+ 	status = nvmet_auth_check_secp_spsp(req);
+ 	if (status)
+ 		goto done;
+-
+-	tl = le32_to_cpu(req->cmd->auth_send.tl);
+-	if (!tl) {
+-		status = NVME_SC_INVALID_FIELD | NVME_SC_DNR;
+-		req->error_loc =
+-			offsetof(struct nvmf_auth_send_command, tl);
++	status = nvmet_auth_alloc_transfer_buffer(req, &d);
++	if (status)
+ 		goto done;
+-	}
+ 	if (!nvmet_check_transfer_len(req, tl)) {
+ 		pr_debug("%s: transfer length mismatch (%u)\n", __func__, tl);
++		kfree(d);
+ 		return;
+ 	}
+ 
+-	d = kmalloc(tl, GFP_KERNEL);
+-	if (!d) {
+-		status = NVME_SC_INTERNAL;
+-		goto done;
+-	}
+-
+ 	status = nvmet_copy_from_sgl(req, 0, d, tl);
+ 	if (status)
+ 		goto done_kfree;
+@@ -440,23 +442,16 @@ void nvmet_execute_auth_receive(struct nvmet_req *req)
+ 	status = nvmet_auth_check_secp_spsp(req);
+ 	if (status)
+ 		goto done;
+-	al = le32_to_cpu(req->cmd->auth_receive.al);
+-	if (!al) {
+-		status = NVME_SC_INVALID_FIELD | NVME_SC_DNR;
+-		req->error_loc =
+-			offsetof(struct nvmf_auth_receive_command, al);
++
++	status = nvmet_auth_alloc_transfer_buffer(req, &d);
++	if (status)
+ 		goto done;
+-	}
+ 	if (!nvmet_check_transfer_len(req, al)) {
+ 		pr_debug("%s: transfer length mismatch (%u)\n", __func__, al);
++		kfree(d);
+ 		return;
+ 	}
+ 
+-	d = kmalloc(al, GFP_KERNEL);
+-	if (!d) {
+-		status = NVME_SC_INTERNAL;
+-		goto done;
+-	}
+ 	pr_debug("%s: ctrl %d qid %d step %x\n", __func__,
+ 		 ctrl->cntlid, req->sq->qid, req->sq->dhchap_step);
+ 	switch (req->sq->dhchap_step) {
+-- 
+2.40.0
+

@@ -1,0 +1,68 @@
+From 66a073a0d08a24f78c23d43bf8c30f672bcdc362 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Sat, 27 Jun 2020 18:46:36 -0700
+Subject: [PATCH V2 1/3] xarray: add xa_load callback version
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ include/linux/xarray.h |  2 ++
+ lib/xarray.c           | 30 ++++++++++++++++++++++++++++++
+ 2 files changed, 32 insertions(+)
+
+diff --git a/include/linux/xarray.h b/include/linux/xarray.h
+index b4d70e7568b2..261f37c17ddf 100644
+--- a/include/linux/xarray.h
++++ b/include/linux/xarray.h
+@@ -345,6 +345,8 @@ struct xarray {
+ #define DEFINE_XARRAY_ALLOC1(name) DEFINE_XARRAY_FLAGS(name, XA_FLAGS_ALLOC1)
+ 
+ void *xa_load(struct xarray *, unsigned long index);
++void *xa_load_cb(struct xarray *xa, unsigned long index, bool (*cb)(void *),
++		bool *result);
+ void *xa_store(struct xarray *, unsigned long index, void *entry, gfp_t);
+ void *xa_erase(struct xarray *, unsigned long index);
+ void *xa_store_range(struct xarray *, unsigned long first, unsigned long last,
+diff --git a/lib/xarray.c b/lib/xarray.c
+index e9e641d3c0c3..a847bd95f8fd 100644
+--- a/lib/xarray.c
++++ b/lib/xarray.c
+@@ -1312,6 +1312,36 @@ void *xa_load(struct xarray *xa, unsigned long index)
+ }
+ EXPORT_SYMBOL(xa_load);
+ 
++/**
++ * xa_load() - Load an entry from an XArray.
++ * @xa: XArray.
++ * @index: index into array.
++ * @cb: callback needs to be called under lock.
++ *
++ * Context: Any context.  Takes and releases the RCU lock.
++ * Return: The entry at @index in @xa.
++ */
++void *xa_load_cb(struct xarray *xa, unsigned long index, bool (*cb)(void *),
++		bool *result)
++{
++       XA_STATE(xas, xa, index);
++       void *entry;
++
++       *result = false;
++       rcu_read_lock();
++       do {
++               entry = xas_load(&xas);
++               if (xa_is_zero(entry))
++                       entry = NULL;
++       } while (xas_retry(&xas, entry));
++       if (entry && cb)
++               *result = cb(entry);
++       rcu_read_unlock();
++
++       return entry;
++}
++EXPORT_SYMBOL(xa_load_cb);
++
+ static void *xas_result(struct xa_state *xas, void *curr)
+ {
+ 	if (xa_is_zero(curr))
+-- 
+2.26.0
+

@@ -1,0 +1,81 @@
+From c91f10d6380ffe59d2110a124c3b1a9819ad247d Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Sun, 11 Feb 2024 17:53:46 -0800
+Subject: [PATCH 1/2] nvme-core: add ctrl state transition debug helper
+
+NVMe controller state machine has total 7 states and 13 state transition
+arcs. Debugging NVMeOF problems in the field is not straight-froward,
+since it involves complex combination of connect/reconnect/kato/timeout
+handlers etc scenarios.
+We already have a helper in sysfs.c that reads the controller state, but
+one has to constantly read the state in order understand the complete
+state transition which is very inconvenient.
+
+It is often helpful to know full state transition of controller when
+dealing with NVMeOF issues at the time of analyzing the trace.
+
+Add a helper that allows us to decode and print each controller state
+transition :-
+
+blktests (master) # dmesg -c | grep nvme_change_ctrl_state
+blktests (master) # nvme_trtype=tcp ./check nvme/048
+nvme/048 (Test queue count changes on reconnect)             [passed]
+    runtime  6.264s  ...  5.240s
+blktests (master) # dmesg -c | grep nvme_change_ctrl_state
+[17080.988689] nvme nvme0: nvme_change_ctrl_state new -> connecting
+[17081.006623] nvme nvme0: nvme_change_ctrl_state connecting -> live
+[17081.038313] nvme nvme0: nvme_change_ctrl_state live -> resetting
+[17081.040730] nvme nvme0: nvme_change_ctrl_state resetting -> connecting
+[17083.056750] nvme nvme0: nvme_change_ctrl_state connecting -> live
+[17083.075906] nvme nvme0: nvme_change_ctrl_state live -> resetting
+[17083.076112] nvme nvme0: nvme_change_ctrl_state resetting -> connecting
+[17085.105270] nvme nvme0: nvme_change_ctrl_state connecting -> live
+[17086.126484] nvme nvme0: nvme_change_ctrl_state live -> deleting
+[17086.126506] nvme nvme0: nvme_change_ctrl_state deleting -> deleting (no IO)
+blktests (master) #
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+
+ drivers/nvme/host/core.c | 18 ++++++++++++++++++
+ 1 file changed, 18 insertions(+)
+
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index 20c0c141fcc0..daeb2409f989 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -544,6 +544,21 @@ void nvme_cancel_admin_tagset(struct nvme_ctrl *ctrl)
+ }
+ EXPORT_SYMBOL_GPL(nvme_cancel_admin_tagset);
+ 
++static const char *nvme_ctrl_state_str(enum nvme_ctrl_state st)
++{
++	static const char *const str[] = {
++		[NVME_CTRL_NEW]			= "new",
++		[NVME_CTRL_LIVE]		= "live",
++		[NVME_CTRL_RESETTING]		= "resetting",
++		[NVME_CTRL_CONNECTING]		= "connecting",
++		[NVME_CTRL_DELETING]		= "deleting",
++		[NVME_CTRL_DELETING_NOIO]	= "deleting (no IO)",
++		[NVME_CTRL_DEAD]		= "dead",
++	};
++
++	return st < ARRAY_SIZE(str) && str[st] ? str[st] : "unknown state";
++}
++
+ bool nvme_change_ctrl_state(struct nvme_ctrl *ctrl,
+ 		enum nvme_ctrl_state new_state)
+ {
+@@ -621,6 +636,9 @@ bool nvme_change_ctrl_state(struct nvme_ctrl *ctrl,
+ 	}
+ 
+ 	if (changed) {
++		dev_dbg(ctrl->device, "%s %s -> %s\n", __func__,
++			nvme_ctrl_state_str(old_state),
++			nvme_ctrl_state_str(new_state));
+ 		WRITE_ONCE(ctrl->state, new_state);
+ 		wake_up_all(&ctrl->state_wq);
+ 	}
+-- 
+2.40.0
+

@@ -1,0 +1,118 @@
+From ddf1a8c8fe22678a21c525d85e7449ede0480076 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Sun, 11 Feb 2024 00:22:18 -0800
+Subject: [PATCH 2/2] nvmet: nvmet.h configfs helper cleanup
+
+to_nvmet_ns(), to_ana_group(), to_subsys(), to_host and
+nvmet_subsys *namespaces_to_subsys() functions are only used in
+target/configfs.c, move it to the appropriate file instead of bloating
+the header.
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/target/configfs.c | 28 ++++++++++++++++++++++++++++
+ drivers/nvme/target/nvmet.h    | 28 ----------------------------
+ 2 files changed, 28 insertions(+), 28 deletions(-)
+
+diff --git a/drivers/nvme/target/configfs.c b/drivers/nvme/target/configfs.c
+index 2482a0db2504..a4307cbf9cf7 100644
+--- a/drivers/nvme/target/configfs.c
++++ b/drivers/nvme/target/configfs.c
+@@ -49,6 +49,34 @@ static const struct nvmet_type_name_map nvmet_addr_family[] = {
+ 	{ NVMF_ADDR_FAMILY_LOOP,	"loop" },
+ };
+ 
++static inline struct nvmet_ns *to_nvmet_ns(struct config_item *item)
++{
++	return container_of(to_config_group(item), struct nvmet_ns, group);
++}
++
++static inline struct nvmet_ana_group *to_ana_group(struct config_item *item)
++{
++	return container_of(to_config_group(item), struct nvmet_ana_group,
++			group);
++}
++
++static inline struct nvmet_subsys *to_subsys(struct config_item *item)
++{
++	return container_of(to_config_group(item), struct nvmet_subsys, group);
++}
++
++static inline struct nvmet_subsys *namespaces_to_subsys(
++		struct config_item *item)
++{
++	return container_of(to_config_group(item), struct nvmet_subsys,
++			namespaces_group);
++}
++
++static inline struct nvmet_host *to_host(struct config_item *item)
++{
++	return container_of(to_config_group(item), struct nvmet_host, group);
++}
++
+ static bool nvmet_is_port_enabled(struct nvmet_port *p, const char *caller)
+ {
+ 	if (p->enabled)
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index 6c8acebe1a1a..ad8d1f096349 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -87,11 +87,6 @@ struct nvmet_ns {
+ 	u8			csi;
+ };
+ 
+-static inline struct nvmet_ns *to_nvmet_ns(struct config_item *item)
+-{
+-	return container_of(to_config_group(item), struct nvmet_ns, group);
+-}
+-
+ static inline struct device *nvmet_ns_dev(struct nvmet_ns *ns)
+ {
+ 	return ns->bdev ? disk_to_dev(ns->bdev->bd_disk) : NULL;
+@@ -132,12 +127,6 @@ struct nvmet_ana_group {
+ 	u32			grpid;
+ };
+ 
+-static inline struct nvmet_ana_group *to_ana_group(struct config_item *item)
+-{
+-	return container_of(to_config_group(item), struct nvmet_ana_group,
+-			group);
+-}
+-
+ /**
+  * struct nvmet_port -	Common structure to keep port
+  *				information for the target.
+@@ -293,18 +282,6 @@ struct nvmet_subsys {
+ #endif /* CONFIG_BLK_DEV_ZONED */
+ };
+ 
+-static inline struct nvmet_subsys *to_subsys(struct config_item *item)
+-{
+-	return container_of(to_config_group(item), struct nvmet_subsys, group);
+-}
+-
+-static inline struct nvmet_subsys *namespaces_to_subsys(
+-		struct config_item *item)
+-{
+-	return container_of(to_config_group(item), struct nvmet_subsys,
+-			namespaces_group);
+-}
+-
+ struct nvmet_host {
+ 	struct config_group	group;
+ 	u8			*dhchap_secret;
+@@ -315,11 +292,6 @@ struct nvmet_host {
+ 	u8			dhchap_dhgroup_id;
+ };
+ 
+-static inline struct nvmet_host *to_host(struct config_item *item)
+-{
+-	return container_of(to_config_group(item), struct nvmet_host, group);
+-}
+-
+ static inline char *nvmet_host_name(struct nvmet_host *host)
+ {
+ 	return config_item_name(&host->group.cg_item);
+-- 
+2.40.0
+

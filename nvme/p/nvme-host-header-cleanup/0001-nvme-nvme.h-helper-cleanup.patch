@@ -1,0 +1,194 @@
+From 7104939c6e20bebe90e19b2e2569b9b940cab2ad Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Sun, 11 Feb 2024 16:30:45 -0800
+Subject: [PATCH] nvme: nvme.h helper cleanup
+
+nvme_ns_head_multipath() is only used in host/core.c :-
+
+  File                     Function
+0 drivers/nvme/host/core.c nvme_ns_open
+1 drivers/nvme/host/core.c nvme_update_ns_info_generic
+2 drivers/nvme/host/core.c nvme_update_ns_info_block
+3 drivers/nvme/host/core.c nvme_alloc_ns
+4 drivers/nvme/host/core.c nvme_alloc_ns
+5 drivers/nvme/host/core.c nvme_ns_remove
+6 drivers/nvme/host/nvme.h nvme_ns_head_multipath
+
+nvme_print_defice_info() is only used in host/core.c :-
+
+  File                     Function
+0 drivers/nvme/host/core.c nvme_init_ns_head
+1 drivers/nvme/host/nvme.h nvme_print_device_info
+
+nvme_is_ana_error() is only used in host/core.c :-
+
+  File                          Function
+0 drivers/nvme/host/multipath.c nvme_failover_req
+1 drivers/nvme/host/nvme.h      nvme_is_ana_error
+
+nvme_cid_to_rq() is only used in host/tcp.c :-
+
+  File                     Function
+0 drivers/nvme/host/nvme.h nvme_cid_to_rq
+1 drivers/nvme/host/tcp.c  nvme_tcp_recv_data
+2 drivers/nvme/host/tcp.c  nvme_tcp_recv_ddgst
+3 drivers/nvme/host/tcp.c  nvme_tcp_recv_ddgst
+
+Move these functions to respective files instead of bloating the header.
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/host/core.c      | 22 +++++++++++++++++++
+ drivers/nvme/host/multipath.c | 12 +++++++++++
+ drivers/nvme/host/nvme.h      | 40 -----------------------------------
+ drivers/nvme/host/tcp.c       |  6 ++++++
+ 4 files changed, 40 insertions(+), 40 deletions(-)
+
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index 60537c9224bf..20c0c141fcc0 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -127,6 +127,28 @@ static void nvme_remove_invalid_namespaces(struct nvme_ctrl *ctrl,
+ static void nvme_update_keep_alive(struct nvme_ctrl *ctrl,
+ 				   struct nvme_command *cmd);
+ 
++static inline bool nvme_ns_head_multipath(struct nvme_ns_head *head)
++{
++	return IS_ENABLED(CONFIG_NVME_MULTIPATH) && head->disk;
++}
++
++static inline void nvme_print_device_info(struct nvme_ctrl *ctrl)
++{
++	struct nvme_subsystem *subsys = ctrl->subsys;
++
++	if (ctrl->ops->print_device_info) {
++		ctrl->ops->print_device_info(ctrl);
++		return;
++	}
++
++	dev_err(ctrl->device,
++		"VID:%04x model:%.*s firmware:%.*s\n", subsys->vendor_id,
++		nvme_strlen(subsys->model, sizeof(subsys->model)),
++		subsys->model, nvme_strlen(subsys->firmware_rev,
++					   sizeof(subsys->firmware_rev)),
++		subsys->firmware_rev);
++}
++
+ void nvme_queue_scan(struct nvme_ctrl *ctrl)
+ {
+ 	/*
+diff --git a/drivers/nvme/host/multipath.c b/drivers/nvme/host/multipath.c
+index 74de1e64aeea..5b2581ccb160 100644
+--- a/drivers/nvme/host/multipath.c
++++ b/drivers/nvme/host/multipath.c
+@@ -21,6 +21,18 @@ static const char *nvme_iopolicy_names[] = {
+ 
+ static int iopolicy = NVME_IOPOLICY_NUMA;
+ 
++static inline bool nvme_is_ana_error(u16 status)
++{
++	switch (status & 0x7ff) {
++	case NVME_SC_ANA_TRANSITION:
++	case NVME_SC_ANA_INACCESSIBLE:
++	case NVME_SC_ANA_PERSISTENT_LOSS:
++		return true;
++	default:
++		return false;
++	}
++}
++
+ static int nvme_set_iopolicy(const char *val, const struct kernel_param *kp)
+ {
+ 	if (!val)
+diff --git a/drivers/nvme/host/nvme.h b/drivers/nvme/host/nvme.h
+index 7b87763e2f8a..3ca486fe927c 100644
+--- a/drivers/nvme/host/nvme.h
++++ b/drivers/nvme/host/nvme.h
+@@ -489,11 +489,6 @@ struct nvme_ns_head {
+ #endif
+ };
+ 
+-static inline bool nvme_ns_head_multipath(struct nvme_ns_head *head)
+-{
+-	return IS_ENABLED(CONFIG_NVME_MULTIPATH) && head->disk;
+-}
+-
+ enum nvme_ns_features {
+ 	NVME_NS_EXT_LBAS = 1 << 0, /* support extended LBA format */
+ 	NVME_NS_METADATA_SUPPORTED = 1 << 1, /* support getting generated md */
+@@ -590,12 +585,6 @@ static inline struct request *nvme_find_rq(struct blk_mq_tags *tags,
+ 	return rq;
+ }
+ 
+-static inline struct request *nvme_cid_to_rq(struct blk_mq_tags *tags,
+-                u16 command_id)
+-{
+-	return blk_mq_tag_to_rq(tags, nvme_tag_from_cid(command_id));
+-}
+-
+ /*
+  * Return the length of the string without the space padding
+  */
+@@ -606,23 +595,6 @@ static inline int nvme_strlen(char *s, int len)
+ 	return len;
+ }
+ 
+-static inline void nvme_print_device_info(struct nvme_ctrl *ctrl)
+-{
+-	struct nvme_subsystem *subsys = ctrl->subsys;
+-
+-	if (ctrl->ops->print_device_info) {
+-		ctrl->ops->print_device_info(ctrl);
+-		return;
+-	}
+-
+-	dev_err(ctrl->device,
+-		"VID:%04x model:%.*s firmware:%.*s\n", subsys->vendor_id,
+-		nvme_strlen(subsys->model, sizeof(subsys->model)),
+-		subsys->model, nvme_strlen(subsys->firmware_rev,
+-					   sizeof(subsys->firmware_rev)),
+-		subsys->firmware_rev);
+-}
+-
+ #ifdef CONFIG_FAULT_INJECTION_DEBUG_FS
+ void nvme_fault_inject_init(struct nvme_fault_inject *fault_inj,
+ 			    const char *dev_name);
+@@ -682,18 +654,6 @@ static inline u32 nvme_bytes_to_numd(size_t len)
+ 	return (len >> 2) - 1;
+ }
+ 
+-static inline bool nvme_is_ana_error(u16 status)
+-{
+-	switch (status & 0x7ff) {
+-	case NVME_SC_ANA_TRANSITION:
+-	case NVME_SC_ANA_INACCESSIBLE:
+-	case NVME_SC_ANA_PERSISTENT_LOSS:
+-		return true;
+-	default:
+-		return false;
+-	}
+-}
+-
+ static inline bool nvme_is_path_error(u16 status)
+ {
+ 	/* check for a status code type of 'path related status' */
+diff --git a/drivers/nvme/host/tcp.c b/drivers/nvme/host/tcp.c
+index a6d596e05602..0bc6bd377c87 100644
+--- a/drivers/nvme/host/tcp.c
++++ b/drivers/nvme/host/tcp.c
+@@ -84,6 +84,12 @@ static void nvme_tcp_reclassify_socket(struct socket *sock)
+ static void nvme_tcp_reclassify_socket(struct socket *sock) { }
+ #endif
+ 
++static inline struct request *nvme_cid_to_rq(struct blk_mq_tags *tags,
++		u16 command_id)
++{
++	return blk_mq_tag_to_rq(tags, nvme_tag_from_cid(command_id));
++}
++
+ enum nvme_tcp_send_state {
+ 	NVME_TCP_SEND_CMD_PDU = 0,
+ 	NVME_TCP_SEND_H2C_PDU,
+-- 
+2.40.0
+

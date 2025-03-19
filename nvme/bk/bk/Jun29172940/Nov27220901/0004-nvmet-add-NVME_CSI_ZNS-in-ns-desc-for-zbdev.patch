@@ -1,0 +1,36 @@
+From ce7dc2b3289fa257e5e74ae034a79d4b1ce4786a Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Tue, 17 Nov 2020 10:51:06 -0800
+Subject: [PATCH 4/9] nvmet: add NVME_CSI_ZNS in ns-desc for zbdev
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+When discovering the ZNS, the host-side looks for the NVME_CSI_ZNS
+value in the ns-desc. Update the nvmet_execute_identify_desclist()
+such that it can now update the ns-desc with NVME_CSI_ZNS if bdev is
+zoned.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/admin-cmd.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/drivers/nvme/target/admin-cmd.c b/drivers/nvme/target/admin-cmd.c
+index c64b40c631e0..d4fc1bb1a318 100644
+--- a/drivers/nvme/target/admin-cmd.c
++++ b/drivers/nvme/target/admin-cmd.c
+@@ -628,6 +628,10 @@ static void nvmet_execute_identify_desclist(struct nvmet_req *req)
+ 			goto out;
+ 	}
+ 
++	status = nvmet_process_zns_cis(req, &off);
++	if (status)
++		goto out;
++
+ 	if (sg_zero_buffer(req->sg, req->sg_cnt, NVME_IDENTIFY_DATA_SIZE - off,
+ 			off) != NVME_IDENTIFY_DATA_SIZE - off)
+ 		status = NVME_SC_INTERNAL | NVME_SC_DNR;
+-- 
+2.22.1
+

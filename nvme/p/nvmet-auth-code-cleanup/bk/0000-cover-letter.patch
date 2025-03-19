@@ -1,0 +1,20 @@
+From d3f3062e656a4c4a95b6ccaf723b5b1379978c74 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Sun, 21 May 2023 20:56:30 -0700
+Subject: [PATCH 0/3] *** SUBJECT HERE ***
+
+*** BLURB HERE ***
+
+Chaitanya Kulkarni (3):
+  nvme-fcloop: no need to return from void function
+  nvmet-auth: use common helper to check secp/spsp
+  nvmet_auth: use common helper for buffer alloc
+
+ drivers/nvme/target/core.c             |   2 +
+ drivers/nvme/target/fabrics-cmd-auth.c | 105 +++++++++++--------------
+ drivers/nvme/target/fcloop.c           |   2 -
+ 3 files changed, 46 insertions(+), 63 deletions(-)
+
+-- 
+2.40.0
+

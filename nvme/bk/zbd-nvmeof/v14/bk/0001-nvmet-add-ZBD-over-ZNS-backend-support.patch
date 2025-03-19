@@ -1,0 +1,828 @@
+From 00443937ed39e985208f983a2ec2be137150809b Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Thu, 8 Apr 2021 21:08:16 -0700
+Subject: [PATCH] nvmet: add ZBD over ZNS backend support
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+NVMe TP 4053 – Zoned Namespaces (ZNS) allows host software to
+communicate with a non-volatile memory subsystem using zones for NVMe
+protocol-based controllers. NVMeOF already support the ZNS NVMe
+Protocol compliant devices on the target in the passthru mode. There
+are Generic zoned block devices like  Shingled Magnetic Recording (SMR)
+HDDs that are not based on the NVMe protocol.
+
+This patch adds ZNS backend to support the ZBDs for NVMeOF target.
+
+This support includes implementing the new command set NVME_CSI_ZNS,
+adding different command handlers for ZNS command set such as NVMe
+Identify Controller, NVMe Identify Namespace, NVMe Zone Append,
+NVMe Zone Management Send and NVMe Zone Management Receive.
+
+With the new command set identifier, we also update the target command
+effects logs to reflect the ZNS compliant commands.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/Makefile      |   1 +
+ drivers/nvme/target/admin-cmd.c   |  81 +++++-
+ drivers/nvme/target/core.c        |  11 +-
+ drivers/nvme/target/io-cmd-bdev.c |  35 ++-
+ drivers/nvme/target/nvmet.h       |  48 +++
+ drivers/nvme/target/zns.c         | 466 ++++++++++++++++++++++++++++++
+ include/linux/nvme.h              |   7 +
+ 7 files changed, 635 insertions(+), 14 deletions(-)
+ create mode 100644 drivers/nvme/target/zns.c
+
+diff --git a/drivers/nvme/target/Makefile b/drivers/nvme/target/Makefile
+index ebf91fc4c72e..9837e580fa7e 100644
+--- a/drivers/nvme/target/Makefile
++++ b/drivers/nvme/target/Makefile
+@@ -12,6 +12,7 @@ obj-$(CONFIG_NVME_TARGET_TCP)		+= nvmet-tcp.o
+ nvmet-y		+= core.o configfs.o admin-cmd.o fabrics-cmd.o \
+ 			discovery.o io-cmd-file.o io-cmd-bdev.o
+ nvmet-$(CONFIG_NVME_TARGET_PASSTHRU)	+= passthru.o
++nvmet-$(CONFIG_BLK_DEV_ZONED)		+= zns.o
+ nvme-loop-y	+= loop.o
+ nvmet-rdma-y	+= rdma.o
+ nvmet-fc-y	+= fc.o
+diff --git a/drivers/nvme/target/admin-cmd.c b/drivers/nvme/target/admin-cmd.c
+index a3e8db56e7cd..5bb669ede7d6 100644
+--- a/drivers/nvme/target/admin-cmd.c
++++ b/drivers/nvme/target/admin-cmd.c
+@@ -179,6 +179,13 @@ static void nvmet_get_cmd_effects_nvm(struct nvme_effects_log *log)
+ 	log->iocs[nvme_cmd_write_zeroes]	= cpu_to_le32(1 << 0);
+ }
+ 
++static void nvmet_get_cmd_effects_zns(struct nvme_effects_log *log)
++{
++	log->iocs[nvme_cmd_zone_append]		= cpu_to_le32(1 << 0);
++	log->iocs[nvme_cmd_zone_mgmt_send]	= cpu_to_le32(1 << 0);
++	log->iocs[nvme_cmd_zone_mgmt_recv]	= cpu_to_le32(1 << 0);
++}
++
+ static void nvmet_execute_get_log_cmd_effects_ns(struct nvmet_req *req)
+ {
+ 	struct nvme_effects_log *log;
+@@ -194,6 +201,15 @@ static void nvmet_execute_get_log_cmd_effects_ns(struct nvmet_req *req)
+ 	case NVME_CSI_NVM:
+ 		nvmet_get_cmd_effects_nvm(log);
+ 		break;
++	case NVME_CSI_ZNS:
++		if (!IS_ENABLED(CONFIG_BLK_DEV_ZONED)) {
++			status = NVME_SC_INVALID_IO_CMD_SET;
++			goto free;
++		}
++
++		nvmet_get_cmd_effects_nvm(log);
++		nvmet_get_cmd_effects_zns(log);
++		break;
+ 	default:
+ 		status = NVME_SC_INVALID_LOG_PAGE;
+ 		goto free;
+@@ -664,6 +680,23 @@ static void nvmet_execute_identify_desclist(struct nvmet_req *req)
+ 	nvmet_req_complete(req, status);
+ }
+ 
++static bool nvmet_handle_identify_desclist(struct nvmet_req *req)
++{
++	switch (req->cmd->identify.csi) {
++	case NVME_CSI_NVM:
++		nvmet_execute_identify_desclist(req);
++		return true;
++	case NVME_CSI_ZNS:
++		if (IS_ENABLED(CONFIG_BLK_DEV_ZONED)) {
++			nvmet_execute_identify_desclist(req);
++			return true;
++		}
++		return false;
++	default:
++		return false;
++	}
++}
++
+ static void nvmet_execute_identify(struct nvmet_req *req)
+ {
+ 	if (!nvmet_check_transfer_len(req, NVME_IDENTIFY_DATA_SIZE))
+@@ -671,13 +704,53 @@ static void nvmet_execute_identify(struct nvmet_req *req)
+ 
+ 	switch (req->cmd->identify.cns) {
+ 	case NVME_ID_CNS_NS:
+-		return nvmet_execute_identify_ns(req);
++		switch (req->cmd->identify.csi) {
++			case NVME_CSI_NVM:
++				return nvmet_execute_identify_ns(req);
++			default:
++				break;
++		}
++		break;
++	case NVME_ID_CNS_CS_NS:
++		if (IS_ENABLED(CONFIG_BLK_DEV_ZONED)) {
++			switch (req->cmd->identify.csi) {
++			case NVME_CSI_ZNS:
++				return nvmet_execute_identify_cns_cs_ns(req);
++			default:
++				break;
++			}
++		}
++		break;
+ 	case NVME_ID_CNS_CTRL:
+-		return nvmet_execute_identify_ctrl(req);
++		switch (req->cmd->identify.csi) {
++			case NVME_CSI_NVM:
++				return nvmet_execute_identify_ctrl(req);
++		}
++		break;
++	case NVME_ID_CNS_CS_CTRL:
++		if (IS_ENABLED(CONFIG_BLK_DEV_ZONED)) {
++			switch (req->cmd->identify.csi) {
++			case NVME_CSI_ZNS:
++				return nvmet_execute_identify_cns_cs_ctrl(req);
++			default:
++				break;
++			}
++		}
++		break;
+ 	case NVME_ID_CNS_NS_ACTIVE_LIST:
+-		return nvmet_execute_identify_nslist(req);
++		switch (req->cmd->identify.csi) {
++			case NVME_CSI_NVM:
++				return nvmet_execute_identify_nslist(req);
++			default:
++				break;
++		}
++		break;
+ 	case NVME_ID_CNS_NS_DESC_LIST:
+-		return nvmet_execute_identify_desclist(req);
++		if (nvmet_handle_identify_desclist(req) == true)
++			return;
++		break;
++	default:
++		break;
+ 	}
+ 
+ 	nvmet_req_cns_error_compplete(req);
+diff --git a/drivers/nvme/target/core.c b/drivers/nvme/target/core.c
+index d33ba4c3c3f4..a0bdd39de23b 100644
+--- a/drivers/nvme/target/core.c
++++ b/drivers/nvme/target/core.c
+@@ -892,7 +892,16 @@ static u16 nvmet_parse_io_cmd(struct nvmet_req *req)
+ 	if (req->ns->file)
+ 		return nvmet_file_parse_io_cmd(req);
+ 
+-	return nvmet_bdev_parse_io_cmd(req);
++	switch (req->ns->csi) {
++	case NVME_CSI_NVM:
++		return nvmet_bdev_parse_io_cmd(req);
++	case NVME_CSI_ZNS:
++		if (IS_ENABLED(CONFIG_BLK_DEV_ZONED))
++			return nvmet_bdev_zns_parse_io_cmd(req);
++		/* fallthrough */
++	default:
++		return NVME_SC_INVALID_IO_CMD_SET;
++	}
+ }
+ 
+ bool nvmet_req_init(struct nvmet_req *req, struct nvmet_cq *cq,
+diff --git a/drivers/nvme/target/io-cmd-bdev.c b/drivers/nvme/target/io-cmd-bdev.c
+index 26a01f59436a..88a3464274e1 100644
+--- a/drivers/nvme/target/io-cmd-bdev.c
++++ b/drivers/nvme/target/io-cmd-bdev.c
+@@ -47,6 +47,14 @@ void nvmet_bdev_set_limits(struct block_device *bdev, struct nvme_id_ns *id)
+ 	id->nows = to0based(ql->io_opt / ql->logical_block_size);
+ }
+ 
++void nvmet_bdev_ns_disable(struct nvmet_ns *ns)
++{
++	if (ns->bdev) {
++		blkdev_put(ns->bdev, FMODE_WRITE | FMODE_READ);
++		ns->bdev = NULL;
++	}
++}
++
+ static void nvmet_bdev_ns_enable_integrity(struct nvmet_ns *ns)
+ {
+ 	struct blk_integrity *bi = bdev_get_integrity(ns->bdev);
+@@ -86,15 +94,15 @@ int nvmet_bdev_ns_enable(struct nvmet_ns *ns)
+ 	if (IS_ENABLED(CONFIG_BLK_DEV_INTEGRITY_T10))
+ 		nvmet_bdev_ns_enable_integrity(ns);
+ 
+-	return 0;
+-}
+-
+-void nvmet_bdev_ns_disable(struct nvmet_ns *ns)
+-{
+-	if (ns->bdev) {
+-		blkdev_put(ns->bdev, FMODE_WRITE | FMODE_READ);
+-		ns->bdev = NULL;
++	if (bdev_is_zoned(ns->bdev)) {
++		if (!nvmet_bdev_zns_enable(ns)) {
++			nvmet_bdev_ns_disable(ns);
++			return -EINVAL;
++		}
++		ns->csi = NVME_CSI_ZNS;
+ 	}
++
++	return 0;
+ }
+ 
+ void nvmet_bdev_ns_revalidate(struct nvmet_ns *ns)
+@@ -102,7 +110,7 @@ void nvmet_bdev_ns_revalidate(struct nvmet_ns *ns)
+ 	ns->size = i_size_read(ns->bdev->bd_inode);
+ }
+ 
+-static u16 blk_to_nvme_status(struct nvmet_req *req, blk_status_t blk_sts)
++u16 blk_to_nvme_status(struct nvmet_req *req, blk_status_t blk_sts)
+ {
+ 	u16 status = NVME_SC_SUCCESS;
+ 
+@@ -447,6 +455,15 @@ u16 nvmet_bdev_parse_io_cmd(struct nvmet_req *req)
+ 	case nvme_cmd_write_zeroes:
+ 		req->execute = nvmet_bdev_execute_write_zeroes;
+ 		return 0;
++	case nvme_cmd_zone_append:
++		req->execute = nvmet_bdev_execute_zone_append;
++		return 0;
++	case nvme_cmd_zone_mgmt_recv:
++		req->execute = nvmet_bdev_execute_zone_mgmt_recv;
++		return 0;
++	case nvme_cmd_zone_mgmt_send:
++		req->execute = nvmet_bdev_execute_zone_mgmt_send;
++		return 0;
+ 	default:
+ 		return nvmet_report_invalid_opcode(req);
+ 	}
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index e07f15dd9a7b..fcd01e303e19 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -248,6 +248,10 @@ struct nvmet_subsys {
+ 	unsigned int		admin_timeout;
+ 	unsigned int		io_timeout;
+ #endif /* CONFIG_NVME_TARGET_PASSTHRU */
++
++#ifdef CONFIG_BLK_DEV_ZONED
++	u8			zasl;
++#endif /* CONFIG_BLK_DEV_ZONED */
+ };
+ 
+ static inline struct nvmet_subsys *to_subsys(struct config_item *item)
+@@ -400,6 +404,7 @@ void nvmet_stop_keep_alive_timer(struct nvmet_ctrl *ctrl);
+ u16 nvmet_parse_connect_cmd(struct nvmet_req *req);
+ void nvmet_bdev_set_limits(struct block_device *bdev, struct nvme_id_ns *id);
+ u16 nvmet_bdev_parse_io_cmd(struct nvmet_req *req);
++u16 nvmet_bdev_zns_parse_io_cmd(struct nvmet_req *req);
+ u16 nvmet_file_parse_io_cmd(struct nvmet_req *req);
+ u16 nvmet_parse_admin_cmd(struct nvmet_req *req);
+ u16 nvmet_parse_discovery_cmd(struct nvmet_req *req);
+@@ -528,6 +533,7 @@ void nvmet_ns_changed(struct nvmet_subsys *subsys, u32 nsid);
+ void nvmet_bdev_ns_revalidate(struct nvmet_ns *ns);
+ int nvmet_file_ns_revalidate(struct nvmet_ns *ns);
+ void nvmet_ns_revalidate(struct nvmet_ns *ns);
++u16 blk_to_nvme_status(struct nvmet_req *req, blk_status_t blk_sts);
+ 
+ static inline u32 nvmet_rw_data_len(struct nvmet_req *req)
+ {
+@@ -585,6 +591,48 @@ static inline struct nvme_ctrl *nvmet_passthru_ctrl(struct nvmet_subsys *subsys)
+ }
+ #endif /* CONFIG_NVME_TARGET_PASSTHRU */
+ 
++#ifdef CONFIG_BLK_DEV_ZONED
++bool nvmet_bdev_zns_enable(struct nvmet_ns *ns);
++void nvmet_execute_identify_cns_cs_ctrl(struct nvmet_req *req);
++void nvmet_execute_identify_cns_cs_ns(struct nvmet_req *req);
++void nvmet_bdev_execute_zone_mgmt_recv(struct nvmet_req *req);
++void nvmet_bdev_execute_zone_mgmt_send(struct nvmet_req *req);
++void nvmet_bdev_execute_zone_append(struct nvmet_req *req);
++#else  /* CONFIG_BLK_DEV_ZONED */
++static inline bool nvmet_bdev_zns_enable(struct nvmet_ns *ns)
++{
++	return false;
++}
++static inline void
++nvmet_execute_identify_cns_cs_ctrl(struct nvmet_req *req)
++{
++	pr_err("unhandled identify cns %d on qid %d\n",
++	       req->cmd->identify.cns, req->sq->qid);
++	req->error_loc = offsetof(struct nvme_identify, cns);
++	nvmet_req_complete(req, NVME_SC_INVALID_FIELD | NVME_SC_DNR);
++}
++static inline void
++nvmet_execute_identify_cns_cs_ns(struct nvmet_req *req)
++{
++	pr_err("unhandled identify cns %d on qid %d\n",
++	       req->cmd->identify.cns, req->sq->qid);
++	req->error_loc = offsetof(struct nvme_identify, cns);
++	nvmet_req_complete(req, NVME_SC_INVALID_FIELD | NVME_SC_DNR);
++}
++static inline void
++nvmet_bdev_execute_zone_mgmt_recv(struct nvmet_req *req)
++{
++}
++static inline void
++nvmet_bdev_execute_zone_mgmt_send(struct nvmet_req *req)
++{
++}
++static inline void
++nvmet_bdev_execute_zone_append(struct nvmet_req *req)
++{
++}
++#endif /* CONFIG_BLK_DEV_ZONED */
++
+ static inline struct nvme_ctrl *
+ nvmet_req_passthru_ctrl(struct nvmet_req *req)
+ {
+diff --git a/drivers/nvme/target/zns.c b/drivers/nvme/target/zns.c
+new file mode 100644
+index 000000000000..c65ac53d9b0b
+--- /dev/null
++++ b/drivers/nvme/target/zns.c
+@@ -0,0 +1,466 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * NVMe ZNS-ZBD command implementation.
++ * Copyright (C) 2021 Western Digital Corporation or its affiliates.
++ */
++#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
++#include <linux/nvme.h>
++#include <linux/blkdev.h>
++#include "nvmet.h"
++
++/*
++ * We set the Memory Page Size Minimum (MPSMIN) for target controller to 0
++ * which gets added by 12 in the nvme_enable_ctrl() which results in 2^12 = 4k
++ * as page_shift value. When calculating the ZASL use shift by 12.
++ */
++#define NVMET_MPSMIN_SHIFT	12
++
++static u16 nvmet_bdev_validate_zone_mgmt_recv(struct nvmet_req *req)
++{
++	sector_t sect = nvmet_lba_to_sect(req->ns, req->cmd->zmr.slba);
++	u32 out_bufsize = (le32_to_cpu(req->cmd->zmr.numd) + 1) << 2;
++
++	/* CK TODO: remove this bdev_is_zoned() check and use req->ns->csi check for
++	 * all the zns specific commands */
++	if (!bdev_is_zoned(req->ns->bdev))
++		return NVME_SC_INVALID_NS | NVME_SC_DNR;
++
++	if (sect > get_capacity(req->ns->bdev->bd_disk)) {
++		req->error_loc = offsetof(struct nvme_zone_mgmt_recv_cmd, slba);
++		return NVME_SC_INVALID_FIELD | NVME_SC_DNR;
++	}
++
++	/*
++	 * Make sure out buffer size at least matches nvme report zone header.
++	 * Reporting partial 64 bit nr_zones value can lead to unwanted side
++	 * effects.
++	 */
++	if (out_bufsize < sizeof(struct nvme_zone_report)) {
++		req->error_loc = offsetof(struct nvme_zone_mgmt_recv_cmd, numd);
++		return NVME_SC_INVALID_FIELD | NVME_SC_DNR;
++	}
++
++	if (req->cmd->zmr.zra != NVME_ZRA_ZONE_REPORT) {
++		req->error_loc = offsetof(struct nvme_zone_mgmt_recv_cmd, zra);
++		return NVME_SC_INVALID_FIELD | NVME_SC_DNR;
++	}
++
++	switch (req->cmd->zmr.pr) {
++	case 0:
++	case 1:
++		break;
++	default:
++		req->error_loc = offsetof(struct nvme_zone_mgmt_recv_cmd, pr);
++		return NVME_SC_INVALID_FIELD | NVME_SC_DNR;
++	}
++
++	switch (req->cmd->zmr.zrasf) {
++	case NVME_ZRASF_ZONE_REPORT_ALL:
++	case NVME_ZRASF_ZONE_STATE_EMPTY:
++	case NVME_ZRASF_ZONE_STATE_IMP_OPEN:
++	case NVME_ZRASF_ZONE_STATE_EXP_OPEN:
++	case NVME_ZRASF_ZONE_STATE_CLOSED:
++	case NVME_ZRASF_ZONE_STATE_FULL:
++	case NVME_ZRASF_ZONE_STATE_READONLY:
++	case NVME_ZRASF_ZONE_STATE_OFFLINE:
++		break;
++	default:
++		req->error_loc =
++			offsetof(struct nvme_zone_mgmt_recv_cmd, zrasf);
++		return NVME_SC_INVALID_FIELD | NVME_SC_DNR;
++	}
++
++	return NVME_SC_SUCCESS;
++}
++
++static inline u8 nvmet_zasl(unsigned int zone_append_sects)
++{
++	/*
++	 * Zone Append Size Limit is the value expressed in the units of minimum
++	 * memory page size (i.e. 12) and is reported power of 2.
++	 */
++	return ilog2(zone_append_sects >> (NVMET_MPSMIN_SHIFT - 9));
++}
++
++static inline bool nvmet_zns_update_zasl(struct nvmet_ns *ns)
++{
++	struct request_queue *q = ns->bdev->bd_disk->queue;
++	u8 zasl = nvmet_zasl(queue_max_zone_append_sectors(q));
++
++	if (ns->subsys->zasl)
++		return ns->subsys->zasl < zasl;
++
++	ns->subsys->zasl = zasl;
++	return true;
++}
++
++static int nvmet_bdev_validate_zns_zones_cb(struct blk_zone *z,
++					    unsigned int i, void *data)
++{
++	if (z->type == BLK_ZONE_TYPE_CONVENTIONAL)
++		return -EOPNOTSUPP;
++	return 0;
++}
++
++static bool nvmet_bdev_has_conv_zones(struct block_device *bdev)
++{
++	int ret;
++
++	if (bdev->bd_disk->queue->conv_zones_bitmap)
++		return true;
++
++	ret = blkdev_report_zones(bdev, 0, blkdev_nr_zones(bdev->bd_disk),
++				  nvmet_bdev_validate_zns_zones_cb, NULL);
++
++	return ret <= 0;
++}
++
++bool nvmet_bdev_zns_enable(struct nvmet_ns *ns)
++{
++	if (nvmet_bdev_has_conv_zones(ns->bdev))
++		return false;
++
++	ns->blksize_shift = blksize_bits(bdev_logical_block_size(ns->bdev));
++
++	if (!nvmet_zns_update_zasl(ns))
++		return false;
++	/*
++	 * Generic zoned block devices may have a smaller last zone which is
++	 * not supported by ZNS. Excludes zoned drives that have such smaller
++	 * last zone.
++	 */
++	return !(get_capacity(ns->bdev->bd_disk) &
++			(bdev_zone_sectors(ns->bdev) - 1));
++}
++
++void nvmet_execute_identify_cns_cs_ctrl(struct nvmet_req *req)
++{
++	u8 zasl = req->sq->ctrl->subsys->zasl;
++	struct nvmet_ctrl *ctrl = req->sq->ctrl;
++	struct nvme_id_ctrl_zns *id;
++	u16 status;
++
++	id = kzalloc(sizeof(*id), GFP_KERNEL);
++	if (!id) {
++		status = NVME_SC_INTERNAL;
++		goto out;
++	}
++
++	if (ctrl->ops->get_mdts)
++		id->zasl = min_t(u8, ctrl->ops->get_mdts(ctrl), zasl);
++	else
++		id->zasl = zasl;
++
++	status = nvmet_copy_to_sgl(req, 0, id, sizeof(*id));
++
++	kfree(id);
++out:
++	nvmet_req_complete(req, status);
++}
++
++void nvmet_execute_identify_cns_cs_ns(struct nvmet_req *req)
++{
++	struct nvme_id_ns_zns *id_zns;
++	u64 zsze;
++	u16 status;
++
++	if (le32_to_cpu(req->cmd->identify.nsid) == NVME_NSID_ALL) {
++		req->error_loc = offsetof(struct nvme_identify, nsid);
++		status = NVME_SC_INVALID_NS | NVME_SC_DNR;
++		goto out;
++	}
++
++	id_zns = kzalloc(sizeof(*id_zns), GFP_KERNEL);
++	if (!id_zns) {
++		status = NVME_SC_INTERNAL;
++		goto out;
++	}
++
++	status = nvmet_req_find_ns(req);
++	if (status) {
++		status = NVME_SC_INTERNAL;
++		goto done;
++	}
++
++	if (!bdev_is_zoned(req->ns->bdev)) {
++		req->error_loc = offsetof(struct nvme_identify, nsid);
++		status = NVME_SC_INVALID_NS | NVME_SC_DNR;
++		goto done;
++	}
++
++	nvmet_ns_revalidate(req->ns);
++	zsze = (bdev_zone_sectors(req->ns->bdev) << 9) >>
++					req->ns->blksize_shift;
++	id_zns->lbafe[0].zsze = cpu_to_le64(zsze);
++	id_zns->mor = cpu_to_le32(bdev_max_open_zones(req->ns->bdev));
++	id_zns->mar = cpu_to_le32(bdev_max_active_zones(req->ns->bdev));
++
++done:
++	status = nvmet_copy_to_sgl(req, 0, id_zns, sizeof(*id_zns));
++	kfree(id_zns);
++out:
++	nvmet_req_complete(req, status);
++}
++
++struct nvmet_report_zone_data {
++	struct nvmet_req *req;
++	u64 out_buf_offset;
++	u64 out_nr_zones;
++	u64 filtered_zones;
++	u8 zrasf;
++};
++
++static int nvmet_bdev_report_zone_cb(struct blk_zone *z, unsigned i, void *d)
++{
++	struct nvme_zone_descriptor zdesc = { };
++	struct nvmet_report_zone_data *rz = d;
++	u16 status;
++	static const unsigned int nvme_zrasf_to_blk_zcond[] = {
++		[NVME_ZRASF_ZONE_STATE_EMPTY] 	 = BLK_ZONE_COND_EMPTY,
++		[NVME_ZRASF_ZONE_STATE_IMP_OPEN] = BLK_ZONE_COND_IMP_OPEN, 
++		[NVME_ZRASF_ZONE_STATE_EXP_OPEN] = BLK_ZONE_COND_EXP_OPEN, 
++		[NVME_ZRASF_ZONE_STATE_CLOSED]	 = BLK_ZONE_COND_CLOSED,
++		[NVME_ZRASF_ZONE_STATE_READONLY] = BLK_ZONE_COND_READONLY,
++		[NVME_ZRASF_ZONE_STATE_FULL]	 = BLK_ZONE_COND_FULL, 
++		[NVME_ZRASF_ZONE_STATE_OFFLINE]	 = BLK_ZONE_COND_OFFLINE, 
++	};
++
++	/* filter zones by condition */
++	if (rz->zrasf != NVME_ZRASF_ZONE_REPORT_ALL &&
++	    z->cond != nvme_zrasf_to_blk_zcond[rz->zrasf])
++		return 0;
++
++	if (rz->filtered_zones < rz->out_nr_zones) {
++		zdesc.zcap = nvmet_sect_to_lba(rz->req->ns, z->capacity);
++		zdesc.zslba = nvmet_sect_to_lba(rz->req->ns, z->start);
++		zdesc.wp = nvmet_sect_to_lba(rz->req->ns, z->wp);
++		zdesc.za = z->reset ? 1 << 2 : 0;
++		zdesc.zs = z->cond << 4;
++		zdesc.zt = z->type;
++
++		status = nvmet_copy_to_sgl(rz->req, rz->out_buf_offset, &zdesc,
++					   sizeof(zdesc));
++		if (status)
++			return -EINVAL;
++
++		rz->out_buf_offset += sizeof(zdesc); 
++	}
++
++	rz->filtered_zones++;
++
++	return 0;
++}
++
++unsigned long nvmet_req_nr_zones_from_slba(struct nvmet_req *req)
++{
++	sector_t total_sect_from_slba;
++
++	total_sect_from_slba = get_capacity(req->ns->bdev->bd_disk) -
++				nvmet_lba_to_sect(req->ns, req->cmd->zmr.slba);
++
++	return total_sect_from_slba / bdev_zone_sectors(req->ns->bdev);
++}
++
++unsigned long get_nr_zones_from_buf(struct nvmet_req *req, u32 out_bufsize)
++{
++	if (out_bufsize < sizeof(struct nvme_zone_report))
++		return 0;
++
++	return (out_bufsize - sizeof(struct nvme_zone_report)) /
++		sizeof(struct nvme_zone_descriptor);
++}
++
++unsigned long bufsize_from_zones(unsigned long nr_zones)
++{
++	return sizeof(struct nvme_zone_report) +
++		(sizeof(struct nvme_zone_descriptor) * nr_zones);
++}
++
++void nvmet_bdev_execute_zone_mgmt_recv(struct nvmet_req *req)
++{
++	sector_t start_sect = nvmet_lba_to_sect(req->ns, req->cmd->zmr.slba);
++	unsigned long req_slba_nr_zones = nvmet_req_nr_zones_from_slba(req);
++	u32 out_bufsize = (le32_to_cpu(req->cmd->zmr.numd) + 1) << 2;
++	__le64 nr_zones;
++	u16 status;
++	int rc;
++	struct nvmet_report_zone_data rz_data = {
++		.out_nr_zones = get_nr_zones_from_buf(req, out_bufsize),
++		/* leave the place for report zone header */
++		.out_buf_offset = sizeof(struct nvme_zone_report),
++		.zrasf = req->cmd->zmr.zrasf,
++		.filtered_zones = 0,
++		.req = req,
++	};
++
++	status = nvmet_bdev_validate_zone_mgmt_recv(req);
++	if (status)
++		goto out;
++
++	/* nothing to report */
++	if (!req_slba_nr_zones) {
++		status = NVME_SC_SUCCESS;
++		goto out;
++	}
++
++	rc = blkdev_report_zones(req->ns->bdev, start_sect, req_slba_nr_zones,
++				 nvmet_bdev_report_zone_cb, &rz_data);
++	if (rc < 0) {
++		status = NVME_SC_INTERNAL;
++		goto out;
++	}
++
++	if (req->cmd->zmr.pr) {
++		u64 z;
++		/*
++		 * When partial bit is set nr_zones == zone desc transferred.
++		 */
++		z = min_t(u64, rz_data.filtered_zones, rz_data.out_nr_zones);
++
++		nr_zones = cpu_to_le64(z);
++	} else {
++		/*
++		 * When partial bit is not set nr_zone == zones for which ZSLBA
++		 * value is greater than or equal to the ZSLBA value of the zone
++		 * specified by the SLBA value in the command and match the
++		 * criteria in the Zone Receive Action Specific field ZRASF.
++		 */
++		nr_zones = cpu_to_le64(rz_data.filtered_zones);
++	}
++
++	status = nvmet_copy_to_sgl(req, 0, &nr_zones, sizeof(nr_zones));
++
++out:
++	nvmet_req_complete(req, status);
++}
++
++void nvmet_bdev_execute_zone_mgmt_send(struct nvmet_req *req)
++{
++	sector_t sect = nvmet_lba_to_sect(req->ns, req->cmd->zms.slba);
++	u16 status = NVME_SC_SUCCESS;
++	u8 zsa = req->cmd->zms.zsa;
++	sector_t nr_sects;
++	enum req_opf op;
++	int ret;
++	const unsigned int zsa_to_op[] = {
++		[NVME_ZONE_OPEN]	= REQ_OP_ZONE_OPEN,
++		[NVME_ZONE_CLOSE]	= REQ_OP_ZONE_CLOSE,
++		[NVME_ZONE_FINISH]	= REQ_OP_ZONE_FINISH,
++		[NVME_ZONE_RESET]	= REQ_OP_ZONE_RESET,
++	};
++
++	if (zsa > ARRAY_SIZE(zsa_to_op)) {
++		status = NVME_SC_INVALID_FIELD;
++		goto out;
++	}
++
++	op = zsa_to_op[zsa];
++
++	if (req->cmd->zms.select_all) {
++		sect = 0;
++		nr_sects = get_capacity(req->ns->bdev->bd_disk);
++	} else {
++		sect = nvmet_lba_to_sect(req->ns, req->cmd->zms.slba);
++		nr_sects = bdev_zone_sectors(req->ns->bdev);
++	}
++
++	ret = blkdev_zone_mgmt(req->ns->bdev, op, sect, nr_sects, GFP_KERNEL);
++	if (ret)
++		status = NVME_SC_INTERNAL;
++out:
++	nvmet_req_complete(req, status);
++}
++
++static void nvmet_bdev_zone_append_bio_done(struct bio *bio)
++{
++	struct nvmet_req *req = bio->bi_private;
++
++	if (bio->bi_status == BLK_STS_OK) { 
++		req->cqe->result.u64 =
++			nvmet_sect_to_lba(req->ns, bio->bi_iter.bi_sector);
++	}
++
++	nvmet_req_complete(req, blk_to_nvme_status(req, bio->bi_status));
++	if (bio != &req->b.inline_bio)
++		bio_put(bio);
++}
++
++void nvmet_bdev_execute_zone_append(struct nvmet_req *req)
++{
++	sector_t sect = nvmet_lba_to_sect(req->ns, req->cmd->rw.slba);
++	u16 status = NVME_SC_SUCCESS;
++	unsigned int total_len = 0;
++	struct scatterlist *sg;
++	int ret = 0, sg_cnt;
++	struct bio *bio;
++
++	/* Request is completed on len mismatch in nvmet_check_transter_len() */
++	if (!nvmet_check_transfer_len(req, nvmet_rw_data_len(req)))
++		return;
++
++	if (!req->sg_cnt) {
++		nvmet_req_complete(req, 0);
++		return;
++	}
++
++	if (req->transfer_len <= NVMET_MAX_INLINE_DATA_LEN) {
++		bio = &req->b.inline_bio;
++		bio_init(bio, req->inline_bvec, ARRAY_SIZE(req->inline_bvec));
++	} else {
++		bio = bio_alloc(GFP_KERNEL, req->sg_cnt);
++	}
++
++	bio_set_dev(bio, req->ns->bdev);
++	bio->bi_iter.bi_sector = sect;
++	bio->bi_private = req;
++	bio->bi_end_io = nvmet_bdev_zone_append_bio_done;
++	bio->bi_opf = REQ_OP_ZONE_APPEND | REQ_SYNC | REQ_IDLE;
++	if (req->cmd->rw.control & cpu_to_le16(NVME_RW_FUA))
++		bio->bi_opf |= REQ_FUA;
++
++	for_each_sg(req->sg, sg, req->sg_cnt, sg_cnt) {
++		struct page *p = sg_page(sg);
++		unsigned int l = sg->length;
++		unsigned int o = sg->offset;
++
++		ret = bio_add_zone_append_page(bio, p, l, o);
++		if (ret != sg->length) {
++			status = NVME_SC_INTERNAL;
++			goto out_bio_put;
++		}
++
++		total_len += sg->length;
++	}
++
++	if (total_len != nvmet_rw_data_len(req)) {
++		status = NVME_SC_INTERNAL | NVME_SC_DNR;
++		goto out_bio_put;
++	}
++
++	submit_bio(bio);
++	return;
++
++out_bio_put:
++	if (bio != &req->b.inline_bio)
++		bio_put(bio);
++	nvmet_req_complete(req, ret < 0 ? NVME_SC_INTERNAL : status);
++}
++
++u16 nvmet_bdev_zns_parse_io_cmd(struct nvmet_req *req)
++{
++	struct nvme_command *cmd = req->cmd;
++
++	switch (cmd->common.opcode) {
++	case nvme_cmd_zone_append:
++		req->execute = nvmet_bdev_execute_zone_append;
++		return 0;
++	case nvme_cmd_zone_mgmt_recv:
++		req->execute = nvmet_bdev_execute_zone_mgmt_recv;
++		return 0;
++	case nvme_cmd_zone_mgmt_send:
++		req->execute = nvmet_bdev_execute_zone_mgmt_send;
++		return 0;
++	default:
++		return nvmet_bdev_parse_io_cmd(req);
++	}
++}
+diff --git a/include/linux/nvme.h b/include/linux/nvme.h
+index c7ba83144d52..cb1197f1cfed 100644
+--- a/include/linux/nvme.h
++++ b/include/linux/nvme.h
+@@ -944,6 +944,13 @@ struct nvme_zone_mgmt_recv_cmd {
+ enum {
+ 	NVME_ZRA_ZONE_REPORT		= 0,
+ 	NVME_ZRASF_ZONE_REPORT_ALL	= 0,
++	NVME_ZRASF_ZONE_STATE_EMPTY	= 0x01,
++	NVME_ZRASF_ZONE_STATE_IMP_OPEN	= 0x02,
++	NVME_ZRASF_ZONE_STATE_EXP_OPEN	= 0x03,
++	NVME_ZRASF_ZONE_STATE_CLOSED	= 0x04,
++	NVME_ZRASF_ZONE_STATE_READONLY	= 0x05,
++	NVME_ZRASF_ZONE_STATE_FULL	= 0x06,
++	NVME_ZRASF_ZONE_STATE_OFFLINE	= 0x07,
+ 	NVME_REPORT_ZONE_PARTIAL	= 1,
+ };
+ 
+-- 
+2.22.1
+

@@ -1,0 +1,59 @@
+From 68d4a7dd6cfef959844b87ca110f28087116d53a Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Wed, 8 Jan 2025 21:45:16 -0800
+Subject: [PATCH 2/2] nvme-tcp: remove unused variable
+
+The variable n declared in nvme_tcp_set_queue_io_cpu() was used in the
+original calculation when tcp target was created.
+
+With addtion of commit bd0f5c103101 ("nvme-tcp: Fix I/O queue cpu
+spreading for multiple controllers") now all the calculation is based
+on io_cpu and mq_map local variable is n is not, resulting in the
+kernel test robot warning :-
+drivers/nvme/host/tcp.c:1583:18: warning: variable 'n' set but not used [-Wunused-but-set-variable]
+
+Remove the local variable and respective calculations.
+
+Fixes: bd0f5c103101 ("nvme-tcp: Fix I/O queue cpu spreading for multiple controllers")  
+Reported-by: kernel test robot <lkp@intel.com>
+Closes: https://lore.kernel.org/oe-kbuild-all/202501090934.Dhw69M6j-lkp@intel.com/
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/host/tcp.c | 14 +++++---------
+ 1 file changed, 5 insertions(+), 9 deletions(-)
+
+diff --git a/drivers/nvme/host/tcp.c b/drivers/nvme/host/tcp.c
+index d6a40b7dba73..e9ff6babc540 100644
+--- a/drivers/nvme/host/tcp.c
++++ b/drivers/nvme/host/tcp.c
+@@ -1579,22 +1579,18 @@ static void nvme_tcp_set_queue_io_cpu(struct nvme_tcp_queue *queue)
+ 	struct blk_mq_tag_set *set = &ctrl->tag_set;
+ 	int qid = nvme_tcp_queue_id(queue) - 1;
+ 	unsigned int *mq_map = NULL;
+-	int cpu, n = 0, min_queues = INT_MAX, io_cpu;
++	int cpu, min_queues = INT_MAX, io_cpu;
+ 
+ 	if (wq_unbound)
+ 		goto out;
+ 
+-	if (nvme_tcp_default_queue(queue)) {
++	if (nvme_tcp_default_queue(queue))
+ 		mq_map = set->map[HCTX_TYPE_DEFAULT].mq_map;
+-		n = qid;
+-	} else if (nvme_tcp_read_queue(queue)) {
++	else if (nvme_tcp_read_queue(queue))
+ 		mq_map = set->map[HCTX_TYPE_READ].mq_map;
+-		n = qid - ctrl->io_queues[HCTX_TYPE_DEFAULT];
+-	} else if (nvme_tcp_poll_queue(queue)) {
++	else if (nvme_tcp_poll_queue(queue))
+ 		mq_map = set->map[HCTX_TYPE_POLL].mq_map;
+-		n = qid - ctrl->io_queues[HCTX_TYPE_DEFAULT] -
+-				ctrl->io_queues[HCTX_TYPE_READ];
+-	}
++
+ 	if (WARN_ON(!mq_map))
+ 		goto out;
+ 
+-- 
+2.40.0
+

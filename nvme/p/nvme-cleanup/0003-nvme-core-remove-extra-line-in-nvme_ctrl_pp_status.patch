@@ -1,0 +1,28 @@
+From 4f6986a7f539432b26289e19aac3e48393a5d8bc Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Wed, 19 Oct 2022 22:57:56 -0700
+Subject: [PATCH 3/3] nvme-core: remove extra line in nvme_ctrl_pp_status
+
+Remove the extra line at the start of the function which doesn't comply
+to linux kernel coding standards.
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/host/core.c | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index 772779215868..4e2252c09e5a 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -4663,7 +4663,6 @@ static void nvme_async_event_work(struct work_struct *work)
+ 
+ static bool nvme_ctrl_pp_status(struct nvme_ctrl *ctrl)
+ {
+-
+ 	u32 csts;
+ 
+ 	if (ctrl->ops->reg_read32(ctrl, NVME_REG_CSTS, &csts))
+-- 
+2.29.0
+

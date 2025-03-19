@@ -1,0 +1,243 @@
+target/admin-cmd.c:	if (!req->ns->bdev)
+target/admin-cmd.c:	host_reads = part_stat_read(req->ns->bdev, ios[READ]);
+target/admin-cmd.c:		DIV_ROUND_UP(part_stat_read(req->ns->bdev, sectors[READ]), 1000);
+target/admin-cmd.c:	host_writes = part_stat_read(req->ns->bdev, ios[WRITE]);
+target/admin-cmd.c:		DIV_ROUND_UP(part_stat_read(req->ns->bdev, sectors[WRITE]), 1000);
+target/admin-cmd.c:		if (!ns->bdev)
+target/admin-cmd.c:		host_reads += part_stat_read(ns->bdev, ios[READ]);
+target/admin-cmd.c:			part_stat_read(ns->bdev, sectors[READ]), 1000);
+target/admin-cmd.c:		host_writes += part_stat_read(ns->bdev, ios[WRITE]);
+target/admin-cmd.c:			part_stat_read(ns->bdev, sectors[WRITE]), 1000);
+target/admin-cmd.c:			if (ns->anagrpid == grpid)
+target/admin-cmd.c:				desc->nsids[count++] = cpu_to_le32(ns->nsid);
+target/admin-cmd.c:		mutex_lock(&req->ns->subsys->lock);
+target/admin-cmd.c:		nvmet_ns_changed(req->ns->subsys, req->ns->nsid);
+target/admin-cmd.c:		mutex_unlock(&req->ns->subsys->lock);
+target/admin-cmd.c:		cpu_to_le64(req->ns->size >> req->ns->blksize_shift);
+target/admin-cmd.c:	switch (req->port->ana_state[req->ns->anagrpid]) {
+target/admin-cmd.c:	if (req->ns->bdev)
+target/admin-cmd.c:		nvmet_bdev_set_limits(req->ns->bdev, id);
+target/admin-cmd.c:	id->anagrpid = cpu_to_le32(req->ns->anagrpid);
+target/admin-cmd.c:	memcpy(&id->nguid, &req->ns->nguid, sizeof(id->nguid));
+target/admin-cmd.c:	id->lbaf[0].ds = req->ns->blksize_shift;
+target/admin-cmd.c:		id->dps = req->ns->pi_type;
+target/admin-cmd.c:		id->lbaf[0].ms = cpu_to_le16(req->ns->metadata_size);
+target/admin-cmd.c:	if (test_bit(NVMET_NS_READONLY, &ns->readonly))
+target/admin-cmd.c:		if (ns->nsid <= min_nsid)
+target/admin-cmd.c:		list[i++] = cpu_to_le32(ns->nsid);
+target/admin-cmd.c:	if (memchr_inv(&req->ns->uuid, 0, sizeof(req->ns->uuid))) {
+target/admin-cmd.c:						  &req->ns->uuid, &off);
+target/admin-cmd.c:	if (memchr_inv(req->ns->nguid, 0, sizeof(req->ns->nguid))) {
+target/admin-cmd.c:						  &req->ns->nguid, &off);
+target/admin-cmd.c:					  &req->ns->csi, &off);
+target/admin-cmd.c:	if (req->ns->file)
+target/admin-cmd.c:		pr_err("write protect flush failed nsid: %u\n", req->ns->nsid);
+target/admin-cmd.c:		set_bit(NVMET_NS_READONLY, &req->ns->flags);
+target/admin-cmd.c:			clear_bit(NVMET_NS_READONLY, &req->ns->flags);
+target/admin-cmd.c:		req->ns->readonly = false;
+target/admin-cmd.c:		nvmet_ns_changed(subsys, req->ns->nsid);
+target/admin-cmd.c:	if (test_bit(NVMET_NS_READONLY, &ns->readonly))
+target/configfs.c:	struct nvmet_subsys *subsys = ns->subsys;
+target/configfs.c:	if (test_bit(NVMET_NS_ENABLED, &ns->flags))
+target/configfs.c:	kfree(ns->device_path);
+target/configfs.c:	ns->device_path = kmemdup_nul(page, len, GFP_KERNEL);
+target/configfs.c:	if (!ns->device_path)
+target/configfs.c:	return pci_p2pdma_enable_show(page, ns->p2p_dev, ns->use_p2pmem);
+target/configfs.c:	mutex_lock(&ns->subsys->lock);
+target/configfs.c:	if (test_bit(NVMET_NS_ENABLED, &ns->flags)) {
+target/configfs.c:	ns->use_p2pmem = use_p2pmem;
+target/configfs.c:	pci_dev_put(ns->p2p_dev);
+target/configfs.c:	ns->p2p_dev = p2p_dev;
+target/configfs.c:	mutex_unlock(&ns->subsys->lock);
+target/configfs.c:	struct nvmet_subsys *subsys = ns->subsys;
+target/configfs.c:	if (test_bit(NVMET_NS_ENABLED, &ns->flags)) {
+target/configfs.c:	if (uuid_parse(page, &ns->uuid))
+target/configfs.c:	struct nvmet_subsys *subsys = ns->subsys;
+target/configfs.c:	if (test_bit(NVMET_NS_ENABLED, &ns->flags)) {
+target/configfs.c:	memcpy(&ns->nguid, nguid, sizeof(nguid));
+target/configfs.c:	oldgrpid = ns->anagrpid;
+target/configfs.c:	ns->anagrpid = newgrpid;
+target/configfs.c:	nvmet_send_ana_event(ns->subsys, NULL);
+target/configfs.c:	mutex_lock(&ns->subsys->lock);
+target/configfs.c:	if (test_bit(NVMET_NS_ENABLED, &ns->flags)) {
+target/configfs.c:		mutex_unlock(&ns->subsys->lock);
+target/configfs.c:		set_bit(NVMET_NS_BUFFERED_IO, &ns->flags);
+target/configfs.c:		clear_bit(NVMET_NS_BUFFERED_IO, &ns->flags);
+target/configfs.c:	mutex_unlock(&ns->subsys->lock);
+target/configfs.c:	mutex_lock(&ns->subsys->lock);
+target/configfs.c:	if (!test_bit(NVMET_NS_ENABLED, &ns->flags)) {
+target/configfs.c:		mutex_unlock(&ns->subsys->lock);
+target/configfs.c:		nvmet_ns_changed(ns->subsys, ns->nsid);
+target/configfs.c:	mutex_unlock(&ns->subsys->lock);
+target/configfs.c:	config_group_init_type_name(&ns->group, name, &nvmet_ns_type);
+target/configfs.c:	return &ns->group;
+target/core.c:	percpu_ref_get(&req->ns->ref);
+target/core.c:	complete(&ns->disable_done);
+target/core.c:	percpu_ref_put(&ns->ref);
+target/core.c:	if (!ns->use_p2pmem)
+target/core.c:	if (!ns->bdev) {
+target/core.c:	if (!blk_queue_pci_p2pdma(ns->bdev->bd_disk->queue)) {
+target/core.c:		       ns->device_path);
+target/core.c:	if (ns->p2p_dev) {
+target/core.c:		ret = pci_p2pdma_distance(ns->p2p_dev, nvmet_ns_dev(ns), true);
+target/core.c:			       ns->device_path);
+target/core.c:	if (!ctrl->p2p_client || !ns->use_p2pmem)
+target/core.c:	if (ns->p2p_dev) {
+target/core.c:		ret = pci_p2pdma_distance(ns->p2p_dev, ctrl->p2p_client, true);
+target/core.c:		p2p_dev = pci_dev_get(ns->p2p_dev);
+target/core.c:			       dev_name(ctrl->p2p_client), ns->device_path);
+target/core.c:	ret = radix_tree_insert(&ctrl->p2p_ns_map, ns->nsid, p2p_dev);
+target/core.c:		ns->nsid);
+target/core.c:	loff_t oldsize = ns->size;
+target/core.c:	if (ns->bdev)
+target/core.c:	return oldsize != ns->size;
+target/core.c:	struct nvmet_subsys *subsys = ns->subsys;
+target/core.c:	if (test_bit(NVMET_NS_ENABLED, &ns->flags))
+target/core.c:	ret = percpu_ref_init(&ns->ref, nvmet_destroy_namespace,
+target/core.c:	if (ns->nsid > subsys->max_nsid)
+target/core.c:		subsys->max_nsid = ns->nsid;
+target/core.c:	ret = xa_insert(&subsys->namespaces, ns->nsid, ns, GFP_KERNEL);
+target/core.c:	nvmet_ns_changed(subsys, ns->nsid);
+target/core.c:	set_bit(NVMET_NS_ENABLED, &ns->flags);
+target/core.c:	percpu_ref_exit(&ns->ref);
+target/core.c:		pci_dev_put(radix_tree_delete(&ctrl->p2p_ns_map, ns->nsid));
+target/core.c:	struct nvmet_subsys *subsys = ns->subsys;
+target/core.c:	if (!test_bit(NVMET_NS_ENABLED, &ns->flags))
+target/core.c:	clear_bit(NVMET_NS_ENABLED, &ns->flags);
+target/core.c:	xa_erase(&ns->subsys->namespaces, ns->nsid);
+target/core.c:	if (ns->nsid == subsys->max_nsid)
+target/core.c:		pci_dev_put(radix_tree_delete(&ctrl->p2p_ns_map, ns->nsid));
+target/core.c:	percpu_ref_kill(&ns->ref);
+target/core.c:	wait_for_completion(&ns->disable_done);
+target/core.c:	percpu_ref_exit(&ns->ref);
+target/core.c:	nvmet_ns_changed(subsys, ns->nsid);
+target/core.c:	nvmet_ana_group_enabled[ns->anagrpid]--;
+target/core.c:	kfree(ns->device_path);
+target/core.c:	init_completion(&ns->disable_done);
+target/core.c:	ns->nsid = nsid;
+target/core.c:	ns->subsys = subsys;
+target/core.c:	ns->anagrpid = NVMET_DEFAULT_ANA_GRPID;
+target/core.c:	nvmet_ana_group_enabled[ns->anagrpid]++;
+target/core.c:	uuid_gen(&ns->uuid);
+target/core.c:	ns->flags = 0;
+target/core.c:	ns->csi = NVME_CSI_NVM;
+target/core.c:	enum nvme_ana_state state = port->ana_state[ns->anagrpid];
+target/core.c:	if (unlikely(req->ns->readonly)) {
+target/core.c:	switch (req->ns->csi) {
+target/core.c:		if (req->ns->file)
+target/core.c:	return radix_tree_lookup(&req->sq->ctrl->p2p_ns_map, req->ns->nsid);
+target/io-cmd-bdev.c:	if (ns->bdev) {
+target/io-cmd-bdev.c:		blkdev_put(ns->bdev, FMODE_WRITE | FMODE_READ);
+target/io-cmd-bdev.c:		ns->bdev = NULL;
+target/io-cmd-bdev.c:	struct blk_integrity *bi = bdev_get_integrity(ns->bdev);
+target/io-cmd-bdev.c:		ns->metadata_size = bi->tuple_size;
+target/io-cmd-bdev.c:			ns->pi_type = NVME_NS_DPS_PI_TYPE1;
+target/io-cmd-bdev.c:			ns->pi_type = NVME_NS_DPS_PI_TYPE3;
+target/io-cmd-bdev.c:			ns->metadata_size = 0;
+target/io-cmd-bdev.c:	if (test_bit(NVMET_NS_BUFFERED_IO, &ns->flags))
+target/io-cmd-bdev.c:	ns->bdev = blkdev_get_by_path(ns->device_path,
+target/io-cmd-bdev.c:	if (IS_ERR(ns->bdev)) {
+target/io-cmd-bdev.c:		ret = PTR_ERR(ns->bdev);
+target/io-cmd-bdev.c:					ns->device_path, PTR_ERR(ns->bdev));
+target/io-cmd-bdev.c:		ns->bdev = NULL;
+target/io-cmd-bdev.c:	ns->size = bdev_nr_bytes(ns->bdev);
+target/io-cmd-bdev.c:	ns->blksize_shift = blksize_bits(bdev_logical_block_size(ns->bdev));
+target/io-cmd-bdev.c:	ns->pi_type = 0;
+target/io-cmd-bdev.c:	ns->metadata_size = 0;
+target/io-cmd-bdev.c:	if (bdev_is_zoned(ns->bdev)) {
+target/io-cmd-bdev.c:		ns->csi = NVME_CSI_ZNS;
+target/io-cmd-bdev.c:	ns->size = bdev_nr_bytes(ns->bdev);
+target/io-cmd-bdev.c:	bi = bdev_get_integrity(req->ns->bdev);
+target/io-cmd-bdev.c:		bio_init(bio, req->ns->bdev, req->inline_bvec,
+target/io-cmd-bdev.c:		bio = bio_alloc(req->ns->bdev, bio_max_segs(sg_cnt), opf,
+target/io-cmd-bdev.c:			bio = bio_alloc(req->ns->bdev, bio_max_segs(sg_cnt),
+target/io-cmd-bdev.c:	if (!bdev_write_cache(req->ns->bdev)) {
+target/io-cmd-bdev.c:	bio_init(bio, req->ns->bdev, req->inline_bvec,
+target/io-cmd-bdev.c:	if (!bdev_write_cache(req->ns->bdev))
+target/io-cmd-bdev.c:	if (blkdev_issue_flush(req->ns->bdev))
+target/io-cmd-bdev.c:	ret = __blkdev_issue_discard(ns->bdev,
+target/io-cmd-bdev.c:			le32_to_cpu(range->nlb) << (ns->blksize_shift - 9),
+target/io-cmd-bdev.c:		(req->ns->blksize_shift - 9));
+target/io-cmd-bdev.c:	ret = __blkdev_issue_zeroout(req->ns->bdev, sector, nr_sector,
+target/io-cmd-file.c:	ns->size = i_size_read(ns->file->f_mapping->host);
+target/io-cmd-file.c:	if (ns->file) {
+target/io-cmd-file.c:		if (test_bit(NVMET_NS_BUFFERED_IO, &ns->flags))
+target/io-cmd-file.c:		mempool_destroy(ns->bvec_pool);
+target/io-cmd-file.c:		ns->bvec_pool = NULL;
+target/io-cmd-file.c:		fput(ns->file);
+target/io-cmd-file.c:		ns->file = NULL;
+target/io-cmd-file.c:	if (!test_bit(NVMET_NS_BUFFERED_IO, &ns->flags))
+target/io-cmd-file.c:	ns->file = filp_open(ns->device_path, flags, 0);
+target/io-cmd-file.c:	if (IS_ERR(ns->file)) {
+target/io-cmd-file.c:		ret = PTR_ERR(ns->file);
+target/io-cmd-file.c:			ns->device_path, ret);
+target/io-cmd-file.c:		ns->file = NULL;
+target/io-cmd-file.c:	ns->blksize_shift = min_t(u8,
+target/io-cmd-file.c:			file_inode(ns->file)->i_blkbits, 12);
+target/io-cmd-file.c:	ns->bvec_pool = mempool_create(NVMET_MIN_MPOOL_OBJ, mempool_alloc_slab,
+target/io-cmd-file.c:	if (!ns->bvec_pool) {
+target/io-cmd-file.c:	fput(ns->file);
+target/io-cmd-file.c:	ns->file = NULL;
+target/io-cmd-file.c:	ns->size = 0;
+target/io-cmd-file.c:	ns->blksize_shift = 0;
+target/io-cmd-file.c:		call_iter = req->ns->file->f_op->write_iter;
+target/io-cmd-file.c:		call_iter = req->ns->file->f_op->read_iter;
+target/io-cmd-file.c:	iocb->ki_filp = req->ns->file;
+target/io-cmd-file.c:			mempool_free(req->f.bvec, req->ns->bvec_pool);
+target/io-cmd-file.c:	pos = le64_to_cpu(req->cmd->rw.slba) << req->ns->blksize_shift;
+target/io-cmd-file.c:	if (unlikely(pos + req->transfer_len > req->ns->size)) {
+target/io-cmd-file.c:		req->f.bvec = mempool_alloc(req->ns->bvec_pool, GFP_KERNEL);
+target/io-cmd-file.c:	if (test_bit(NVMET_NS_BUFFERED_IO, &req->ns->flags)) {
+target/io-cmd-file.c:		    (req->ns->file->f_mode & FMODE_NOWAIT) &&
+target/io-cmd-file.c:	return errno_to_nvme_status(req, vfs_fsync(req->ns->file, 1));
+target/io-cmd-file.c:		offset = le64_to_cpu(range.slba) << req->ns->blksize_shift;
+target/io-cmd-file.c:		len <<= req->ns->blksize_shift;
+target/io-cmd-file.c:		if (offset + len > req->ns->size) {
+target/io-cmd-file.c:		ret = vfs_fallocate(req->ns->file, mode, offset, len);
+target/io-cmd-file.c:	offset = le64_to_cpu(write_zeroes->slba) << req->ns->blksize_shift;
+target/io-cmd-file.c:			req->ns->blksize_shift);
+target/io-cmd-file.c:	if (unlikely(offset + len > req->ns->size)) {
+target/io-cmd-file.c:	ret = vfs_fallocate(req->ns->file, mode, offset, len);
+target/nvmet.h:	return ns->bdev ? disk_to_dev(ns->bdev->bd_disk) : NULL;
+target/nvmet.h:			req->ns->blksize_shift;
+target/nvmet.h:			req->ns->metadata_size;
+target/nvmet.h:	return ns->pi_type && ns->metadata_size == sizeof(struct t10_pi_tuple);
+target/nvmet.h:	return cpu_to_le64(sect >> (ns->blksize_shift - SECTOR_SHIFT));
+target/nvmet.h:	return le64_to_cpu(lba) << (ns->blksize_shift - SECTOR_SHIFT);
+target/passthru.c:		q = ns->queue;
+target/rdma.c:	u8 pi_type = req->ns->pi_type;
+target/rdma.c:	bi = bdev_get_integrity(req->ns->bdev);
+target/trace.h:	strncpy(name, req->ns->device_path,
+target/trace.h:		min_t(size_t, DISK_NAME_LEN, strlen(req->ns->device_path)));
+target/zns.c: * NVMe ZNS-ZBD command implementation.
+target/zns.c:	u8 zasl = nvmet_zasl(bdev_max_zone_append_sectors(ns->bdev));
+target/zns.c:	struct gendisk *bd_disk = ns->bdev->bd_disk;
+target/zns.c:	if (ns->subsys->zasl) {
+target/zns.c:		if (ns->subsys->zasl > zasl)
+target/zns.c:	ns->subsys->zasl = zasl;
+target/zns.c:	if (get_capacity(bd_disk) & (bdev_zone_sectors(ns->bdev) - 1))
+target/zns.c:	if (ns->bdev->bd_disk->conv_zones_bitmap)
+target/zns.c:	ret = blkdev_report_zones(ns->bdev, 0, bdev_nr_zones(ns->bdev),
+target/zns.c:	ns->blksize_shift = blksize_bits(bdev_logical_block_size(ns->bdev));
+target/zns.c:		mutex_lock(&req->ns->subsys->lock);
+target/zns.c:		nvmet_ns_changed(req->ns->subsys, req->ns->nsid);
+target/zns.c:		mutex_unlock(&req->ns->subsys->lock);
+target/zns.c:	if (!bdev_is_zoned(req->ns->bdev)) {
+target/zns.c:	zsze = (bdev_zone_sectors(req->ns->bdev) << 9) >>
+target/zns.c:					req->ns->blksize_shift;
+target/zns.c:	id_zns->lbafe[0].zsze = cpu_to_le64(zsze);
+target/zns.c:	mor = bdev_max_open_zones(req->ns->bdev);
+target/zns.c:	id_zns->mor = cpu_to_le32(mor);
+target/zns.c:	mar = bdev_max_active_zones(req->ns->bdev);
+target/zns.c:	id_zns->mar = cpu_to_le32(mar);
+target/zns.c:	if (sect >= get_capacity(req->ns->bdev->bd_disk)) {
+target/zns.c:	return bdev_nr_zones(req->ns->bdev) - bdev_zone_no(req->ns->bdev, sect);
+target/zns.c:	ret = blkdev_report_zones(req->ns->bdev, start_sect, req_slba_nr_zones,
+target/zns.c:	struct block_device *bdev = req->ns->bdev;
+target/zns.c:		ret = blkdev_zone_mgmt(req->ns->bdev, REQ_OP_ZONE_RESET, 0,
+target/zns.c:				       get_capacity(req->ns->bdev->bd_disk),
+target/zns.c:	struct block_device *bdev = req->ns->bdev;
+target/zns.c:	if (sect >= get_capacity(req->ns->bdev->bd_disk)) {
+target/zns.c:	if (sect & (bdev_zone_sectors(req->ns->bdev) - 1)) {
+target/zns.c:		bio_init(bio, req->ns->bdev, req->inline_bvec,
+target/zns.c:		bio = bio_alloc(req->ns->bdev, req->sg_cnt, opf, GFP_KERNEL);

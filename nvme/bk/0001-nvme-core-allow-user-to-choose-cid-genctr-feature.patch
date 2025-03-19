@@ -1,0 +1,50 @@
+From abb3f776f69910dc291e21cab6239ead9b4d81a1 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Mon, 1 Nov 2021 15:09:10 -0700
+Subject: [PATCH] nvme-core: allow user to choose cid-genctr feature
+
+Some fabrics controllers use the command id as an index to
+implement specific data structures and will fail if the value is
+out of bounds. The nvme driver's recently introduced command sequence
+number breaks this controller.
+
+Allow user to choose the use of the genctr when calculating the
+command id so that we can retain the previous behaviour by turning
+off newly introduced "use_genctr" parameter for nvme-core module.
+
+The driver will not have the ability to detect bad completions when
+this new module parameter is turned off, but we weren't previously
+checking this anyway.
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/host/core.c | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index 3825b596ca16..4d01c8caa3e9 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -81,6 +81,10 @@ static bool streams;
+ module_param(streams, bool, 0644);
+ MODULE_PARM_DESC(streams, "turn on support for Streams write directives");
+ 
++static bool use_genctr = true;
++module_param(use_genctr, bool, 0644);
++MODULE_PARM_DESC(use_genctr, "use genctr for command id, default: true");
++
+ /*
+  * nvme_wq - hosts nvme related works that are not reset or delete
+  * nvme_reset_wq - hosts nvme reset works
+@@ -1047,7 +1051,7 @@ blk_status_t nvme_setup_cmd(struct nvme_ns *ns, struct request *req)
+ 		return BLK_STS_IOERR;
+ 	}
+ 
+-	if (!(ctrl->quirks & NVME_QUIRK_SKIP_CID_GEN))
++	if (use_genctr && !(ctrl->quirks & NVME_QUIRK_SKIP_CID_GEN))
+ 		nvme_req(req)->genctr++;
+ 	cmd->common.command_id = nvme_cid(req);
+ 	trace_nvme_setup_cmd(req, cmd);
+-- 
+2.29.0
+

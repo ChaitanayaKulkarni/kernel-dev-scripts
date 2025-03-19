@@ -1,0 +1,23 @@
+From dbfd3399c0fcd8a311971bd5186225c420e195e6 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Sat, 22 Jan 2022 13:32:03 -0800
+Subject: [PATCH 0/4] *** SUBJECT HERE ***
+
+*** BLURB HERE ***
+
+Chaitanya Kulkarni (4):
+  nvme-fc: add a helper to initialize connect_q
+  nvme-rdma: use helper to initialize connect_q
+  nvme-tcp: use helper to initialize connect_q
+  nvme-loop: use helper to initialize connect_q
+
+ drivers/nvme/host/fc.c     | 6 ++----
+ drivers/nvme/host/nvme.h   | 8 ++++++++
+ drivers/nvme/host/rdma.c   | 7 +++----
+ drivers/nvme/host/tcp.c    | 6 ++----
+ drivers/nvme/target/loop.c | 6 ++----
+ 5 files changed, 17 insertions(+), 16 deletions(-)
+
+-- 
+2.29.0
+

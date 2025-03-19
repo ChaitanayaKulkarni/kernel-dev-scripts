@@ -1,0 +1,17 @@
+From 5cb42e711178daff6b970965d8d9a49b14743369 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Thu, 18 Aug 2022 08:43:49 -0700
+Subject: [PATCH 0/2] *** SUBJECT HERE ***
+
+*** BLURB HERE ***
+
+Chaitanya Kulkarni (2):
+  nvme-fc: fix coding style
+  nvme-fc: remove memset 0 call with declare init
+
+ drivers/nvme/host/fc.c | 9 ++++-----
+ 1 file changed, 4 insertions(+), 5 deletions(-)
+
+-- 
+2.29.0
+

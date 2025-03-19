@@ -1,0 +1,48 @@
+From 7227b43d392b1277616d3cf7236d9af458405e98 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Mon, 18 May 2020 22:24:08 -0700
+Subject: [PATCH V4 2/3] nvmet: generate AEN for ns revalidate size change
+
+The newly added function nvmet_ns_revalidate() does update the ns size
+in the identify namespace in-core target data structure when host issues
+id-ns command. This can lead to host having inconsistencies between size
+of the namespace present in the id-ns command result and size of the
+corresponding block device.
+
+To avoid this scenario generate AEN if old size is not same as the new
+one in nvmet_ns_revalidate().
+
+This will allow automatic AEN generation when host calls id-ns command
+and also allows target to install userspace rules so that it can trigger
+nvmet_ns_revalidate() (using configfs interface with the help of next
+patch) resulting in appropriate AEN generation when underlying namespace
+size change is detected.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/core.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/drivers/nvme/target/core.c b/drivers/nvme/target/core.c
+index 86a75c7779d5..fa1f79b3fde3 100644
+--- a/drivers/nvme/target/core.c
++++ b/drivers/nvme/target/core.c
+@@ -516,10 +516,15 @@ static void nvmet_p2pmem_ns_add_p2p(struct nvmet_ctrl *ctrl,
+ 
+ void nvmet_ns_revalidate(struct nvmet_ns *ns)
+ {
++	loff_t oldsize = ns->size;
++
+ 	if (ns->bdev)
+ 		nvmet_bdev_ns_revalidate(ns);
+ 	else
+ 		nvmet_file_ns_revalidate(ns);
++
++	if (oldsize != ns->size)
++		nvmet_ns_changed(ns->subsys, ns->nsid);
+ }
+ 
+ int nvmet_ns_enable(struct nvmet_ns *ns)
+-- 
+2.22.1
+

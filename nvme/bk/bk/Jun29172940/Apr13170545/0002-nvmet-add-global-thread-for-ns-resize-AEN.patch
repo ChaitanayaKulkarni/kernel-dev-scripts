@@ -1,0 +1,338 @@
+From 8103f974ece8ac83f9fbc282f2dcdd13eb3dfa60 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Fri, 10 Apr 2020 15:25:12 -0700
+Subject: [PATCH V3 2/6] nvmet: add global thread for ns-resize AEN
+
+The change of size detection on the target should generate an AEN to
+the host. Right now there is no mechanism that allows us to add
+callbacks for the block and file backend so that we will get the
+notification for change of the size for block device and file backend.
+This patch adds global maintenance thread that checks for the size
+change and generates AEN when needed.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/admin-cmd.c   |   7 +-
+ drivers/nvme/target/configfs.c    |   2 +-
+ drivers/nvme/target/core.c        | 129 ++++++++++++++++++++++++++++++
+ drivers/nvme/target/io-cmd-bdev.c |   9 ++-
+ drivers/nvme/target/io-cmd-file.c |  15 ++--
+ drivers/nvme/target/nvmet.h       |  22 ++++-
+ 6 files changed, 170 insertions(+), 14 deletions(-)
+
+diff --git a/drivers/nvme/target/admin-cmd.c b/drivers/nvme/target/admin-cmd.c
+index 4c79aa804887..a3bc2987c72a 100644
+--- a/drivers/nvme/target/admin-cmd.c
++++ b/drivers/nvme/target/admin-cmd.c
+@@ -486,10 +486,9 @@ static void nvmet_execute_identify_ns(struct nvmet_req *req)
+ 	if (!ns)
+ 		goto done;
+ 
+-	if (ns->bdev)
+-		nvmet_bdev_ns_revalidate(ns);
+-	else
+-		nvmet_file_ns_revalidate(ns);
++	mutex_lock(&ns->subsys->lock);
++	nvmet_ns_revalidate(ns);
++	mutex_unlock(&ns->subsys->lock);
+ 
+ 	/*
+ 	 * nuse = ncap = nsze isn't always true, but we have no way to find
+diff --git a/drivers/nvme/target/configfs.c b/drivers/nvme/target/configfs.c
+index 58cabd7b6fc5..b0e84027b3bc 100644
+--- a/drivers/nvme/target/configfs.c
++++ b/drivers/nvme/target/configfs.c
+@@ -1469,7 +1469,7 @@ int __init nvmet_init_configfs(void)
+ 	return 0;
+ }
+ 
+-void __exit nvmet_exit_configfs(void)
++void nvmet_exit_configfs(void)
+ {
+ 	configfs_unregister_subsystem(&nvmet_configfs_subsystem);
+ }
+diff --git a/drivers/nvme/target/core.c b/drivers/nvme/target/core.c
+index b685f99d56a1..7291f8e65217 100644
+--- a/drivers/nvme/target/core.c
++++ b/drivers/nvme/target/core.c
+@@ -9,12 +9,15 @@
+ #include <linux/rculist.h>
+ #include <linux/pci-p2pdma.h>
+ #include <linux/scatterlist.h>
++#include <linux/delay.h>
++#include <uapi/linux/sched/types.h>
+ 
+ #define CREATE_TRACE_POINTS
+ #include "trace.h"
+ 
+ #include "nvmet.h"
+ 
++struct nvmet_resize_monitor *monitor;
+ struct workqueue_struct *buffered_io_wq;
+ static const struct nvmet_fabrics_ops *nvmet_transports[NVMF_TRTYPE_MAX];
+ static DEFINE_IDA(cntlid_ida);
+@@ -514,6 +517,59 @@ static void nvmet_p2pmem_ns_add_p2p(struct nvmet_ctrl *ctrl,
+ 		ns->nsid);
+ }
+ 
++bool nvmet_ns_revalidate(struct nvmet_ns *ns)
++{
++	if (ns->bdev)
++		return nvmet_bdev_ns_revalidate(ns);
++
++	return nvmet_file_ns_revalidate(ns);
++}
++
++static void __nvmet_handle_resize_ns(struct nvmet_subsys *s)
++{
++	struct nvmet_ns *ns;
++
++	mutex_lock(&s->lock);
++	list_for_each_entry_rcu(ns, &s->namespaces, dev_link, 1) {
++		if (nvmet_ns_revalidate(ns))
++			nvmet_ns_changed(ns->subsys, ns->nsid);
++	}
++	mutex_unlock(&s->lock);
++}
++
++static int nvmet_ns_resize_monitor(void *data)
++{
++	struct sched_param p = { .sched_priority = monitor->sched_priority };
++	struct nvmet_subsys_link *link;
++	struct nvmet_port *port;
++	u32 msec;
++
++	complete(&monitor->wait);
++	sched_setscheduler(current, monitor->sched_policy, &p);
++
++	while (!kthread_should_park()) {
++		down_read(&nvmet_config_sem);
++		list_for_each_entry(port, nvmet_ports, global_entry)
++			list_for_each_entry(link, &port->subsystems, entry)
++				__nvmet_handle_resize_ns(link->subsys);
++		up_read(&nvmet_config_sem);
++		schedule();
++		/* XXX: use better sleep wakeup mechanism */
++
++		/*
++		 * This allows user to change the sleep timtout without
++		 * stopping monitor thread.
++		 */
++		mutex_lock(&monitor->control_lock);
++		msec = monitor->msec;
++		mutex_unlock(&monitor->control_lock);
++		msleep(msec);
++	}
++
++	kthread_parkme();
++	return 0;
++}
++
+ int nvmet_ns_enable(struct nvmet_ns *ns)
+ {
+ 	struct nvmet_subsys *subsys = ns->subsys;
+@@ -1480,6 +1536,71 @@ void nvmet_subsys_put(struct nvmet_subsys *subsys)
+ 	kref_put(&subsys->ref, nvmet_subsys_free);
+ }
+ 
++bool nvmet_enable_ns_resize_monitor(void)
++{
++	lockdep_assert_held(&monitor->control_lock);
++
++	if (monitor->thread)
++		goto out;
++
++	monitor->thread = kthread_create(nvmet_ns_resize_monitor, NULL,
++				       "nvmet_ns_resize");
++	if (monitor->thread) {
++		wake_up_process(monitor->thread);
++		wait_for_completion(&monitor->wait);
++		pr_debug("ns monitor thread started successfully\n");
++	}
++
++out:
++	return monitor->thread ? true : false;
++}
++
++bool nvmet_disable_ns_resize_monitor(void)
++{
++	bool ret = false;
++
++	lockdep_assert_held(&monitor->control_lock);
++
++	if (monitor->thread)  {
++		kthread_park(monitor->thread);
++		kthread_stop(monitor->thread);
++		monitor->thread = NULL;
++		ret = true;
++	}
++
++	kfree(monitor->thread);
++	return ret;
++}
++
++int nvmet_init_ns_resize_monitor(void)
++{
++	int ret;
++
++	monitor = kzalloc(sizeof(*monitor), GFP_KERNEL);
++	if (!monitor)
++		return -ENOMEM;
++
++	monitor->sched_policy = SCHED_IDLE;
++	monitor->sched_priority = 0;
++	monitor->msec = NVMET_RESIZE_MON_MSEC;
++	mutex_init(&monitor->control_lock);
++	init_completion(&monitor->wait);
++
++	mutex_lock(&monitor->control_lock);
++	ret = nvmet_enable_ns_resize_monitor() ? 0 : -ENOMEM;
++	mutex_unlock(&monitor->control_lock);
++
++	return ret;
++}
++
++void nvmet_exit_ns_resize_monitor(void)
++{
++	mutex_lock(&monitor->control_lock);
++	nvmet_disable_ns_resize_monitor();
++	mutex_unlock(&monitor->control_lock);
++	kfree(monitor);
++}
++
+ static int __init nvmet_init(void)
+ {
+ 	int error;
+@@ -1500,8 +1621,15 @@ static int __init nvmet_init(void)
+ 	error = nvmet_init_configfs();
+ 	if (error)
+ 		goto out_exit_discovery;
++
++	error = nvmet_init_ns_resize_monitor();
++	if (error)
++		goto out_exit_configfs;
++
+ 	return 0;
+ 
++out_exit_configfs:
++	nvmet_exit_configfs();
+ out_exit_discovery:
+ 	nvmet_exit_discovery();
+ out_free_work_queue:
+@@ -1512,6 +1640,7 @@ static int __init nvmet_init(void)
+ 
+ static void __exit nvmet_exit(void)
+ {
++	nvmet_exit_ns_resize_monitor();
+ 	nvmet_exit_configfs();
+ 	nvmet_exit_discovery();
+ 	ida_destroy(&cntlid_ida);
+diff --git a/drivers/nvme/target/io-cmd-bdev.c b/drivers/nvme/target/io-cmd-bdev.c
+index 0427e040e3dd..3cca08e9ad90 100644
+--- a/drivers/nvme/target/io-cmd-bdev.c
++++ b/drivers/nvme/target/io-cmd-bdev.c
+@@ -75,9 +75,16 @@ void nvmet_bdev_ns_disable(struct nvmet_ns *ns)
+ 	}
+ }
+ 
+-void nvmet_bdev_ns_revalidate(struct nvmet_ns *ns)
++bool nvmet_bdev_ns_revalidate(struct nvmet_ns *ns)
+ {
++	bool change;
++
++	lockdep_assert_held(&ns->subsys->lock);
++
++	change = ns->size != i_size_read(ns->bdev->bd_inode) ? true : false;
+ 	ns->size = i_size_read(ns->bdev->bd_inode);
++
++	return change;
+ }
+ 
+ static u16 blk_to_nvme_status(struct nvmet_req *req, blk_status_t blk_sts)
+diff --git a/drivers/nvme/target/io-cmd-file.c b/drivers/nvme/target/io-cmd-file.c
+index 14364383d2fe..a2d82e55858b 100644
+--- a/drivers/nvme/target/io-cmd-file.c
++++ b/drivers/nvme/target/io-cmd-file.c
+@@ -80,15 +80,20 @@ int nvmet_file_ns_enable(struct nvmet_ns *ns)
+ 	return ret;
+ }
+ 
+-void nvmet_file_ns_revalidate(struct nvmet_ns *ns)
++bool nvmet_file_ns_revalidate(struct nvmet_ns *ns)
+ {
++	struct path *f_path = &ns->file->f_path;
++	bool change = false;
+ 	struct kstat stat;
+ 
+-	if (vfs_getattr(&ns->file->f_path, &stat, STATX_SIZE,
+-			AT_STATX_FORCE_SYNC))
+-		return;
++	lockdep_assert_held(&ns->subsys->lock);
+ 
+-	ns->size = stat.size;
++	if (vfs_getattr(f_path, &stat, STATX_SIZE, AT_STATX_FORCE_SYNC) == 0) {
++		change = ns->size != stat.size ? true : false;
++		ns->size = stat.size;
++	}
++
++	return change;
+ }
+ 
+ static void nvmet_file_init_bvec(struct bio_vec *bv, struct scatterlist *sg)
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index 8b479d932a7b..7fe6d705cbf1 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -23,6 +23,7 @@
+ #define NVMET_ASYNC_EVENTS		4
+ #define NVMET_ERROR_LOG_SLOTS		128
+ #define NVMET_NO_ERROR_LOC		((u16)-1)
++#define NVMET_RESIZE_MON_MSEC		500
+ #define NVMET_DEFAULT_CTRL_MODEL	"Linux"
+ 
+ /*
+@@ -50,6 +51,17 @@
+ #define IPO_IATTR_CONNECT_SQE(x)	\
+ 	(cpu_to_le32(offsetof(struct nvmf_connect_command, x)))
+ 
++struct nvmet_resize_monitor {
++	u32			sched_priority;
++	u32			sched_policy;
++	struct mutex		control_lock;
++	struct task_struct	*thread;
++	struct completion	wait;
++	u32			msec;
++};
++
++extern struct nvmet_resize_monitor *monitor;
++
+ struct nvmet_ns {
+ 	struct list_head	dev_link;
+ 	struct percpu_ref	ref;
+@@ -477,7 +489,7 @@ void nvmet_add_async_event(struct nvmet_ctrl *ctrl, u8 event_type,
+ #define NVMET_DISC_KATO_MS		120000
+ 
+ int __init nvmet_init_configfs(void);
+-void __exit nvmet_exit_configfs(void);
++void nvmet_exit_configfs(void);
+ 
+ int __init nvmet_init_discovery(void);
+ void nvmet_exit_discovery(void);
+@@ -498,8 +510,12 @@ void nvmet_file_ns_disable(struct nvmet_ns *ns);
+ u16 nvmet_bdev_flush(struct nvmet_req *req);
+ u16 nvmet_file_flush(struct nvmet_req *req);
+ void nvmet_ns_changed(struct nvmet_subsys *subsys, u32 nsid);
+-void nvmet_bdev_ns_revalidate(struct nvmet_ns *ns);
+-void nvmet_file_ns_revalidate(struct nvmet_ns *ns);
++bool nvmet_bdev_ns_revalidate(struct nvmet_ns *ns);
++bool nvmet_file_ns_revalidate(struct nvmet_ns *ns);
++bool nvmet_ns_revalidate(struct nvmet_ns *ns);
++
++bool nvmet_enable_ns_resize_monitor(void);
++bool nvmet_disable_ns_resize_monitor(void);
+ 
+ static inline u32 nvmet_rw_len(struct nvmet_req *req)
+ {
+-- 
+2.22.1
+

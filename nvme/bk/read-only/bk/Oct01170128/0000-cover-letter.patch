@@ -1,0 +1,33 @@
+From 425b256b85c41c3762e0281a6c332283f6ce9abb Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Wed, 30 Sep 2020 19:24:36 -0700
+Subject: [PATCH 0/3] nvmet: allow target to export readonly ns
+
+Hi,
+
+This patch series allows target to export the read-only ns. The first
+patch adds the new ns readonly configfs attr which user can set to make
+ns read-only.
+
+Last two patches allows user to open the ns in the read-only mode since
+by default we open the ns in read-write mode which will fail if ns
+device is set to read-only.
+
+Regards,
+Chaitanya
+
+Chaitanya Kulkarni (2):
+  nvmet: allow readonly bdev-ns to be configured
+  nvmet: allow readonly file-ns to be configured
+
+mruijter@primelogic.nl (1):
+  nvmet: allow user to set the ns readonly
+
+ drivers/nvme/target/configfs.c    | 29 +++++++++++++++++++++++++++++
+ drivers/nvme/target/io-cmd-bdev.c |  4 ++--
+ drivers/nvme/target/io-cmd-file.c |  2 +-
+ 3 files changed, 32 insertions(+), 3 deletions(-)
+
+-- 
+2.22.1
+

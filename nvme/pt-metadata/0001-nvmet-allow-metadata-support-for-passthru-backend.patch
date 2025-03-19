@@ -1,0 +1,107 @@
+From add89138ee61b77cbc1a8b4621218d6fdd034028 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Thu, 3 Sep 2020 19:48:32 -0700
+Subject: [PATCH] nvmet: allow metadata support for passthru backend
+
+---
+ drivers/nvme/target/io-cmd-bdev.c |  4 ++--
+ drivers/nvme/target/nvmet.h       |  2 ++
+ drivers/nvme/target/passthru.c    | 20 ++++++++++++++++++++
+ 3 files changed, 24 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/nvme/target/io-cmd-bdev.c b/drivers/nvme/target/io-cmd-bdev.c
+index 3dd6f566a240..6c2d9714aac8 100644
+--- a/drivers/nvme/target/io-cmd-bdev.c
++++ b/drivers/nvme/target/io-cmd-bdev.c
+@@ -170,7 +170,7 @@ static void nvmet_bio_done(struct bio *bio)
+ }
+ 
+ #ifdef CONFIG_BLK_DEV_INTEGRITY
+-static int nvmet_bdev_alloc_bip(struct nvmet_req *req, struct bio *bio,
++int nvmet_bdev_alloc_bip(struct nvmet_req *req, struct bio *bio,
+ 				struct sg_mapping_iter *miter)
+ {
+ 	struct blk_integrity *bi;
+@@ -217,7 +217,7 @@ static int nvmet_bdev_alloc_bip(struct nvmet_req *req, struct bio *bio,
+ 	return 0;
+ }
+ #else
+-static int nvmet_bdev_alloc_bip(struct nvmet_req *req, struct bio *bio,
++int nvmet_bdev_alloc_bip(struct nvmet_req *req, struct bio *bio,
+ 				struct sg_mapping_iter *miter)
+ {
+ 	return -EINVAL;
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index 47ee3fb193bd..75241150595c 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -599,4 +599,6 @@ static inline bool nvmet_ns_has_pi(struct nvmet_ns *ns)
+ 	return ns->pi_type && ns->metadata_size == sizeof(struct t10_pi_tuple);
+ }
+ 
++int nvmet_bdev_alloc_bip(struct nvmet_req *req, struct bio *bio,
++			 struct sg_mapping_iter *miter);
+ #endif /* _NVMET_H */
+diff --git a/drivers/nvme/target/passthru.c b/drivers/nvme/target/passthru.c
+index 8bd7f656e240..197f108db539 100644
+--- a/drivers/nvme/target/passthru.c
++++ b/drivers/nvme/target/passthru.c
+@@ -93,6 +93,7 @@ static u16 nvmet_passthru_override_id_ctrl(struct nvmet_req *req)
+ 				req->port->inline_data_size) / 16);
+ 	id->iorcsz = cpu_to_le32(sizeof(struct nvme_completion) / 16);
+ 
++	/* TODO PI related post processing here check the capsule size and PI */
+ 	id->msdbd = ctrl->ops->msdbd;
+ 
+ 	/* Support multipath connections with fabrics */
+@@ -122,6 +123,12 @@ static u16 nvmet_passthru_override_id_ns(struct nvmet_req *req)
+ 	if (status)
+ 		goto out_free;
+ 
++	/*
++	 * TODO : Do pi related post processing here
++	 *        1. Check if transport supports PI
++	 *        2. Check if ns is formatted with PI
++	 *        3. Clear the fields if above two are false
++	 */
+ 	for (i = 0; i < (id->nlbaf + 1); i++)
+ 		if (id->lbaf[i].ms)
+ 			memset(&id->lbaf[i], 0, sizeof(id->lbaf[i]));
+@@ -180,7 +187,9 @@ static void nvmet_passthru_req_done(struct request *rq,
+ 
+ static int nvmet_passthru_map_sg(struct nvmet_req *req, struct request *rq)
+ {
++	struct sg_mapping_iter prot_miter;
+ 	int sg_cnt = req->sg_cnt;
++	unsigned int iter_flags;
+ 	struct scatterlist *sg;
+ 	int op_flags = 0;
+ 	struct bio *bio;
+@@ -195,6 +204,9 @@ static int nvmet_passthru_map_sg(struct nvmet_req *req, struct request *rq)
+ 	bio->bi_end_io = bio_put;
+ 	bio->bi_opf = req_op(rq) | op_flags;
+ 
++	if (req->metadata_len)
++		sg_miter_start(&prot_miter, req->metadata_sg,
++			       req->metadata_sg_cnt, iter_flags);
+ 	for_each_sg(req->sg, sg, req->sg_cnt, i) {
+ 		if (bio_add_pc_page(rq->q, bio, sg_page(sg), sg->length,
+ 				    sg->offset) < sg->length) {
+@@ -204,6 +216,14 @@ static int nvmet_passthru_map_sg(struct nvmet_req *req, struct request *rq)
+ 		sg_cnt--;
+ 	}
+ 
++	if (req->metadata_len) {
++		ret = nvmet_bdev_alloc_bip(req, bio, &prot_miter);
++		if (unlikely(ret)) {
++			bio_io_error(bio);
++			return ret;
++		}
++	}
++
+ 	ret = blk_rq_append_bio(rq, &bio);
+ 	if (unlikely(ret)) {
+ 		bio_put(bio);
+-- 
+2.22.1
+

@@ -1,0 +1,9 @@
+#!/bin/bash
+
+NQN=$1
+
+echo 0 > /sys/kernel/config/nvmet/subsystems/${NQN}/namespaces/1/enable
+echo 0 > /sys/kernel/config/nvmet/subsystems/${NQN}/namespaces/1/use_poll
+echo 1 > /sys/kernel/config/nvmet/subsystems/${NQN}/namespaces/1/enable
+
+

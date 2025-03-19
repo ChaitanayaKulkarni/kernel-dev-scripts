@@ -1,0 +1,166 @@
+From 0dba299b02caec1428818b780d5914cd29ccfca2 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Fri, 19 May 2023 02:55:05 -0700
+Subject: [PATCH] nvme-core: init auth ctrl early
+
+Currently, nvme_auth_init_ctrl() is called at the end of the
+nvme_init_ctrl(). Prior to that call, we allocate the discard page,
+allocate ida get the controller reference, and add cdev(). None of these
+steps are required for the successful initialization of 
+nvme_auth_init_ctrl().
+
+The only non-nvme-auth properties accessed by nvme_auth_init_ctrl()
+in ctrl_max_dhchaps() are ctrl->opts->nr_io_queues,
+ctrl->opts->nr_write_queues, and ctrl->opts->nr_poll_queues that are
+set by transports.
+
+Ideally, we should avoid adding anything after device's addition to the
+the system that could result in failure, since current position of the
+nvme_auth_init_ctrl() adds more code in the error unwind path that can
+lead to potential bugs which can be avoided.
+
+Move nvme_auth_init_ctrl() call to the top of the function in the
+nvme_init_ctrl() since it allows us to make the error unwind path
+smaller that requires less debugging and maintenance.
+
+Note that the addition of the whiteline after return 0 is intentional.
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+
+Hi,
+
+Please note that this is not masking of the exiting problem that has
+been discussed earlier, but it is completely different idea to error
+out early before even allocating any resources to remove chunk of error
+unwind code path.
+
+blktests is passing with nvme-loop/nvme-tcp with this patch :-
+blktests (master) # sh test-nvme-memleack.sh
+################nvme_trtype=loop############
+nvme/002 (create many subsystems and test discovery)         [passed]
+nvme/003 (test if we're sending keep-alives to a discovery controller) [passed]
+nvme/004 (test nvme and nvmet UUID NS descriptors)           [passed]
+nvme/005 (reset local loopback target)                       [passed]
+nvme/006 (create an NVMeOF target with a block device-backed ns) [passed]
+nvme/007 (create an NVMeOF target with a file-backed ns)     [passed]
+nvme/008 (create an NVMeOF host with a block device-backed ns) [passed]
+nvme/009 (create an NVMeOF host with a file-backed ns)       [passed]
+nvme/010 (run data verification fio job on NVMeOF block device-backed ns) [passed]
+nvme/011 (run data verification fio job on NVMeOF file-backed ns) [passed]
+nvme/012 (run mkfs and data verification fio job on NVMeOF block device-backed ns) [passed]
+nvme/013 (run mkfs and data verification fio job on NVMeOF file-backed ns) [passed]
+nvme/014 (flush a NVMeOF block device-backed ns)             [passed]
+nvme/015 (unit test for NVMe flush for file backed ns)       [passed]
+nvme/016 (create/delete many NVMeOF block device-backed ns and test discovery) [passed]
+nvme/017 (create/delete many file-ns and test discovery)     [passed]
+nvme/018 (unit test NVMe-oF out of range access on a file backend) [passed]
+nvme/019 (test NVMe DSM Discard command on NVMeOF block-device ns) [passed]
+nvme/020 (test NVMe DSM Discard command on NVMeOF file-backed ns) [passed]
+nvme/021 (test NVMe list command on NVMeOF file-backed ns)   [passed]
+nvme/022 (test NVMe reset command on NVMeOF file-backed ns)  [passed]
+nvme/023 (test NVMe smart-log command on NVMeOF block-device ns) [passed]
+nvme/024 (test NVMe smart-log command on NVMeOF file-backed ns) [passed]
+nvme/025 (test NVMe effects-log command on NVMeOF file-backed ns) [passed]
+nvme/026 (test NVMe ns-descs command on NVMeOF file-backed ns) [passed]
+nvme/027 (test NVMe ns-rescan command on NVMeOF file-backed ns) [passed]
+nvme/028 (test NVMe list-subsys command on NVMeOF file-backed ns) [passed]
+nvme/029 (test userspace IO via nvme-cli read/write interface) [passed]
+nvme/030 (ensure the discovery generation counter is updated appropriately) [passed]
+nvme/031 (test deletion of NVMeOF controllers immediately after setup) [passed]
+nvme/038 (test deletion of NVMeOF subsystem without enabling) [passed]
+nvme/040 (test nvme fabrics controller reset/disconnect operation during I/O) [passed]
+nvme/041 (Create authenticated connections)                  [passed]
+nvme/042 (Test dhchap key types for authenticated connections) [passed]
+nvme/043 (Test hash and DH group variations for authenticated connections) [passed]
+nvme/044 (Test bi-directional authentication)                [passed]
+nvme/045 (Test re-authentication)                            [passed]
+nvme/047 (test different queue types for fabric transports)  [not run]
+    nvme_trtype=loop is not supported in this test
+nvme/048 (Test queue count changes on reconnect)             [not run]
+    nvme_trtype=loop is not supported in this test
+
+################nvme_trtype=tcp############
+nvme/002 (create many subsystems and test discovery)         [not run]
+    nvme_trtype=tcp is not supported in this test
+nvme/003 (test if we're sending keep-alives to a discovery controller) [passed]
+nvme/004 (test nvme and nvmet UUID NS descriptors)           [passed]
+nvme/005 (reset local loopback target)                       [passed]
+nvme/006 (create an NVMeOF target with a block device-backed ns) [passed]
+nvme/007 (create an NVMeOF target with a file-backed ns)     [passed]
+nvme/008 (create an NVMeOF host with a block device-backed ns) [passed]
+nvme/009 (create an NVMeOF host with a file-backed ns)       [passed]
+nvme/010 (run data verification fio job on NVMeOF block device-backed ns) [passed]
+nvme/011 (run data verification fio job on NVMeOF file-backed ns) [passed]
+nvme/012 (run mkfs and data verification fio job on NVMeOF block device-backed ns) [passed]
+nvme/013 (run mkfs and data verification fio job on NVMeOF file-backed ns) [passed]
+nvme/014 (flush a NVMeOF block device-backed ns)             [passed]
+nvme/015 (unit test for NVMe flush for file backed ns)       [passed]
+nvme/016 (create/delete many NVMeOF block device-backed ns and test discovery) [not run]
+    nvme_trtype=tcp is not supported in this test
+nvme/017 (create/delete many file-ns and test discovery)     [not run]
+    nvme_trtype=tcp is not supported in this test
+nvme/018 (unit test NVMe-oF out of range access on a file backend) [passed]
+nvme/019 (test NVMe DSM Discard command on NVMeOF block-device ns) [passed]
+nvme/020 (test NVMe DSM Discard command on NVMeOF file-backed ns) [passed]
+nvme/021 (test NVMe list command on NVMeOF file-backed ns)   [passed]
+nvme/022 (test NVMe reset command on NVMeOF file-backed ns)  [passed]
+nvme/023 (test NVMe smart-log command on NVMeOF block-device ns) [passed]
+nvme/024 (test NVMe smart-log command on NVMeOF file-backed ns) [passed]
+nvme/025 (test NVMe effects-log command on NVMeOF file-backed ns) [passed]
+nvme/026 (test NVMe ns-descs command on NVMeOF file-backed ns) [passed]
+nvme/027 (test NVMe ns-rescan command on NVMeOF file-backed ns) [passed]
+nvme/028 (test NVMe list-subsys command on NVMeOF file-backed ns) [passed]
+nvme/029 (test userspace IO via nvme-cli read/write interface) [passed]
+nvme/030 (ensure the discovery generation counter is updated appropriately) [passed]
+nvme/031 (test deletion of NVMeOF controllers immediately after setup) [passed]
+nvme/038 (test deletion of NVMeOF subsystem without enabling) [passed]
+nvme/040 (test nvme fabrics controller reset/disconnect operation during I/O) [passed]
+nvme/041 (Create authenticated connections)                  [passed]
+nvme/042 (Test dhchap key types for authenticated connections) [passed]
+nvme/043 (Test hash and DH group variations for authenticated connections) [passed]
+nvme/044 (Test bi-directional authentication)                [passed]
+nvme/045 (Test re-authentication)                            [passed]
+nvme/047 (test different queue types for fabric transports)  [passed]
+nvme/048 (Test queue count changes on reconnect)             [passed]
+
+-ck
+
+ drivers/nvme/host/core.c | 13 +++++--------
+ 1 file changed, 5 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index f586a4808e6e..a6487d67d2ac 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -4475,6 +4475,10 @@ int nvme_init_ctrl(struct nvme_ctrl *ctrl, struct device *dev,
+ {
+ 	int ret;
+ 
++	ret = nvme_auth_init_ctrl(ctrl);
++	if (ret)
++		return ret;
++
+ 	ctrl->state = NVME_CTRL_NEW;
+ 	clear_bit(NVME_CTRL_FAILFAST_EXPIRED, &ctrl->flags);
+ 	spin_lock_init(&ctrl->lock);
+@@ -4543,15 +4547,8 @@ int nvme_init_ctrl(struct nvme_ctrl *ctrl, struct device *dev,
+ 
+ 	nvme_fault_inject_init(&ctrl->fault_inject, dev_name(ctrl->device));
+ 	nvme_mpath_init_ctrl(ctrl);
+-	ret = nvme_auth_init_ctrl(ctrl);
+-	if (ret)
+-		goto out_free_cdev;
+-
+ 	return 0;
+-out_free_cdev:
+-	nvme_fault_inject_fini(&ctrl->fault_inject);
+-	dev_pm_qos_hide_latency_tolerance(ctrl->device);
+-	cdev_device_del(&ctrl->cdev, ctrl->device);
++
+ out_free_name:
+ 	nvme_put_ctrl(ctrl);
+ 	kfree_const(ctrl->device->kobj.name);
+-- 
+2.40.0
+

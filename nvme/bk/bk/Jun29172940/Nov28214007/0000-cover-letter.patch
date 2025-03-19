@@ -1,0 +1,35 @@
+From 85657bace062b54797c4b0dca740a2d45f9da73a Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Sat, 28 Nov 2020 21:05:40 -0800
+Subject: [PATCH V2 0/9] *** SUBJECT HERE ***
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+*** BLURB HERE ***
+
+Chaitanya Kulkarni (9):
+  block: export __bio_iov_append_get_pages()
+  nvmet: add ZNS support for bdev-ns
+  nvmet: trim down id-desclist to use req->ns
+  nvmet: add NVME_CSI_ZNS in ns-desc for zbdev
+  nvmet: add cns-cs-ctrl in id-ctrl for ZNS bdev
+  nvmet: add cns-cs-ns in id-ctrl for ZNS bdev
+  nvmet: add zns cmd effects to support zbdev
+  nvmet: add zns bdev config support
+  nvmet: add ZNS based I/O cmds handlers
+
+ block/bio.c                       |   3 +-
+ drivers/nvme/target/Makefile      |   2 +-
+ drivers/nvme/target/admin-cmd.c   |  38 ++-
+ drivers/nvme/target/io-cmd-bdev.c |  12 +
+ drivers/nvme/target/io-cmd-file.c |   2 +-
+ drivers/nvme/target/nvmet.h       |  19 ++
+ drivers/nvme/target/zns.c         | 473 ++++++++++++++++++++++++++++++
+ include/linux/bio.h               |   1 +
+ 8 files changed, 534 insertions(+), 16 deletions(-)
+ create mode 100644 drivers/nvme/target/zns.c
+
+-- 
+2.22.1
+

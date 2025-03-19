@@ -1,0 +1,204 @@
+From c927dc65ab3ae339be87b514e11140ddba67908d Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Tue, 1 Oct 2019 12:43:59 -0700
+Subject: [PATCH] block: add helpers to check wc and poll bits
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ block/blk-core.c                    | 5 ++---
+ block/blk-mq.c                      | 3 +--
+ block/blk-sysfs.c                   | 2 +-
+ block/blk-wbt.c                     | 2 +-
+ drivers/block/xen-blkback/xenbus.c  | 2 +-
+ drivers/md/raid5-cache.c            | 2 +-
+ drivers/md/raid5-ppl.c              | 5 +----
+ drivers/nvme/host/core.c            | 2 +-
+ drivers/target/target_core_iblock.c | 6 ++----
+ fs/btrfs/disk-io.c                  | 3 +--
+ include/linux/blkdev.h              | 4 ++++
+ 11 files changed, 16 insertions(+), 20 deletions(-)
+
+diff --git a/block/blk-core.c b/block/blk-core.c
+index d5e668ec751b..9b222a45d171 100644
+--- a/block/blk-core.c
++++ b/block/blk-core.c
+@@ -910,8 +910,7 @@ generic_make_request_checks(struct bio *bio)
+ 	 * drivers without flush support don't have to worry
+ 	 * about them.
+ 	 */
+-	if (op_is_flush(bio->bi_opf) &&
+-	    !test_bit(QUEUE_FLAG_WC, &q->queue_flags)) {
++	if (op_is_flush(bio->bi_opf) && !blk_queue_wc(q)) {
+ 		bio->bi_opf &= ~(REQ_PREFLUSH | REQ_FUA);
+ 		if (!nr_sectors) {
+ 			status = BLK_STS_OK;
+@@ -919,7 +918,7 @@ generic_make_request_checks(struct bio *bio)
+ 		}
+ 	}
+ 
+-	if (!test_bit(QUEUE_FLAG_POLL, &q->queue_flags))
++	if (!blk_queue_poll(q))
+ 		bio->bi_opf &= ~REQ_HIPRI;
+ 
+ 	switch (bio_op(bio)) {
+diff --git a/block/blk-mq.c b/block/blk-mq.c
+index 29275f5a996f..324082a355b4 100644
+--- a/block/blk-mq.c
++++ b/block/blk-mq.c
+@@ -3479,8 +3479,7 @@ int blk_poll(struct request_queue *q, blk_qc_t cookie, bool spin)
+ 	struct blk_mq_hw_ctx *hctx;
+ 	long state;
+ 
+-	if (!blk_qc_t_valid(cookie) ||
+-	    !test_bit(QUEUE_FLAG_POLL, &q->queue_flags))
++	if (!blk_qc_t_valid(cookie) || !blk_queue_poll(q))
+ 		return 0;
+ 
+ 	if (current->plug)
+diff --git a/block/blk-sysfs.c b/block/blk-sysfs.c
+index b82736c781c5..da0e2b87cca8 100644
+--- a/block/blk-sysfs.c
++++ b/block/blk-sysfs.c
+@@ -492,7 +492,7 @@ static ssize_t queue_wb_lat_store(struct request_queue *q, const char *page,
+ 
+ static ssize_t queue_wc_show(struct request_queue *q, char *page)
+ {
+-	if (test_bit(QUEUE_FLAG_WC, &q->queue_flags))
++	if (blk_queue_wc(q))
+ 		return sprintf(page, "write back\n");
+ 
+ 	return sprintf(page, "write through\n");
+diff --git a/block/blk-wbt.c b/block/blk-wbt.c
+index 8af553a0ba00..6eea91ff4a54 100644
+--- a/block/blk-wbt.c
++++ b/block/blk-wbt.c
+@@ -852,7 +852,7 @@ int wbt_init(struct request_queue *q)
+ 	rwb->min_lat_nsec = wbt_default_latency_nsec(q);
+ 
+ 	wbt_queue_depth_changed(&rwb->rqos);
+-	wbt_set_write_cache(q, test_bit(QUEUE_FLAG_WC, &q->queue_flags));
++	wbt_set_write_cache(q, blk_queue_wc(q));
+ 
+ 	return 0;
+ }
+diff --git a/drivers/block/xen-blkback/xenbus.c b/drivers/block/xen-blkback/xenbus.c
+index b90dbcd99c03..cdc112abdedd 100644
+--- a/drivers/block/xen-blkback/xenbus.c
++++ b/drivers/block/xen-blkback/xenbus.c
+@@ -479,7 +479,7 @@ static int xen_vbd_create(struct xen_blkif *blkif, blkif_vdev_t handle,
+ 		vbd->type |= VDISK_REMOVABLE;
+ 
+ 	q = bdev_get_queue(bdev);
+-	if (q && test_bit(QUEUE_FLAG_WC, &q->queue_flags))
++	if (q && blk_queue_wc(q))
+ 		vbd->flush_support = true;
+ 
+ 	if (q && blk_queue_secure_erase(q))
+diff --git a/drivers/md/raid5-cache.c b/drivers/md/raid5-cache.c
+index 9b6da759dca2..438d93b78626 100644
+--- a/drivers/md/raid5-cache.c
++++ b/drivers/md/raid5-cache.c
+@@ -3094,7 +3094,7 @@ int r5l_init_log(struct r5conf *conf, struct md_rdev *rdev)
+ 		return -ENOMEM;
+ 	log->rdev = rdev;
+ 
+-	log->need_cache_flush = test_bit(QUEUE_FLAG_WC, &q->queue_flags) != 0;
++	log->need_cache_flush = blk_queue_wc(q) != 0;
+ 
+ 	log->uuid_checksum = crc32c_le(~0, rdev->mddev->uuid,
+ 				       sizeof(rdev->mddev->uuid));
+diff --git a/drivers/md/raid5-ppl.c b/drivers/md/raid5-ppl.c
+index 18a4064a61a8..d5a25a68bf1a 100644
+--- a/drivers/md/raid5-ppl.c
++++ b/drivers/md/raid5-ppl.c
+@@ -1308,8 +1308,6 @@ static int ppl_validate_rdev(struct md_rdev *rdev)
+ 
+ static void ppl_init_child_log(struct ppl_log *log, struct md_rdev *rdev)
+ {
+-	struct request_queue *q;
+-
+ 	if ((rdev->ppl.size << 9) >= (PPL_SPACE_SIZE +
+ 				      PPL_HEADER_SIZE) * 2) {
+ 		log->use_multippl = true;
+@@ -1323,8 +1321,7 @@ static void ppl_init_child_log(struct ppl_log *log, struct md_rdev *rdev)
+ 	}
+ 	log->next_io_sector = rdev->ppl.sector;
+ 
+-	q = bdev_get_queue(rdev->bdev);
+-	if (test_bit(QUEUE_FLAG_WC, &q->queue_flags))
++	if (blk_queue_wc(bdev_get_queue(rdev->bdev)))
+ 		log->wb_cache_on = true;
+ }
+ 
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index fd7dea36c3b6..e35615940365 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -753,7 +753,7 @@ static void nvme_execute_rq_polled(struct request_queue *q,
+ {
+ 	DECLARE_COMPLETION_ONSTACK(wait);
+ 
+-	WARN_ON_ONCE(!test_bit(QUEUE_FLAG_POLL, &q->queue_flags));
++	WARN_ON_ONCE(!blk_queue_poll(q));
+ 
+ 	rq->cmd_flags |= REQ_HIPRI;
+ 	rq->end_io_data = &wait;
+diff --git a/drivers/target/target_core_iblock.c b/drivers/target/target_core_iblock.c
+index 6949ea8bc387..449cecf7d0a0 100644
+--- a/drivers/target/target_core_iblock.c
++++ b/drivers/target/target_core_iblock.c
+@@ -701,7 +701,7 @@ iblock_execute_rw(struct se_cmd *cmd, struct scatterlist *sgl, u32 sgl_nents,
+ 		if (test_bit(QUEUE_FLAG_FUA, &q->queue_flags)) {
+ 			if (cmd->se_cmd_flags & SCF_FUA)
+ 				op_flags = REQ_FUA;
+-			else if (!test_bit(QUEUE_FLAG_WC, &q->queue_flags))
++			else if (!blk_queue_wc(q))
+ 				op_flags = REQ_FUA;
+ 		}
+ 	} else {
+@@ -851,10 +851,8 @@ iblock_parse_cdb(struct se_cmd *cmd)
+ static bool iblock_get_write_cache(struct se_device *dev)
+ {
+ 	struct iblock_dev *ib_dev = IBLOCK_DEV(dev);
+-	struct block_device *bd = ib_dev->ibd_bd;
+-	struct request_queue *q = bdev_get_queue(bd);
+ 
+-	return test_bit(QUEUE_FLAG_WC, &q->queue_flags);
++	return blk_queue_wc(bdev_get_queue(ib_dev->ibd_bd));
+ }
+ 
+ static const struct target_backend_ops iblock_ops = {
+diff --git a/fs/btrfs/disk-io.c b/fs/btrfs/disk-io.c
+index 97beb351a10c..5b77d35c334d 100644
+--- a/fs/btrfs/disk-io.c
++++ b/fs/btrfs/disk-io.c
+@@ -3643,10 +3643,9 @@ static void btrfs_end_empty_barrier(struct bio *bio)
+  */
+ static void write_dev_flush(struct btrfs_device *device)
+ {
+-	struct request_queue *q = bdev_get_queue(device->bdev);
+ 	struct bio *bio = device->flush_bio;
+ 
+-	if (!test_bit(QUEUE_FLAG_WC, &q->queue_flags))
++	if (!blk_queue_wc(bdev_get_queue(device->bdev)))
+ 		return;
+ 
+ 	bio_reset(bio);
+diff --git a/include/linux/blkdev.h b/include/linux/blkdev.h
+index 6032bb740cf4..46bd6215dfb5 100644
+--- a/include/linux/blkdev.h
++++ b/include/linux/blkdev.h
+@@ -640,6 +640,10 @@ bool blk_queue_flag_test_and_set(unsigned int flag, struct request_queue *q);
+ #define blk_queue_discard(q)	test_bit(QUEUE_FLAG_DISCARD, &(q)->queue_flags)
+ #define blk_queue_zone_resetall(q)	\
+ 	test_bit(QUEUE_FLAG_ZONE_RESETALL, &(q)->queue_flags)
++#define blk_queue_wc(q)	\
++	test_bit(QUEUE_FLAG_WC, &(q)->queue_flags)
++#define blk_queue_poll(q)	\
++	test_bit(QUEUE_FLAG_POLL, &(q)->queue_flags)
+ #define blk_queue_secure_erase(q) \
+ 	(test_bit(QUEUE_FLAG_SECERASE, &(q)->queue_flags))
+ #define blk_queue_dax(q)	test_bit(QUEUE_FLAG_DAX, &(q)->queue_flags)
+-- 
+2.22.1
+

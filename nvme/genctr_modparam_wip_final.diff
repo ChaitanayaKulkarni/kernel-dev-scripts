@@ -1,0 +1,119 @@
+diff --git a/drivers/nvme/host/Kconfig b/drivers/nvme/host/Kconfig
+index dc0450ca23a3..3f0cf3e6d077 100644
+--- a/drivers/nvme/host/Kconfig
++++ b/drivers/nvme/host/Kconfig
+@@ -83,3 +83,13 @@ config NVME_TCP
+ 	  from https://github.com/linux-nvme/nvme-cli.
+ 
+ 	  If unsure, say N.
++
++menu "Debug (Enable driver debug features)"
++config NVME_DEBUG_USE_CID_GENCTR
++	bool "Enable command ID gen counter for spurious request completion"
++	depends on NVME_CORE
++	help
++	  The NVM Express driver will use generation conunter
++	  when calculating the command id. This is needed to debug the
++	  spurious request completions comming from a buggy controller.
++endmenu
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index 3c9f221379bd..7008cea69400 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -990,7 +990,6 @@ EXPORT_SYMBOL_GPL(nvme_cleanup_cmd);
+ blk_status_t nvme_setup_cmd(struct nvme_ns *ns, struct request *req)
+ {
+ 	struct nvme_command *cmd = nvme_req(req)->cmd;
+-	struct nvme_ctrl *ctrl = nvme_req(req)->ctrl;
+ 	blk_status_t ret = BLK_STS_OK;
+ 
+ 	if (!(req->rq_flags & RQF_DONTPREP))
+@@ -1037,8 +1036,6 @@ blk_status_t nvme_setup_cmd(struct nvme_ns *ns, struct request *req)
+ 		return BLK_STS_IOERR;
+ 	}
+ 
+-	if (!(ctrl->quirks & NVME_QUIRK_SKIP_CID_GEN))
+-		nvme_req(req)->genctr++;
+ 	cmd->common.command_id = nvme_cid(req);
+ 	trace_nvme_setup_cmd(req, cmd);
+ 	return ret;
+diff --git a/drivers/nvme/host/nvme.h b/drivers/nvme/host/nvme.h
+index b334af8aa264..cdf6e6e094fa 100644
+--- a/drivers/nvme/host/nvme.h
++++ b/drivers/nvme/host/nvme.h
+@@ -153,7 +153,9 @@ enum nvme_quirks {
+ struct nvme_request {
+ 	struct nvme_command	*cmd;
+ 	union nvme_result	result;
++#ifdef CONFIG_NVME_DEBUG_USE_CID_GENCTR
+ 	u8			genctr;
++#endif
+ 	u8			retries;
+ 	u8			flags;
+ 	u16			status;
+@@ -496,6 +498,7 @@ struct nvme_ctrl_ops {
+ 	int (*get_address)(struct nvme_ctrl *ctrl, char *buf, int size);
+ };
+ 
++#ifdef CONFIG_NVME_DEBUG_USE_CID_GENCTR
+ /*
+  * nvme command_id is constructed as such:
+  * | xxxx | xxxxxxxxxxxx |
+@@ -508,6 +511,10 @@ struct nvme_ctrl_ops {
+ 
+ static inline u16 nvme_cid(struct request *rq)
+ {
++	/* only check quirk when CID GEN is enabled */
++	if (!(nvme_req(rq)->ctrl->quirks & NVME_QUIRK_SKIP_CID_GEN))
++		nvme_req(rq)->genctr++;
++
+ 	return nvme_cid_install_genctr(nvme_req(rq)->genctr) | rq->tag;
+ }
+ 
+@@ -520,10 +527,10 @@ static inline struct request *nvme_find_rq(struct blk_mq_tags *tags,
+ 
+ 	rq = blk_mq_tag_to_rq(tags, tag);
+ 	if (unlikely(!rq)) {
+-		pr_err("could not locate request for tag %#x\n",
+-			tag);
++		pr_err("could not locate request for tag %#x\n", tag);
+ 		return NULL;
+ 	}
++
+ 	if (unlikely(nvme_genctr_mask(nvme_req(rq)->genctr) != genctr)) {
+ 		dev_err(nvme_req(rq)->ctrl->device,
+ 			"request %#x genctr mismatch (got %#x expected %#x)\n",
+@@ -538,6 +545,33 @@ static inline struct request *nvme_cid_to_rq(struct blk_mq_tags *tags,
+ {
+ 	return blk_mq_tag_to_rq(tags, nvme_tag_from_cid(command_id));
+ }
++#else
++#define nvme_tag_from_cid(cid)			(cid)
++static inline u16 nvme_cid(struct request *rq)
++{
++	return rq->tag;
++}
++
++static inline struct request *nvme_cid_to_rq(struct blk_mq_tags *tags,
++                u16 command_id)
++{
++	return blk_mq_tag_to_rq(tags, command_id);
++}
++
++static inline struct request *nvme_find_rq(struct blk_mq_tags *tags,
++		u16 command_id)
++{
++	u16 tag = nvme_tag_from_cid(command_id);
++	struct request *rq;
++
++	rq = blk_mq_tag_to_rq(tags, tag);
++	if (unlikely(!rq))
++		pr_err("could not locate request for tag %#x\n", tag);
++
++	return rq;
++}
++#endif /* CONFIG_NVME_DEBUG_USE_CID_GENCTR */
++
+ 
+ #ifdef CONFIG_FAULT_INJECTION_DEBUG_FS
+ void nvme_fault_inject_init(struct nvme_fault_inject *fault_inj,

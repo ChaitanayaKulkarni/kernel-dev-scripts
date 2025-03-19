@@ -1,0 +1,266 @@
+diff --git a/drivers/nvme/host/ioctl.c b/drivers/nvme/host/ioctl.c
+index aaf3dfad2657..541ae779a9ce 100644
+--- a/drivers/nvme/host/ioctl.c
++++ b/drivers/nvme/host/ioctl.c
+@@ -188,6 +188,11 @@ static int nvme_submit_io(struct nvme_ns *ns, struct nvme_user_io __user *uio)
+ 			false);
+ }
+ 
++bool nvme_is_flush_all_cmd(struct nvme_passthru_cmd *cmd)
++{
++	return cmd->opcode == nvme_cmd_flush && cmd->nsid == 0xffffffff;
++}
++
+ static bool nvme_validate_passthru_nsid(struct nvme_ctrl *ctrl,
+ 					struct nvme_ns *ns, __u32 nsid)
+ {
+@@ -217,8 +222,13 @@ static int nvme_user_cmd(struct nvme_ctrl *ctrl, struct nvme_ns *ns,
+ 		return -EFAULT;
+ 	if (cmd.flags)
+ 		return -EINVAL;
+-	if (!nvme_validate_passthru_nsid(ctrl, ns, cmd.nsid))
++
++	pr_info("%s %d ns == %s\n", __func__, __LINE__, ns == NULL ? "NULL" : "NOT NULL");
++	pr_info("nsid 0x%x\n", cmd.nsid);
++	if (!nvme_is_flush_all_cmd(&cmd) &&
++	    !nvme_validate_passthru_nsid(ctrl, ns, cmd.nsid))
+ 		return -EINVAL;
++	pr_info("%s %d\n", __func__, __LINE__);
+ 
+ 	memset(&c, 0, sizeof(c));
+ 	c.common.opcode = cmd.opcode;
+@@ -478,6 +488,7 @@ static int nvme_dev_user_cmd(struct nvme_ctrl *ctrl, void __user *argp)
+ 	kref_get(&ns->kref);
+ 	up_read(&ctrl->namespaces_rwsem);
+ 
++	pr_info("%s %d ns == %s\n", __func__, __LINE__, ns == NULL ? "NULL" : "NOT NULL");
+ 	ret = nvme_user_cmd(ctrl, ns, argp);
+ 	nvme_put_ns(ns);
+ 	return ret;
+@@ -495,10 +506,12 @@ long nvme_dev_ioctl(struct file *file, unsigned int cmd,
+ 
+ 	switch (cmd) {
+ 	case NVME_IOCTL_ADMIN_CMD:
++		pr_info("%s %d\n", __func__, __LINE__);
+ 		return nvme_user_cmd(ctrl, NULL, argp);
+ 	case NVME_IOCTL_ADMIN64_CMD:
+ 		return nvme_user_cmd64(ctrl, NULL, argp, false);
+ 	case NVME_IOCTL_IO_CMD:
++		pr_info("%s %d\n", __func__, __LINE__);
+ 		return nvme_dev_user_cmd(ctrl, argp);
+ 	case NVME_IOCTL_RESET:
+ 		dev_warn(ctrl->device, "resetting controller\n");
+diff --git a/drivers/nvme/target/core.c b/drivers/nvme/target/core.c
+index 92af37d33ec3..bf65d7c70fbc 100644
+--- a/drivers/nvme/target/core.c
++++ b/drivers/nvme/target/core.c
+@@ -860,17 +860,52 @@ static inline u16 nvmet_io_cmd_check_access(struct nvmet_req *req)
+ 	return 0;
+ }
+ 
++static void nvmet_flush_all_work(struct work_struct *w)
++{
++	struct nvmet_req *req = container_of(w, struct nvmet_req, f.work);
++	u16 status = NVME_SC_SUCCESS;
++
++	pr_info("%s %d\n", __func__, __LINE__);
++	if (!nvmet_check_transfer_len(req, 0))
++		goto out;
++	pr_info("%s %d\n", __func__, __LINE__);
++	status = nvmet_bdev_execute_flush_all(req);
++
++	pr_info("%s %d\n", __func__, __LINE__);
++	if (!status)
++		status = nvmet_file_execute_flush_all(req);
++	pr_info("%s %d\n", __func__, __LINE__);
++out:
++	nvmet_req_complete(req, status);
++}
++
++static void nvmet_execute_flush_all(struct nvmet_req *req)
++{
++	pr_info("%s %d\n", __func__, __LINE__);
++	INIT_WORK(&req->f.work, nvmet_flush_all_work);
++	schedule_work(&req->f.work);
++}
++
+ static u16 nvmet_parse_io_cmd(struct nvmet_req *req)
+ {
+ 	u16 ret;
+ 
++	pr_info("%s %d\n", __func__, __LINE__);
+ 	ret = nvmet_check_ctrl_status(req);
+ 	if (unlikely(ret))
+ 		return ret;
+ 
++	pr_info("%s %d\n", __func__, __LINE__);
+ 	if (nvmet_is_passthru_req(req))
+ 		return nvmet_parse_passthru_io_cmd(req);
+ 
++	pr_info("%s %d\n", __func__, __LINE__);
++	if (unlikely(nvmet_cmd_flush_all(req))) {
++		pr_info("%s %d\n", __func__, __LINE__);
++		req->execute = nvmet_execute_flush_all;
++		return NVME_SC_SUCCESS;
++	}
++
+ 	ret = nvmet_req_find_ns(req);
+ 	if (unlikely(ret))
+ 		return ret;
+diff --git a/drivers/nvme/target/io-cmd-bdev.c b/drivers/nvme/target/io-cmd-bdev.c
+index e9194804ddee..6bd565363f34 100644
+--- a/drivers/nvme/target/io-cmd-bdev.c
++++ b/drivers/nvme/target/io-cmd-bdev.c
+@@ -180,6 +180,16 @@ static void nvmet_bio_done(struct bio *bio)
+ {
+ 	struct nvmet_req *req = bio->bi_private;
+ 
++
++	if (unlikely(nvmet_cmd_flush_all(req))) {
++		/*
++		 * flush all uses inline bio so need to bio put and caller
++		 * completes nvmet_req so no need for nvmet_req_complete().
++		 */
++		complete(&req->b.complete);
++		return;
++	}
++
+ 	nvmet_req_complete(req, blk_to_nvme_status(req, bio->bi_status));
+ 	nvmet_req_bio_put(req, bio);
+ }
+@@ -328,19 +338,55 @@ static void nvmet_bdev_execute_rw(struct nvmet_req *req)
+ 	blk_finish_plug(&plug);
+ }
+ 
+-static void nvmet_bdev_execute_flush(struct nvmet_req *req)
++void nvmet_bdev_submit_flush_bio(struct nvmet_req *req)
+ {
+ 	struct bio *bio = &req->b.inline_bio;
+ 
+-	if (!nvmet_check_transfer_len(req, 0))
+-		return;
+-
+ 	bio_init(bio, req->ns->bdev, req->inline_bvec,
+ 		 ARRAY_SIZE(req->inline_bvec), REQ_OP_WRITE | REQ_PREFLUSH);
+ 	bio->bi_private = req;
+ 	bio->bi_end_io = nvmet_bio_done;
+ 
+-	submit_bio(bio);
++}
++
++u16 nvmet_bdev_execute_flush_all(struct nvmet_req *req)
++{
++	struct nvmet_subsys *subsys = req->sq->ctrl->subsys;
++	u16 status = NVME_SC_SUCCESS;
++	struct nvmet_ns *ns;
++	unsigned long idx;
++
++	init_completion(&req->b.complete);
++
++	xa_for_each(&subsys->namespaces, idx, ns) {
++		if (!ns->bdev)
++			continue;
++		pr_info("%s %d ns->nsid %d\n", __func__, __LINE__, ns->nsid);
++		percpu_ref_get(&ns->ref);
++		req->ns = ns;
++
++		nvmet_bdev_submit_flush_bio(req);
++		wait_for_completion(&req->b.complete);
++
++		percpu_ref_put(&ns->ref);
++		req->ns = NULL;
++
++		if (req->b.inline_bio.bi_status) {
++			status = NVME_SC_INTERNAL | NVME_SC_DNR;
++			break;
++		}
++
++		reinit_completion(&req->b.complete);
++	}
++	return status;
++}
++
++static void nvmet_bdev_execute_flush(struct nvmet_req *req)
++{
++	if (!nvmet_check_transfer_len(req, 0))
++		return;
++
++	nvmet_bdev_submit_flush_bio(req);
+ }
+ 
+ u16 nvmet_bdev_flush(struct nvmet_req *req)
+diff --git a/drivers/nvme/target/io-cmd-file.c b/drivers/nvme/target/io-cmd-file.c
+index 6485dc8eb974..60b01391d05b 100644
+--- a/drivers/nvme/target/io-cmd-file.c
++++ b/drivers/nvme/target/io-cmd-file.c
+@@ -266,6 +266,36 @@ static void nvmet_file_execute_rw(struct nvmet_req *req)
+ 		nvmet_file_execute_io(req, 0);
+ }
+ 
++u16 nvmet_file_execute_flush_all(struct nvmet_req *req)
++{
++	struct nvmet_subsys *subsys = req->sq->ctrl->subsys;
++	u16 status = NVME_SC_SUCCESS;
++	struct nvmet_ns *ns;
++	unsigned long idx;
++	int ret;
++
++	xa_for_each(&subsys->namespaces, idx, ns) {
++		if (!ns->file)
++			continue;
++		percpu_ref_get(&ns->ref);
++		req->ns = ns;
++		rcu_read_unlock();
++
++		pr_info("%s %d %u\n", __func__, __LINE__, ns->nsid);
++		ret = vfs_fsync(req->ns->file, 1);
++
++		rcu_read_lock();
++		percpu_ref_put(&ns->ref);
++		req->ns = NULL;
++
++		if (ret < 0) {
++			status = NVME_SC_INTERNAL | NVME_SC_DNR;
++			break;
++		}
++	}
++	return status;
++}
++
+ u16 nvmet_file_flush(struct nvmet_req *req)
+ {
+ 	return errno_to_nvme_status(req, vfs_fsync(req->ns->file, 1));
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index d910c6aad4b6..83e69430f75d 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -326,7 +326,8 @@ struct nvmet_req {
+ 	struct bio_vec		inline_bvec[NVMET_MAX_INLINE_BIOVEC];
+ 	union {
+ 		struct {
+-			struct bio      inline_bio;
++			struct bio		inline_bio;
++			struct completion	complete;
+ 		} b;
+ 		struct {
+ 			bool			mpool_alloc;
+@@ -542,6 +543,8 @@ u16 nvmet_file_flush(struct nvmet_req *req);
+ void nvmet_ns_changed(struct nvmet_subsys *subsys, u32 nsid);
+ void nvmet_bdev_ns_revalidate(struct nvmet_ns *ns);
+ void nvmet_file_ns_revalidate(struct nvmet_ns *ns);
++u16 nvmet_bdev_execute_flush_all(struct nvmet_req *req);
++u16 nvmet_file_execute_flush_all(struct nvmet_req *req);
+ bool nvmet_ns_revalidate(struct nvmet_ns *ns);
+ u16 blk_to_nvme_status(struct nvmet_req *req, blk_status_t blk_sts);
+ 
+@@ -666,4 +669,10 @@ static inline void nvmet_req_bio_put(struct nvmet_req *req, struct bio *bio)
+ 		bio_put(bio);
+ }
+ 
++static inline int nvmet_cmd_flush_all(struct nvmet_req *req)
++{
++	return (req->cmd->common.opcode == nvme_cmd_flush) &&
++		(le32_to_cpu(req->cmd->rw.nsid) == 0xffffffff);
++}
++
+ #endif /* _NVMET_H */

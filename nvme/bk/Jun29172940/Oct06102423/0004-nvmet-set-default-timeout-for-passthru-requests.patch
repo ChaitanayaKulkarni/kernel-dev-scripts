@@ -1,0 +1,30 @@
+From 5c63df5bf8b59ce35e8fa8233ce6612dea04654a Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Thu, 3 Sep 2020 13:36:20 -0700
+Subject: [PATCH V4 4/7] nvmet: set default timeout for passthru requests
+
+In nvmet_passthru_execute_cmd() we don't set the default timeout values
+for passthru requests. Use the default values ro set the passthru
+request timeout.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/passthru.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/drivers/nvme/target/passthru.c b/drivers/nvme/target/passthru.c
+index 56c571052216..9f9ab5665dd2 100644
+--- a/drivers/nvme/target/passthru.c
++++ b/drivers/nvme/target/passthru.c
+@@ -242,6 +242,8 @@ static void nvmet_passthru_execute_cmd(struct nvmet_req *req)
+ 		goto out_put_ns;
+ 	}
+ 
++	rq->timeout = q->queuedata ? NVME_IO_TIMEOUT : ADMIN_TIMEOUT;
++
+ 	if (req->sg_cnt) {
+ 		ret = nvmet_passthru_map_sg(req, rq);
+ 		if (unlikely(ret)) {
+-- 
+2.22.1
+

@@ -1,0 +1,43 @@
+From af137b6c63eb91fa297aaf703c57c263100cb6ba Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Fri, 21 Jan 2022 21:06:39 -0800
+Subject: [PATCH 1/4] nvme-fabrics: submit admin-connect request at tail
+
+The fabrics_q is only used for performing different operations such as
+nvmf_reg_read32(), nvmef_reg_read64(), nvmef_reg_write32() and
+nvmf_connect_adming_queue(). In current implementation we add admin
+connect request at the head of the fabrics queue for each admin
+connect command. submitting the request at the tail doesn't have any
+side effect as at most we will nvmf_reg_[read32|read64|write32] and
+admin connect commands in the fabrics queue as a part of controller
+build and destroy functionality.
+
+When I run the connect workload such as blktests/nvme/002 that creates
+many subsystems and connects each of them there is no performance
+difference observed with and without this patch.
+
+Change the admin-connect request submission to the tail instaed of head.
+It'll help us remove at_head paramater for the __nvme_submit_sync_cmd()
+so we can trim down really long function argument list.
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/host/fabrics.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/nvme/host/fabrics.c b/drivers/nvme/host/fabrics.c
+index 7ae041e2b3fb..8ce03cfd6c99 100644
+--- a/drivers/nvme/host/fabrics.c
++++ b/drivers/nvme/host/fabrics.c
+@@ -390,7 +390,7 @@ int nvmf_connect_admin_queue(struct nvme_ctrl *ctrl)
+ 	strncpy(data->hostnqn, ctrl->opts->host->nqn, NVMF_NQN_SIZE);
+ 
+ 	ret = __nvme_submit_sync_cmd(ctrl->fabrics_q, &cmd, &res,
+-			data, sizeof(*data), 0, NVME_QID_ANY, 1,
++			data, sizeof(*data), 0, NVME_QID_ANY, 0,
+ 			BLK_MQ_REQ_RESERVED | BLK_MQ_REQ_NOWAIT);
+ 	if (ret) {
+ 		nvmf_log_connect_error(ctrl, ret, le32_to_cpu(res.u32),
+-- 
+2.29.0
+

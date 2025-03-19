@@ -1,0 +1,65 @@
+From fa82a14072019a464632fbe792d77f8f8e0aff0d Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Thu, 17 Sep 2020 00:02:08 -0700
+Subject: [PATCH 4/7] block: move blk_rq_bio_prep() to linux/blk-mq.h
+
+This is a preparation patch to have minimal block layer request bio
+append functionality in the context of the NVMeOF Passthru driver which
+falls in the fast path and doesn't need calls from blk_rq_append_bio().
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Reviewed-by: Logan Gunthorpe <logang@deltatee.com>
+---
+ block/blk.h            | 12 ------------
+ include/linux/blk-mq.h | 12 ++++++++++++
+ 2 files changed, 12 insertions(+), 12 deletions(-)
+
+diff --git a/block/blk.h b/block/blk.h
+index 49e2928a1632..6f60b39fc6a8 100644
+--- a/block/blk.h
++++ b/block/blk.h
+@@ -91,18 +91,6 @@ static inline bool bvec_gap_to_prev(struct request_queue *q,
+ 	return __bvec_gap_to_prev(q, bprv, offset);
+ }
+ 
+-static inline void blk_rq_bio_prep(struct request *rq, struct bio *bio,
+-		unsigned int nr_segs)
+-{
+-	rq->nr_phys_segments = nr_segs;
+-	rq->__data_len = bio->bi_iter.bi_size;
+-	rq->bio = rq->biotail = bio;
+-	rq->ioprio = bio_prio(bio);
+-
+-	if (bio->bi_disk)
+-		rq->rq_disk = bio->bi_disk;
+-}
+-
+ #ifdef CONFIG_BLK_DEV_INTEGRITY
+ void blk_flush_integrity(void);
+ bool __bio_integrity_endio(struct bio *);
+diff --git a/include/linux/blk-mq.h b/include/linux/blk-mq.h
+index 9d2d5ad367a4..02b211e39b25 100644
+--- a/include/linux/blk-mq.h
++++ b/include/linux/blk-mq.h
+@@ -582,6 +582,18 @@ static inline void blk_mq_cleanup_rq(struct request *rq)
+ 		rq->q->mq_ops->cleanup_rq(rq);
+ }
+ 
++static inline void blk_rq_bio_prep(struct request *rq, struct bio *bio,
++		unsigned int nr_segs)
++{
++	rq->nr_phys_segments = nr_segs;
++	rq->__data_len = bio->bi_iter.bi_size;
++	rq->bio = rq->biotail = bio;
++	rq->ioprio = bio_prio(bio);
++
++	if (bio->bi_disk)
++		rq->rq_disk = bio->bi_disk;
++}
++
+ blk_qc_t blk_mq_submit_bio(struct bio *bio);
+ 
+ #endif
+-- 
+2.22.1
+

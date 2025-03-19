@@ -1,0 +1,23 @@
+From e16bff611610e04566f498983e6b554dd00c9c9e Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Tue, 18 Jan 2022 12:38:10 -0800
+Subject: [PATCH 0/3] *** SUBJECT HERE ***
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+*** BLURB HERE ***
+
+Chaitanya Kulkarni (3):
+  nvmet: add helper to set ns->blkshift value
+  nvmet: add helper to open block device
+  nvmet: allow bdev in buffered_io mode
+
+ drivers/nvme/target/io-cmd-bdev.c | 22 +++++++++++++--
+ drivers/nvme/target/io-cmd-file.c | 47 +++++++++++++++++++++++++------
+ drivers/nvme/target/nvmet.h       |  1 +
+ 3 files changed, 59 insertions(+), 11 deletions(-)
+
+-- 
+2.29.0
+

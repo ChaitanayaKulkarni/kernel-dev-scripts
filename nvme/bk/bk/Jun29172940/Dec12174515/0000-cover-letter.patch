@@ -1,0 +1,138 @@
+From 6ad121f46740b6c78b08c03650e84413d2daa24f Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Fri, 11 Dec 2020 22:32:20 -0800
+Subject: [PATCH V6 0/7] nvmet: add ZBD backend support
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Hi,
+
+NVMeOF Host is capable of handling the NVMe Protocol based Zoned Block
+Devices (ZBD) in the Zoned Namespaces (ZNS) mode with the passthru
+backend. There is no support for a generic block device backend to
+handle the ZBD devices which are not NVMe protocol compliant.
+
+This adds support to export the ZBDs (which are not NVMe drives) to host
+the from target via NVMeOF using the host side ZNS interface.
+
+The patch series is generated in bottom-top manner where, it first adds
+prep patch and ZNS command-specific handlers on the top of genblk and 
+updates the data structures, then one by one it wires up the admin cmds
+in the order host calls them in namespace initializing sequence. Once
+everything is ready, it wires-up the I/O command handlers. See below for
+patch-series overview.
+
+All the testcases are passing for the ZoneFS where ZBD exported with
+NVMeOF backed by null_blk ZBD and null_blk ZBD without NVMeOF. Adding
+test result below.
+
+Note: This patch-series is based on the earlier posted patch series :-
+
+[PATCH 0/4] nvmet: admin-cmd related cleanups and a fix
+
+http://lists.infradead.org/pipermail/linux-nvme/2020-December/021501.html
+
+Regards,
+Chaitanya
+
+Changes from V5:-
+
+1.  Add a prep patch to export nr_conv_zones and nr_seq_zones.
+2.  Add endianness to the helper nvmet_sect_to_lba().
+3.  Make bufsize u32 in zone mgmt recv command handler.
+4.  Add __GFP_ZERO for report zone data buffer to return clean buffer.
+5.  Use bio->bi_iter.bi_sector for result of the REQ_OP_ZONE_APPEND
+    command.
+
+Changes from V4:-
+
+1.  Don't use bio_iov_iter_get_pages() instead add a patch to export
+    bio_add_hw_page() and call it directly for zone append.
+2.  Add inline vector optimization for append bio.
+3.  Update the commit logs for the patches.
+4.  Remove ZNS related identify data structures, use individual members.
+5.  Add a comment for macro NVMET_MPSMIN_SHIFT.
+6.  Remove nvmet_bdev() helper.
+7.  Move the command set identifier code into common code.
+8.  Use IS_ENABLED() and move helpers fomr zns.c into common code.
+9.  Add a patch to support Command Set identifiers.
+10. Open code nvmet_bdev_validate_zns_zones().
+11. Remove the per namespace min zasl calculation and don't allow
+    namespaces with zasl value > the first ns zasl value.
+12. Move the stubs into the header file.
+13. Add lba to/from sector conversion helpers and update the
+    io-cmd-bdev.c to avoid the code duplication.
+14. Add everything into one patch for zns command handlers and 
+    respective calls from the target code.
+15. Remove the trim ns-desclist admin callback patch from this series.
+16. Add bio get and put helpers patches to reduce the duplicate code in
+    generic bdev, passthru, and generic zns backend.
+
+Changes from V3:-
+
+1.  Get rid of the bio_max_zasl check.
+2.  Remove extra lines.
+4.  Remove the block layer api export patch.
+5.  Remove the bvec check in the bio_iov_iter_get_pages() for
+    REQ_OP_ZONE_APPEND so that we can reuse the code.
+
+Changes from V2:-
+
+1.  Move conventional zone bitmap check into 
+    nvmet_bdev_validate_zns_zones(). 
+2.  Don't use report zones call to check the runt zone.
+3.  Trim nvmet_zasl() helper.
+4.  Fix typo in the nvmet_zns_update_zasl().
+5.  Remove the comment and fix the mdts calculation in
+    nvmet_execute_identify_cns_cs_ctrl().
+6.  Use u64 for bufsize in nvmet_bdev_execute_zone_mgmt_recv().
+7.  Remove nvmet_zones_to_desc_size() and fix the nr_zones
+    calculation.
+8.  Remove the op variable in nvmet_bdev_execute_zone_append().
+9.  Fix the nr_zones calculation nvmet_bdev_execute_zone_mgmt_recv().
+10. Update cover letter subject.
+
+Changes from V1:-
+
+1.  Remove the nvmet-$(CONFIG_BLK_DEV_ZONED) += zns.o.
+2.  Mark helpers inline.
+3.  Fix typos in the comments and update the comments.
+4.  Get rid of the curly brackets.
+5.  Don't allow drives with last smaller zones.
+6.  Calculate the zasl as a function of ax_zone_append_sectors,
+    bio_max_pages so we don't have to split the bio.
+7.  Add global subsys->zasl and update the zasl when new namespace
+    is enabled.
+8.  Rmove the loop in the nvmet_bdev_execute_zone_mgmt_recv() and
+    move functionality in to the report zone callback.
+9.  Add goto for default case in nvmet_bdev_execute_zone_mgmt_send().
+10. Allocate the zones buffer with zones size instead of bdev nr_zones.
+
+Chaitanya Kulkarni (7):
+  block: export bio_add_hw_pages()
+  block: add nr_conv_zones and nr_seq_zones helpers
+  nvmet: add lba to sect conversion helpers
+  nvmet: add NVM command set identifier support
+  nvmet: add ZBD over ZNS backend support
+  nvmet: add bio get helper for different backends
+  nvmet: add bio put helper for different backends
+
+ block/bio.c                       |   1 +
+ block/blk-sysfs.c                 |  14 ++
+ block/blk-zoned.c                 |   9 +
+ block/blk.h                       |   4 -
+ drivers/nvme/target/Makefile      |   1 +
+ drivers/nvme/target/admin-cmd.c   |  59 ++++--
+ drivers/nvme/target/core.c        |  14 +-
+ drivers/nvme/target/io-cmd-bdev.c |  51 +++--
+ drivers/nvme/target/nvmet.h       |  71 +++++++
+ drivers/nvme/target/passthru.c    |  11 +-
+ drivers/nvme/target/zns.c         | 318 ++++++++++++++++++++++++++++++
+ include/linux/blkdev.h            |  17 ++
+ 12 files changed, 522 insertions(+), 48 deletions(-)
+ create mode 100644 drivers/nvme/target/zns.c
+
+-- 
+2.22.1
+

@@ -1,0 +1,99 @@
+From 806dba8cd16cba830fdffc2a29e34fffaa6725fc Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Mon, 25 Apr 2022 15:25:09 -0700
+Subject: [PATCH 0/6] nvme: __nvme_submit_sync_command() cleanup
+
+The function __nvme_submit_sync_command() has unusually large number of
+arguments = 9 which is not a good practice for kernel code unless there
+is no other way to pass the parameters. Some of the arguments can be
+derived from other arguments with addition of the readable helpers.
+
+This patch series removes the unnecessary arguments from the function
+that also makes code easy to read, debug and clean.
+
+I've ran the blktetss on it seems to pass all the testcases.
+
+-ck
+
+Chaitanya Kulkarni (6):
+  nvme-core: remove unused timeout parameter
+  nvme-core: fix qid param blk_mq_alloc_request_hctx
+  nvme-core: remove qid parameter
+  nvme-core: remove flags parameter
+  nvme-core: remove at_head parameter
+  nvme-core: remove __nvme_submit_sync_cmd() wrapper
+
+ drivers/nvme/host/core.c    | 77 ++++++++++++++++++++++---------------
+ drivers/nvme/host/fabrics.c | 19 ++++-----
+ drivers/nvme/host/nvme.h    |  6 +--
+ drivers/nvme/host/pci.c     | 10 ++---
+ drivers/nvme/host/zns.c     |  7 ++--
+ 5 files changed, 64 insertions(+), 55 deletions(-)
+
+blktests (master) # ./check nvme
+nvme/002 (create many subsystems and test discovery)         [passed]
+    runtime  18.335s  ...  17.505s
+nvme/003 (test if we're sending keep-alives to a discovery controller) [passed]
+    runtime  10.161s  ...  10.148s
+nvme/004 (test nvme and nvmet UUID NS descriptors)           [passed]
+    runtime  1.425s  ...  1.426s
+nvme/005 (reset local loopback target)                       [passed]
+    runtime  6.787s  ...  6.792s
+nvme/006 (create an NVMeOF target with a block device-backed ns) [passed]
+    runtime  0.064s  ...  0.064s
+nvme/007 (create an NVMeOF target with a file-backed ns)     [passed]
+    runtime  0.040s  ...  0.037s
+nvme/008 (create an NVMeOF host with a block device-backed ns) [passed]
+    runtime  1.452s  ...  1.446s
+nvme/009 (create an NVMeOF host with a file-backed ns)       [passed]
+    runtime  1.419s  ...  1.417s
+nvme/010 (run data verification fio job on NVMeOF block device-backed ns) [passed]
+    runtime  8.211s  ...  8.465s
+nvme/011 (run data verification fio job on NVMeOF file-backed ns) [passed]
+    runtime  89.636s  ...  89.693s
+nvme/012 (run mkfs and data verification fio job on NVMeOF block device-backed ns) [passed]
+    runtime  12.262s  ...  12.105s
+nvme/013 (run mkfs and data verification fio job on NVMeOF file-backed ns) [passed]
+    runtime  94.582s  ...  93.287s
+nvme/014 (flush a NVMeOF block device-backed ns)             [passed]
+    runtime  8.874s  ...  8.822s
+nvme/015 (unit test for NVMe flush for file backed ns)       [passed]
+    runtime  8.729s  ...  8.823s
+nvme/016 (create/delete many NVMeOF block device-backed ns and test discovery) [passed]
+    runtime  13.717s  ...  13.188s
+nvme/017 (create/delete many file-ns and test discovery)     [passed]
+    runtime  13.664s  ...  13.869s
+nvme/018 (unit test NVMe-oF out of range access on a file backend) [passed]
+    runtime  1.427s  ...  1.453s
+nvme/019 (test NVMe DSM Discard command on NVMeOF block-device ns) [passed]
+    runtime  1.441s  ...  1.428s
+nvme/020 (test NVMe DSM Discard command on NVMeOF file-backed ns) [passed]
+    runtime  1.408s  ...  1.410s
+nvme/021 (test NVMe list command on NVMeOF file-backed ns)   [passed]
+    runtime  1.398s  ...  1.420s
+nvme/022 (test NVMe reset command on NVMeOF file-backed ns)  [passed]
+    runtime  6.722s  ...  6.742s
+nvme/023 (test NVMe smart-log command on NVMeOF block-device ns) [passed]
+    runtime  1.435s  ...  1.435s
+nvme/024 (test NVMe smart-log command on NVMeOF file-backed ns) [passed]
+    runtime  1.412s  ...  1.405s
+nvme/025 (test NVMe effects-log command on NVMeOF file-backed ns) [passed]
+    runtime  1.402s  ...  1.418s
+nvme/026 (test NVMe ns-descs command on NVMeOF file-backed ns) [passed]
+    runtime  1.399s  ...  1.418s
+nvme/027 (test NVMe ns-rescan command on NVMeOF file-backed ns) [passed]
+    runtime  1.418s  ...  1.423s
+nvme/028 (test NVMe list-subsys command on NVMeOF file-backed ns) [passed]
+    runtime  1.423s  ...  1.403s
+nvme/029 (test userspace IO via nvme-cli read/write interface) [passed]
+    runtime  1.535s  ...  1.537s
+nvme/030 (ensure the discovery generation counter is updated appropriately) [passed]
+    runtime  0.192s  ...  0.182s
+nvme/031 (test deletion of NVMeOF controllers immediately after setup) [passed]
+    runtime  53.736s  ...  53.779s
+nvme/038 (test deletion of NVMeOF subsystem without enabling) [passed]
+    runtime  0.017s  ...  0.019s
+
+-- 
+2.29.0
+

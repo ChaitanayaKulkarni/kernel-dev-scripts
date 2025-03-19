@@ -1,0 +1,255 @@
+diff --git a/drivers/nvme/host/apple.c b/drivers/nvme/host/apple.c
+index b1387dc459a3..e43c09e2be57 100644
+--- a/drivers/nvme/host/apple.c
++++ b/drivers/nvme/host/apple.c
+@@ -1584,7 +1584,7 @@ static int apple_nvme_resume(struct device *dev)
+ {
+ 	struct apple_nvme *anv = dev_get_drvdata(dev);
+ 
+-	return nvme_reset_ctrl(&anv->ctrl);
++	return nvme_reset_ctrl(&anv->ctrl) ? 0 : -EBUSY;
+ }
+ 
+ static int apple_nvme_suspend(struct device *dev)
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index 9e7e63e10e5a..b7ea586b1b51 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -153,13 +153,13 @@ void nvme_queue_scan(struct nvme_ctrl *ctrl)
+  * code paths that can't be interrupted by other reset attempts. A hot removal
+  * may prevent this from succeeding.
+  */
+-int nvme_try_sched_reset(struct nvme_ctrl *ctrl)
++bool nvme_try_sched_reset(struct nvme_ctrl *ctrl)
+ {
+ 	if (nvme_ctrl_state(ctrl) != NVME_CTRL_RESETTING)
+-		return -EBUSY;
++		return false;
+ 	if (!queue_work(nvme_reset_wq, &ctrl->reset_work))
+-		return -EBUSY;
+-	return 0;
++		return false;
++	return true;
+ }
+ EXPORT_SYMBOL_GPL(nvme_try_sched_reset);
+ 
+@@ -195,13 +195,13 @@ static inline void nvme_stop_failfast_work(struct nvme_ctrl *ctrl)
+ }
+ 
+ 
+-int nvme_reset_ctrl(struct nvme_ctrl *ctrl)
++bool nvme_reset_ctrl(struct nvme_ctrl *ctrl)
+ {
+ 	if (!nvme_change_ctrl_state(ctrl, NVME_CTRL_RESETTING))
+-		return -EBUSY;
++		return false;
+ 	if (!queue_work(nvme_reset_wq, &ctrl->reset_work))
+-		return -EBUSY;
+-	return 0;
++		return false;
++	return true;
+ }
+ EXPORT_SYMBOL_GPL(nvme_reset_ctrl);
+ 
+@@ -210,7 +210,7 @@ int nvme_reset_ctrl_sync(struct nvme_ctrl *ctrl)
+ 	int ret;
+ 
+ 	ret = nvme_reset_ctrl(ctrl);
+-	if (!ret) {
++	if (ret) {
+ 		flush_work(&ctrl->reset_work);
+ 		if (nvme_ctrl_state(ctrl) != NVME_CTRL_LIVE)
+ 			ret = -ENETRESET;
+@@ -3197,7 +3197,8 @@ static int nvme_init_effects(struct nvme_ctrl *ctrl, struct nvme_id_ctrl *id)
+ 	return 0;
+ }
+ 
+-static int nvme_check_ctrl_fabric_info(struct nvme_ctrl *ctrl, struct nvme_id_ctrl *id)
++static bool nvme_check_ctrl_fabric_info(struct nvme_ctrl *ctrl,
++					struct nvme_id_ctrl *id)
+ {
+ 	/*
+ 	 * In fabrics we need to verify the cntlid matches the
+@@ -3207,35 +3208,35 @@ static int nvme_check_ctrl_fabric_info(struct nvme_ctrl *ctrl, struct nvme_id_ct
+ 		dev_err(ctrl->device,
+ 			"Mismatching cntlid: Connect %u vs Identify %u, rejecting\n",
+ 			ctrl->cntlid, le16_to_cpu(id->cntlid));
+-		return -EINVAL;
++		return false;
+ 	}
+ 
+ 	if (!nvme_discovery_ctrl(ctrl) && !ctrl->kas) {
+ 		dev_err(ctrl->device,
+ 			"keep-alive support is mandatory for fabrics\n");
+-		return -EINVAL;
++		return false;
+ 	}
+ 
+ 	if (!nvme_discovery_ctrl(ctrl) && ctrl->ioccsz < 4) {
+ 		dev_err(ctrl->device,
+ 			"I/O queue command capsule supported size %d < 4\n",
+ 			ctrl->ioccsz);
+-		return -EINVAL;
++		return false;
+ 	}
+ 
+ 	if (!nvme_discovery_ctrl(ctrl) && ctrl->iorcsz < 1) {
+ 		dev_err(ctrl->device,
+ 			"I/O queue response capsule supported size %d < 1\n",
+ 			ctrl->iorcsz);
+-		return -EINVAL;
++		return false;
+ 	}
+ 
+ 	if (!ctrl->maxcmd) {
+ 		dev_err(ctrl->device, "Maximum outstanding commands is 0\n");
+-		return -EINVAL;
++		return false;
+ 	}
+ 
+-	return 0;
++	return true;
+ }
+ 
+ static int nvme_init_identify(struct nvme_ctrl *ctrl)
+@@ -3357,8 +3358,10 @@ static int nvme_init_identify(struct nvme_ctrl *ctrl)
+ 		ctrl->maxcmd = le16_to_cpu(id->maxcmd);
+ 
+ 		ret = nvme_check_ctrl_fabric_info(ctrl, id);
+-		if (ret)
++		if (!ret) {
++			ret = -EINVAL;
+ 			goto out_free;
++		}
+ 	} else {
+ 		ctrl->hmpre = le32_to_cpu(id->hmpre);
+ 		ctrl->hmmin = le32_to_cpu(id->hmmin);
+@@ -3500,7 +3503,7 @@ static struct nvme_ns_head *nvme_find_ns_head(struct nvme_ctrl *ctrl,
+ 	return NULL;
+ }
+ 
+-static int nvme_subsys_check_duplicate_ids(struct nvme_subsystem *subsys,
++static bool nvme_subsys_check_duplicate_ids(struct nvme_subsystem *subsys,
+ 		struct nvme_ns_ids *ids)
+ {
+ 	bool has_uuid = !uuid_is_null(&ids->uuid);
+@@ -3512,16 +3515,16 @@ static int nvme_subsys_check_duplicate_ids(struct nvme_subsystem *subsys,
+ 
+ 	list_for_each_entry(h, &subsys->nsheads, entry) {
+ 		if (has_uuid && uuid_equal(&ids->uuid, &h->ids.uuid))
+-			return -EINVAL;
++			return false;
+ 		if (has_nguid &&
+ 		    memcmp(&ids->nguid, &h->ids.nguid, sizeof(ids->nguid)) == 0)
+-			return -EINVAL;
++			return false;
+ 		if (has_eui64 &&
+ 		    memcmp(&ids->eui64, &h->ids.eui64, sizeof(ids->eui64)) == 0)
+-			return -EINVAL;
++			return false;
+ 	}
+ 
+-	return 0;
++	return true;
+ }
+ 
+ static void nvme_cdev_rel(struct device *dev)
+@@ -3667,8 +3670,10 @@ static int nvme_global_check_duplicate_ids(struct nvme_subsystem *this,
+ 		mutex_lock(&s->lock);
+ 		ret = nvme_subsys_check_duplicate_ids(s, ids);
+ 		mutex_unlock(&s->lock);
+-		if (ret)
++		if (!ret) {
++			ret = -EINVAL;
+ 			break;
++		}
+ 	}
+ 	mutex_unlock(&nvme_subsystems_lock);
+ 
+@@ -3723,10 +3728,11 @@ static int nvme_init_ns_head(struct nvme_ns *ns, struct nvme_ns_info *info)
+ 	head = nvme_find_ns_head(ctrl, info->nsid);
+ 	if (!head) {
+ 		ret = nvme_subsys_check_duplicate_ids(ctrl->subsys, &info->ids);
+-		if (ret) {
++		if (!ret) {
+ 			dev_err(ctrl->device,
+ 				"duplicate IDs in subsystem for nsid %d\n",
+ 				info->nsid);
++			ret = -EINVAL;
+ 			goto out_unlock;
+ 		}
+ 		head = nvme_alloc_ns_head(ctrl, info);
+diff --git a/drivers/nvme/host/fabrics.c b/drivers/nvme/host/fabrics.c
+index 432efcbf9e2f..d8924393f873 100644
+--- a/drivers/nvme/host/fabrics.c
++++ b/drivers/nvme/host/fabrics.c
+@@ -291,7 +291,7 @@ int nvmf_subsystem_reset(struct nvme_ctrl *ctrl)
+ 	if (ret)
+ 		return ret;
+ 
+-	return nvme_try_sched_reset(ctrl);
++	return nvme_try_sched_reset(ctrl) ? 0 : -EBUSY;
+ }
+ EXPORT_SYMBOL_GPL(nvmf_subsystem_reset);
+ 
+diff --git a/drivers/nvme/host/fc.c b/drivers/nvme/host/fc.c
+index b81af7919e94..2480c221caed 100644
+--- a/drivers/nvme/host/fc.c
++++ b/drivers/nvme/host/fc.c
+@@ -796,7 +796,7 @@ nvme_fc_ctrl_connectivity_loss(struct nvme_fc_ctrl *ctrl)
+ 		 * (max_retries * connect_delay) expires or the remoteport's
+ 		 * dev_loss_tmo expires.
+ 		 */
+-		if (nvme_reset_ctrl(&ctrl->ctrl)) {
++		if (nvme_reset_ctrl(&ctrl->ctrl) == false) {
+ 			dev_warn(ctrl->ctrl.device,
+ 				"NVME-FC{%d}: Couldn't schedule reset.\n",
+ 				ctrl->cnum);
+diff --git a/drivers/nvme/host/nvme.h b/drivers/nvme/host/nvme.h
+index 313a4f978a2c..ecf173b2b073 100644
+--- a/drivers/nvme/host/nvme.h
++++ b/drivers/nvme/host/nvme.h
+@@ -653,7 +653,7 @@ static inline void nvme_should_fail(struct request *req) {}
+ #endif
+ 
+ bool nvme_wait_reset(struct nvme_ctrl *ctrl);
+-int nvme_try_sched_reset(struct nvme_ctrl *ctrl);
++bool nvme_try_sched_reset(struct nvme_ctrl *ctrl);
+ 
+ static inline int nvme_reset_subsystem(struct nvme_ctrl *ctrl)
+ {
+@@ -894,7 +894,7 @@ int nvme_get_features(struct nvme_ctrl *dev, unsigned int fid,
+ 		      u32 *result);
+ int nvme_set_queue_count(struct nvme_ctrl *ctrl, int *count);
+ void nvme_stop_keep_alive(struct nvme_ctrl *ctrl);
+-int nvme_reset_ctrl(struct nvme_ctrl *ctrl);
++bool nvme_reset_ctrl(struct nvme_ctrl *ctrl);
+ int nvme_reset_ctrl_sync(struct nvme_ctrl *ctrl);
+ int nvme_delete_ctrl(struct nvme_ctrl *ctrl);
+ void nvme_queue_scan(struct nvme_ctrl *ctrl);
+diff --git a/drivers/nvme/host/pci.c b/drivers/nvme/host/pci.c
+index 7990c3f22ecf..6b9288a62d82 100644
+--- a/drivers/nvme/host/pci.c
++++ b/drivers/nvme/host/pci.c
+@@ -3247,7 +3247,7 @@ static int nvme_resume(struct device *dev)
+ 
+ 	return 0;
+ reset:
+-	return nvme_try_sched_reset(ctrl);
++	return nvme_try_sched_reset(ctrl) ? 0 : -EBUSY;
+ }
+ 
+ static int nvme_suspend(struct device *dev)
+diff --git a/drivers/nvme/target/pr.c b/drivers/nvme/target/pr.c
+index 5f3b9861533e..000c83fbda52 100644
+--- a/drivers/nvme/target/pr.c
++++ b/drivers/nvme/target/pr.c
+@@ -5,7 +5,7 @@
+  * All rights reserved.
+  */
+ #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
+-#include <linux/unaligned.h>
++#include <asm-generic/unaligned.h>
+ #include <linux/lockdep.h>
+ #include "nvmet.h"
+ 

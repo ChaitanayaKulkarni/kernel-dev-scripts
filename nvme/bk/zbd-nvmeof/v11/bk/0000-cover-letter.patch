@@ -1,0 +1,32 @@
+From 20d24cc079c3119b8550ad261c81cb64d0d01426 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Tue, 9 Mar 2021 21:14:03 -0800
+Subject: [PATCH V11 0/5] *** SUBJECT HERE ***
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+*** BLURB HERE ***
+
+Chaitanya Kulkarni (5):
+  nvmet: trim args for nvmet_copy_ns_identifier()
+  nvmet: add NVM Command Set Identifier support
+  nvmet: add ZBD over ZNS backend support
+  nvmet: add nvmet_req_bio put helper for backends
+  nvme: add comments to nvme_zns_alloc_report_buffer
+
+ drivers/nvme/host/zns.c           |  22 ++
+ drivers/nvme/target/Makefile      |   1 +
+ drivers/nvme/target/admin-cmd.c   | 111 ++++++++--
+ drivers/nvme/target/core.c        |  16 +-
+ drivers/nvme/target/io-cmd-bdev.c |  36 +++-
+ drivers/nvme/target/nvmet.h       |  45 ++++
+ drivers/nvme/target/passthru.c    |   3 +-
+ drivers/nvme/target/zns.c         | 327 ++++++++++++++++++++++++++++++
+ include/linux/nvme.h              |   1 +
+ 9 files changed, 527 insertions(+), 35 deletions(-)
+ create mode 100644 drivers/nvme/target/zns.c
+
+-- 
+2.22.1
+

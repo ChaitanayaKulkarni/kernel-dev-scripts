@@ -1,0 +1,1 @@
+/root/linux-block/zonefs_config.sh

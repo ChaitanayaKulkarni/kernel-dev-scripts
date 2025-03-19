@@ -1,0 +1,42 @@
+From 2825efdddd21911f6238e73fc38deb1399ec94b4 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Wed, 8 Nov 2023 00:52:31 -0800
+Subject: [PATCH V2] nvmet: remove superfluous initialization
+
+Remove superfluous initialization of status variable in
+nvmet_execute_admin_connect() and nvmet_execute_io_connect(), since it
+will get overwritten by nvmet_copy_from_sgl().
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+
+V2:- fix commit log and subject line (Christoph)
+
+ drivers/nvme/target/fabrics-cmd.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/nvme/target/fabrics-cmd.c b/drivers/nvme/target/fabrics-cmd.c
+index d8da840a1c0e..9964ffe347d2 100644
+--- a/drivers/nvme/target/fabrics-cmd.c
++++ b/drivers/nvme/target/fabrics-cmd.c
+@@ -209,7 +209,7 @@ static void nvmet_execute_admin_connect(struct nvmet_req *req)
+ 	struct nvmf_connect_command *c = &req->cmd->connect;
+ 	struct nvmf_connect_data *d;
+ 	struct nvmet_ctrl *ctrl = NULL;
+-	u16 status = 0;
++	u16 status;
+ 	int ret;
+ 
+ 	if (!nvmet_check_transfer_len(req, sizeof(struct nvmf_connect_data)))
+@@ -290,7 +290,7 @@ static void nvmet_execute_io_connect(struct nvmet_req *req)
+ 	struct nvmf_connect_data *d;
+ 	struct nvmet_ctrl *ctrl;
+ 	u16 qid = le16_to_cpu(c->qid);
+-	u16 status = 0;
++	u16 status;
+ 
+ 	if (!nvmet_check_transfer_len(req, sizeof(struct nvmf_connect_data)))
+ 		return;
+-- 
+2.40.0
+

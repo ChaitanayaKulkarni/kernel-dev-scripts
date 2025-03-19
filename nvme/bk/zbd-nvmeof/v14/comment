@@ -1,0 +1,6 @@
+
+	/*
+	 * The distinction of the error code is needed to make a controller
+	 * with ZBD backend ZNS compliant. In future when we add new ZBD error
+	 * coded to blk_status_t update here.
+	 */

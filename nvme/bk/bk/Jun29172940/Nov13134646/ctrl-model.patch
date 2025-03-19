@@ -1,0 +1,134 @@
+diff --git a/drivers/nvme/target/admin-cmd.c b/drivers/nvme/target/admin-cmd.c
+index 51800a9..1f6f7d9 100644
+--- a/drivers/nvme/target/admin-cmd.c
++++ b/drivers/nvme/target/admin-cmd.c
+@@ -287,9 +287,9 @@ out:
+ static void nvmet_execute_identify_ctrl(struct nvmet_req *req)
+ {
+ 	struct nvmet_ctrl *ctrl = req->sq->ctrl;
++	const char *model = ctrl->subsys->model;
+ 	struct nvme_id_ctrl *id;
+ 	u16 status = 0;
+-	const char model[] = "Linux";
+ 
+ 	id = kzalloc(sizeof(*id), GFP_KERNEL);
+ 	if (!id) {
+@@ -304,7 +304,7 @@ static void nvmet_execute_identify_ctrl(struct nvmet_req *req)
+ 	memset(id->sn, ' ', sizeof(id->sn));
+ 	bin2hex(id->sn, &ctrl->subsys->serial,
+ 		min(sizeof(ctrl->subsys->serial), sizeof(id->sn) / 2));
+-	memcpy_and_pad(id->mn, sizeof(id->mn), model, sizeof(model) - 1, ' ');
++	memcpy_and_pad(id->mn, sizeof(id->mn), model, strlen(model), ' ');
+ 	memcpy_and_pad(id->fr, sizeof(id->fr),
+ 		       UTS_RELEASE, strlen(UTS_RELEASE), ' ');
+ 
+diff --git a/drivers/nvme/target/configfs.c b/drivers/nvme/target/configfs.c
+index 98613a4..ef62853 100644
+--- a/drivers/nvme/target/configfs.c
++++ b/drivers/nvme/target/configfs.c
+@@ -862,10 +862,52 @@ static ssize_t nvmet_subsys_attr_serial_store(struct config_item *item,
+ }
+ CONFIGFS_ATTR(nvmet_subsys_, attr_serial);
+ 
++static ssize_t nvmet_subsys_attr_model_show(struct config_item *item,
++					    char *page)
++{
++	struct nvmet_subsys *subsys = to_subsys(item);
++
++	return snprintf(page, PAGE_SIZE, "%s\n", subsys->model);
++}
++
++static ssize_t nvmet_subsys_attr_model_store(struct config_item *item,
++					     const char *page, size_t count)
++{
++	struct nvmet_subsys *subsys = to_subsys(item);
++	int ret = -EINVAL, pos, len;
++	char c;
++
++	down_write(&nvmet_config_sem);
++	len = strcspn(page, "\n");
++	if (!len)
++		goto out_unlock;
++
++	/* Only 20h (space) until 7eh (~) is allowed */
++	for (pos = 0; pos < len; pos++) {
++		c = page[pos];
++		if (c < 0x20 || c > 0x7e)
++			goto out_unlock;
++	}
++
++	kfree(subsys->model);
++	subsys->model = kstrndup(page, len, GFP_KERNEL);
++	if (!subsys->model)
++		ret = -ENOMEM;
++	else
++		ret = count;
++
++out_unlock:
++	up_write(&nvmet_config_sem);
++	return ret;
++}
++
++CONFIGFS_ATTR(nvmet_subsys_, attr_model);
++
+ static struct configfs_attribute *nvmet_subsys_attrs[] = {
+ 	&nvmet_subsys_attr_attr_allow_any_host,
+ 	&nvmet_subsys_attr_attr_version,
+ 	&nvmet_subsys_attr_attr_serial,
++	&nvmet_subsys_attr_attr_model,
+ 	NULL,
+ };
+ 
+@@ -901,6 +943,7 @@ static struct config_group *nvmet_subsys_make(struct config_group *group,
+ 	}
+ 
+ 	subsys = nvmet_subsys_alloc(name, NVME_NQN_NVME);
++	subsys->model = kstrdup(NVMET_DEFAULT_CTRL_MODEL, GFP_KERNEL);
+ 	if (IS_ERR(subsys))
+ 		return ERR_CAST(subsys);
+ 
+diff --git a/drivers/nvme/target/core.c b/drivers/nvme/target/core.c
+index 3a67e24..5dc90ba 100644
+--- a/drivers/nvme/target/core.c
++++ b/drivers/nvme/target/core.c
+@@ -1418,6 +1418,12 @@ struct nvmet_subsys *nvmet_subsys_alloc(const char *subsysnqn,
+ 		kfree(subsys);
+ 		return ERR_PTR(-ENOMEM);
+ 	}
++	subsys->model = kstrdup(NVMET_DEFAULT_CTRL_MODEL, GFP_KERNEL);
++	if (!subsys->model) {
++		kfree(subsys->subsysnqn);
++		kfree(subsys);
++		return ERR_PTR(-ENOMEM);
++	}
+ 
+ 	kref_init(&subsys->ref);
+ 
+@@ -1437,6 +1443,7 @@ static void nvmet_subsys_free(struct kref *ref)
+ 	WARN_ON_ONCE(!list_empty(&subsys->namespaces));
+ 
+ 	kfree(subsys->subsysnqn);
++	kfree(subsys->model);
+ 	kfree(subsys);
+ }
+ 
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index c51f8dd..fd0d89a 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -23,6 +23,7 @@
+ #define NVMET_ASYNC_EVENTS		4
+ #define NVMET_ERROR_LOG_SLOTS		128
+ #define NVMET_NO_ERROR_LOC		((u16)-1)
++#define NVMET_DEFAULT_CTRL_MODEL       "Linux"
+ 
+ /*
+  * Supported optional AENs:
+@@ -222,6 +223,7 @@ struct nvmet_subsys {
+ 	u64			ver;
+ 	u64			serial;
+ 	char			*subsysnqn;
++	char			*model;
+ 
+ 	struct config_group	group;
+ 

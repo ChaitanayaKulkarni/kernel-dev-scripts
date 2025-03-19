@@ -1,0 +1,31 @@
+From 4d0ad4d4ca1027b6f7a5d5686dd069969b83cf02 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Sat, 22 Jan 2022 13:31:27 -0800
+Subject: [PATCH 4/8] nvme-loop: use helper to initialize connect_q
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/target/loop.c | 6 ++----
+ 1 file changed, 2 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/nvme/target/loop.c b/drivers/nvme/target/loop.c
+index eb1094254c82..23f9d6f88804 100644
+--- a/drivers/nvme/target/loop.c
++++ b/drivers/nvme/target/loop.c
+@@ -543,11 +543,9 @@ static int nvme_loop_create_io_queues(struct nvme_loop_ctrl *ctrl)
+ 	if (ret)
+ 		goto out_destroy_queues;
+ 
+-	ctrl->ctrl.connect_q = blk_mq_init_queue(&ctrl->tag_set);
+-	if (IS_ERR(ctrl->ctrl.connect_q)) {
+-		ret = PTR_ERR(ctrl->ctrl.connect_q);
++	ret = nvme_ctrl_init_connect_q(&(ctrl->ctrl));
++	if (ret)
+ 		goto out_free_tagset;
+-	}
+ 
+ 	ret = nvme_loop_connect_io_queues(ctrl);
+ 	if (ret)
+-- 
+2.29.0
+

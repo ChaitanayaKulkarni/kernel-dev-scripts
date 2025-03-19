@@ -1,0 +1,55 @@
+From fe8cd5963369d40f75698f88eb3a517d585c6c47 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Thu, 1 Oct 2020 19:44:00 -0700
+Subject: [PATCH V2 0/4] nvmet: allow target to export readonly ns
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Hi,
+
+This patch series allows the target to export the read-only ns. The first
+patch changes the type of the ns bool read-only attr to nvme_ns_wp_state
+write-protect so that we can store the state.
+
+The second patch adds the new ns write_protect configfs attr which user
+can set to make ns read-only, we don't allow user to change the 
+write-protect value when it is set from configfs.
+
+The last two patches allow the user to open the ns in the read-only mode since
+by default we open the ns in read-write mode which will fail if ns
+backend is set to read-only.
+
+Regards,
+Chaitanya
+
+* Changes from V1:-
+
+1. Add a prep patch to store the ns write protect state.
+2. Don't allow the host to change the ns-write-protect state when the state
+   is set from configfs to the NVME_NS_WRITE_PROTECT_PERMANENT.
+3. Change the ns bool type readonly to nvme_ns_wp_state type
+   write_protect.
+4. Update the id-ctrl field nwpc to inidicate support for write protection
+   permanent state and don't set the bit 1 of the replay protection block
+   Namesapce Write Protection Control so indicate any attempts of
+   set-feature cmd with permanent write protection ns value will fail.
+
+Chaitanya Kulkarni (4):
+  nvmet: change the type of the ns->readonly
+  nvmet: allow user to set the ns readonly
+  nvmet: allow readonly bdev-ns to be configured
+  nvmet: allow readonly file-ns to be configured
+
+ drivers/nvme/target/admin-cmd.c   | 36 ++++++++++++++++++++-----------
+ drivers/nvme/target/configfs.c    | 33 ++++++++++++++++++++++++++++
+ drivers/nvme/target/core.c        |  3 ++-
+ drivers/nvme/target/io-cmd-bdev.c |  4 ++--
+ drivers/nvme/target/io-cmd-file.c |  2 +-
+ drivers/nvme/target/nvmet.h       |  2 +-
+ include/linux/nvme.h              |  2 +-
+ 7 files changed, 64 insertions(+), 18 deletions(-)
+
+-- 
+2.22.1
+

@@ -1,0 +1,70 @@
+From 36c0df619becea3476d4f80460116453700c10af Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Tue, 7 Apr 2020 14:32:42 -0700
+Subject: [PATCH] ns-resize wip
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/core.c  | 19 +++++++++++++++++++
+ drivers/nvme/target/nvmet.h |  1 +
+ 2 files changed, 20 insertions(+)
+
+diff --git a/drivers/nvme/target/core.c b/drivers/nvme/target/core.c
+index b685f99d56a1..8617cc8ee74d 100644
+--- a/drivers/nvme/target/core.c
++++ b/drivers/nvme/target/core.c
+@@ -514,6 +514,18 @@ static void nvmet_p2pmem_ns_add_p2p(struct nvmet_ctrl *ctrl,
+ 		ns->nsid);
+ }
+ 
++static int nvmet_poll_thread(void *data)
++{
++	struct nvmet_poll_data *t = (struct nvmet_poll_data *) data;
++
++	while (!kthread_should_park()) {
++		schedule();
++	}
++
++	kthread_parkme();
++	return 0;
++}
++
+ int nvmet_ns_enable(struct nvmet_ns *ns)
+ {
+ 	struct nvmet_subsys *subsys = ns->subsys;
+@@ -572,6 +584,11 @@ int nvmet_ns_enable(struct nvmet_ns *ns)
+ 
+ 	nvmet_ns_changed(subsys, ns->nsid);
+ 	ns->enabled = true;
++
++	ns->resize_thread = kthread_create(nvmet_ns_resize_thread, ns,
++					  "nvmet_ns_resize%s/%d",
++					  ns->device_path, ns->nsid);
++	wake_up_process(ns->resize_thread);
+ 	ret = 0;
+ out_unlock:
+ 	mutex_unlock(&subsys->lock);
+@@ -593,6 +610,8 @@ void nvmet_ns_disable(struct nvmet_ns *ns)
+ 	if (!ns->enabled)
+ 		goto out_unlock;
+ 
++	kthread_park(ns->resize_thread);
++	kthread_stop(ns->resize_thread);
+ 	ns->enabled = false;
+ 	list_del_rcu(&ns->dev_link);
+ 	if (ns->nsid == subsys->max_nsid)
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index 8b479d932a7b..01dfe178995c 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -55,6 +55,7 @@ struct nvmet_ns {
+ 	struct percpu_ref	ref;
+ 	struct block_device	*bdev;
+ 	struct file		*file;
++	struct task_struct	*resize_thread;
+ 	bool			readonly;
+ 	u32			nsid;
+ 	u32			blksize_shift;
+-- 
+2.22.1
+

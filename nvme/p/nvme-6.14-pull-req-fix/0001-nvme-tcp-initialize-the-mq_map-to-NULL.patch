@@ -1,0 +1,35 @@
+From 8981462bf551afdbdeea1774882043b3f1bc89ee Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Wed, 8 Jan 2025 21:40:35 -0800
+Subject: [PATCH 1/2] nvme-tcp: initialize the mq_map to NULL
+
+Initialize the local variable mq_map to NULL to remove the kernel
+test robot warning.
+
+drivers/nvme/host/tcp.c:1594:13: warning: variable 'mq_map' is used
+uninitialized whenever 'if' condition is false [-Wsometimes-uninitialized]
+
+Fixes: bd0f5c103101 ("nvme-tcp: Fix I/O queue cpu spreading for multiple controllers")  
+Reported-by: kernel test robot <lkp@intel.com>
+Closes: https://lore.kernel.org/oe-kbuild-all/202501091328.r4kJ6xhy-lkp@intel.com/
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/host/tcp.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/nvme/host/tcp.c b/drivers/nvme/host/tcp.c
+index 544d6aa00cc3..d6a40b7dba73 100644
+--- a/drivers/nvme/host/tcp.c
++++ b/drivers/nvme/host/tcp.c
+@@ -1578,7 +1578,7 @@ static void nvme_tcp_set_queue_io_cpu(struct nvme_tcp_queue *queue)
+ 	struct nvme_tcp_ctrl *ctrl = queue->ctrl;
+ 	struct blk_mq_tag_set *set = &ctrl->tag_set;
+ 	int qid = nvme_tcp_queue_id(queue) - 1;
+-	unsigned int *mq_map;
++	unsigned int *mq_map = NULL;
+ 	int cpu, n = 0, min_queues = INT_MAX, io_cpu;
+ 
+ 	if (wq_unbound)
+-- 
+2.40.0
+

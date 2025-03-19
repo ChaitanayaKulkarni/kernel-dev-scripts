@@ -1,0 +1,67 @@
+From d3b01938aa8df0c81421f9da8349c7a6904a46dd Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Thu, 9 Dec 2021 14:16:10 -0800
+Subject: [PATCH V2 2/3] nvme-core: stub genctr quirk check into helper
+
+Move the quirk check in the fast into its own helper 
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/host/core.c |  4 +---
+ drivers/nvme/host/nvme.h | 11 +++++++++++
+ 2 files changed, 12 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index 3c9f221379bd..e4249ea35949 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -990,7 +990,6 @@ EXPORT_SYMBOL_GPL(nvme_cleanup_cmd);
+ blk_status_t nvme_setup_cmd(struct nvme_ns *ns, struct request *req)
+ {
+ 	struct nvme_command *cmd = nvme_req(req)->cmd;
+-	struct nvme_ctrl *ctrl = nvme_req(req)->ctrl;
+ 	blk_status_t ret = BLK_STS_OK;
+ 
+ 	if (!(req->rq_flags & RQF_DONTPREP))
+@@ -1037,8 +1036,7 @@ blk_status_t nvme_setup_cmd(struct nvme_ns *ns, struct request *req)
+ 		return BLK_STS_IOERR;
+ 	}
+ 
+-	if (!(ctrl->quirks & NVME_QUIRK_SKIP_CID_GEN))
+-		nvme_req(req)->genctr++;
++	nvme_increase_cid_genctr(req);
+ 	cmd->common.command_id = nvme_cid(req);
+ 	trace_nvme_setup_cmd(req, cmd);
+ 	return ret;
+diff --git a/drivers/nvme/host/nvme.h b/drivers/nvme/host/nvme.h
+index 98d7627cfdce..b326385b2134 100644
+--- a/drivers/nvme/host/nvme.h
++++ b/drivers/nvme/host/nvme.h
+@@ -509,6 +509,12 @@ struct nvme_ctrl_ops {
+ #define nvme_genctr_from_cid(cid)		((cid & 0xf000) >> 12)
+ #define nvme_tag_from_cid(cid)			(cid & 0xfff)
+ 
++static inline void nvme_increase_cid_genctr(struct request *rq)
++{
++	if (!(nvme_req(rq)->ctrl->quirks & NVME_QUIRK_SKIP_CID_GEN))
++		nvme_req(rq)->genctr++;
++}
++
+ static inline u16 nvme_cid(struct request *rq)
+ {
+ 	return nvme_cid_install_genctr(nvme_req(rq)->genctr) | rq->tag;
+@@ -543,6 +549,11 @@ static inline struct request *nvme_cid_to_rq(struct blk_mq_tags *tags,
+ }
+ #else
+ #define nvme_tag_from_cid(cid)			(cid)
++
++static inline void nvme_increase_cid_genctr(struct request *rq)
++{
++}
++
+ static inline u16 nvme_cid(struct request *rq)
+ {
+ 	return rq->tag;
+-- 
+2.29.0
+

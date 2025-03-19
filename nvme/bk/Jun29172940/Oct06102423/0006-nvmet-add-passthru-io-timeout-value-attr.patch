@@ -1,0 +1,123 @@
+From e2dad7671aadaf0ce60260aad47744f58bae0de1 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Wed, 30 Sep 2020 16:32:34 -0700
+Subject: [PATCH V4 6/7] nvmet: add passthru io timeout value attr
+
+NVMe controller in the passsthru mode is capable of handling wide set
+of admin commands including Vender unique passhtru I/O comands
+(VUICs).
+
+The VUICs can take longer than default NVMe commands, that is for
+passthru requests the timeout value may differ from the passthru
+controller's default timeout values (nvme-core:io_timeout).
+
+Add configfs attribute so that user can set the I/O timeout values.
+In case if this configfs value is not set default to NVME_IO_TIMEOUT
+value.
+
+This attribute setting is only allowed when ctrl is disable to avoid
+rcu calls in the fast path, in future when needed we can always make it
+fast path friendly using RCU.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/configfs.c | 34 ++++++++++++++++++++++++++++++++++
+ drivers/nvme/target/nvmet.h    |  1 +
+ drivers/nvme/target/passthru.c |  6 +++++-
+ 3 files changed, 40 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/nvme/target/configfs.c b/drivers/nvme/target/configfs.c
+index df83441ac46c..fa73966fa451 100644
+--- a/drivers/nvme/target/configfs.c
++++ b/drivers/nvme/target/configfs.c
+@@ -769,10 +769,44 @@ static ssize_t nvmet_passthru_admin_timeout_store(struct config_item *item,
+ }
+ CONFIGFS_ATTR(nvmet_passthru_, admin_timeout);
+ 
++static ssize_t nvmet_passthru_io_timeout_show(struct config_item *item,
++		char *page)
++{
++	struct nvmet_subsys *subsys = to_subsys(item->ci_parent);
++
++	return sprintf(page, "%u\n", to_subsys(item->ci_parent)->io_timeout);
++}
++
++static ssize_t nvmet_passthru_io_timeout_store(struct config_item *item,
++		const char *page, size_t count)
++{
++	struct nvmet_subsys *subsys = to_subsys(item->ci_parent);
++	unsigned int io_timeout;
++	int ret = 0;
++
++	mutex_lock(&subsys->lock);
++	if (subsys->passthru_ctrl) {
++		pr_err("disable passthru ctrl before setting io_timeout\n");
++		ret = -EINVAL;
++		goto out;
++	}
++
++	if (kstrtouint(page, 0, &io_timeout)) {
++		ret = -EINVAL;
++		goto out;
++	}
++	subsys->io_timeout = io_timeout;
++out:
++	mutex_unlock(&subsys->lock);
++	return ret ? ret : count;
++}
++CONFIGFS_ATTR(nvmet_passthru_, io_timeout);
++
+ static struct configfs_attribute *nvmet_passthru_attrs[] = {
+ 	&nvmet_passthru_attr_device_path,
+ 	&nvmet_passthru_attr_enable,
+ 	&nvmet_passthru_attr_admin_timeout,
++	&nvmet_passthru_attr_io_timeout,
+ 	NULL,
+ };
+ 
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index a0c80e5179a2..2f9635273629 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -250,6 +250,7 @@ struct nvmet_subsys {
+ 	char			*passthru_ctrl_path;
+ 	struct config_group	passthru_group;
+ 	unsigned int		admin_timeout;
++	unsigned int		io_timeout;
+ #endif /* CONFIG_NVME_TARGET_PASSTHRU */
+ };
+ 
+diff --git a/drivers/nvme/target/passthru.c b/drivers/nvme/target/passthru.c
+index 253ca2b6ed10..2039ad7cbbab 100644
+--- a/drivers/nvme/target/passthru.c
++++ b/drivers/nvme/target/passthru.c
+@@ -216,6 +216,7 @@ static int nvmet_passthru_map_sg(struct nvmet_req *req, struct request *rq)
+ static void nvmet_passthru_execute_cmd(struct nvmet_req *req)
+ {
+ 	unsigned int admin_timeout = req->sq->ctrl->subsys->admin_timeout;
++	unsigned int io_timeout = req->sq->ctrl->subsys->io_timeout;
+ 	struct nvme_ctrl *ctrl = nvmet_req_passthru_ctrl(req);
+ 	struct request_queue *q = ctrl->admin_q;
+ 	struct nvme_ns *ns = NULL;
+@@ -243,7 +244,7 @@ static void nvmet_passthru_execute_cmd(struct nvmet_req *req)
+ 		goto out_put_ns;
+ 	}
+ 
+-	rq->timeout = q->queuedata ? NVME_IO_TIMEOUT : admin_timeout;
++	rq->timeout = q->queuedata ? io_timeout : admin_timeout;
+ 
+ 	if (req->sg_cnt) {
+ 		ret = nvmet_passthru_map_sg(req, rq);
+@@ -545,6 +546,9 @@ int nvmet_passthru_ctrl_enable(struct nvmet_subsys *subsys)
+ 	if (!subsys->admin_timeout)
+ 		subsys->admin_timeout = ADMIN_TIMEOUT;
+ 
++	if (!subsys->io_timeout)
++		subsys->io_timeout = NVME_IO_TIMEOUT;
++
+ 	nvme_get_ctrl(ctrl);
+ 	__module_get(subsys->passthru_ctrl->ops->module);
+ 	ret = 0;
+-- 
+2.22.1
+

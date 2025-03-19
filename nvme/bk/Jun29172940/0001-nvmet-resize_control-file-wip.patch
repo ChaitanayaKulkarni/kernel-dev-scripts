@@ -1,0 +1,158 @@
+From 43d6bb10ad22528a9ede2a68af22608d75819994 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Thu, 9 Apr 2020 17:18:34 -0700
+Subject: [PATCH] nvmet: resize_control file wip
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/configfs.c | 103 ++++++++++++++++++++++++++++++++-
+ drivers/nvme/target/nvmet.h    |  13 +++++
+ 2 files changed, 113 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/nvme/target/configfs.c b/drivers/nvme/target/configfs.c
+index 58cabd7b6fc5..dc1f9798b944 100644
+--- a/drivers/nvme/target/configfs.c
++++ b/drivers/nvme/target/configfs.c
+@@ -1425,15 +1425,112 @@ static const struct config_item_type nvmet_hosts_type = {
+ 
+ static struct config_group nvmet_hosts_group;
+ 
+-static const struct config_item_type nvmet_root_type = {
+-	.ct_owner		= THIS_MODULE,
++static void nvmet_control_release(struct config_item *item)
++{
++	struct nvmet_control *control = to_nvmet_control(item);
++
++	kfree(control);
++	pr_info("%s %d\n", __func__, __LINE__);
++	/* stop attr */
++}
++
++static struct configfs_item_operations nvmet_control_ops = {
++	.release	= nvmet_control_release,
++};
++
++static const struct config_item_type nvmet_control_type = {
++	.ct_item_ops	= &nvmet_control_ops,
++	.ct_owner	= THIS_MODULE,
++};
++
++static struct
++config_item *nvmet_control_group_make_item(struct config_group *group, const char *name)
++{
++	struct nvmet_control *control = kmalloc(sizeof(*control), GFP_KERNEL);;
++
++	pr_info("%s %d\n", __func__, __LINE__);
++	if (!control)
++		return ERR_PTR(-ENOMEM);
++
++	config_item_init_type_name(&control->item, name, &nvmet_control_type);
++
++	return &control->item;
++}
++
++static void
++nvmet_control_group_drop_item(struct config_group *group, struct config_item *item)
++{
++	struct nvmet_control *control = to_nvmet_control(item);
++
++	pr_info("%s %d\n", __func__, __LINE__);
++	config_item_put(item);
++}
++
++static inline ssize_t nvmet_control_bool_attr_show(bool val, char *page)
++{
++	pr_info("%s %d\n", __func__, __LINE__);
++	return snprintf(page, PAGE_SIZE, "%u\n", val);
++}
++
++static ssize_t nvmet_control_bool_attr_store(bool *val, const char *page,
++	size_t count)
++{
++	bool tmp;
++	int result;
++
++	pr_info("%s %d\n", __func__, __LINE__);
++	result = kstrtobool(page,  &tmp);
++	if (result < 0)
++		return result;
++
++	*val = tmp;
++	return count;
++}
++
++static ssize_t nvmet_control_group_resize_refresh_show(struct config_item *item, char *page)
++{
++	pr_info("%s %d\n", __func__, __LINE__);
++	return nvmet_control_bool_attr_show(to_nvmet_control(item)->power, page);
++}
++
++static ssize_t nvmet_control_group_resize_refresh_store(struct config_item *item,
++				     const char *page, size_t count)
++{
++	struct nvmet_control *control = to_nvmet_control(item);
++	bool newp = false;
++	ssize_t ret;
++
++	pr_info("%s %d\n", __func__, __LINE__);
++	ret = nvmet_control_bool_attr_store(&newp, page, count);
++	if (ret < 0)
++		return ret;
++
++	return count;
++}
++
++CONFIGFS_ATTR(nvmet_control_group_, resize_refresh);
++
++static struct configfs_attribute *nvmet_control_group_attrs[] = {
++	&nvmet_control_group_attr_resize_refresh,
++	NULL,
++};
++
++static struct configfs_group_operations nvmet_control_group_ops = {
++	.make_item	= nvmet_control_group_make_item,
++	.drop_item	= nvmet_control_group_drop_item,
++};
++
++static const struct config_item_type nvmet_control_group_type = {
++	.ct_group_ops	= &nvmet_control_group_ops,
++	.ct_attrs	= nvmet_control_group_attrs,
++	.ct_owner	= THIS_MODULE,
+ };
+ 
+ static struct configfs_subsystem nvmet_configfs_subsystem = {
+ 	.su_group = {
+ 		.cg_item = {
+ 			.ci_namebuf	= "nvmet",
+-			.ci_type	= &nvmet_root_type,
++			.ci_type	= &nvmet_control_group_type,
+ 		},
+ 	},
+ };
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index b0e43c06ada5..12ebdd1e0c87 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -50,6 +50,19 @@
+ #define IPO_IATTR_CONNECT_SQE(x)	\
+ 	(cpu_to_le32(offsetof(struct nvmf_connect_command, x)))
+ 
++
++struct nvmet_control {
++	bool 			enable;
++	bool 			power;
++	struct config_item	item;
++	struct config_group	group;
++};
++
++static inline struct nvmet_control *to_nvmet_control(struct config_item *item)
++{
++	return container_of(to_config_group(item), struct nvmet_control, group);
++}
++
+ struct nvmet_ns {
+ 	struct list_head	dev_link;
+ 	struct percpu_ref	ref;
+-- 
+2.22.1
+

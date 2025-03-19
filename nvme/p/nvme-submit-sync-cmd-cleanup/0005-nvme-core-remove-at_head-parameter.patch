@@ -1,0 +1,161 @@
+From e8391ab29bc7932ce6a9d0617111ce47e6f56f08 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Sat, 9 Apr 2022 17:16:06 -0700
+Subject: [PATCH 5/6] nvme-core: remove at_head parameter
+
+The function __nvme_submit_sync_cmd() has following list of callers
+that sets the at_head value :-
+
+Callers                         |   at_head value
+----------------------------------------------
+nvme_submit_sync_cmd()          |       0
+nvme_features()                 |       0
+nvme_sec_submit()               |       1
+nvmf_reg_read32()               |       0
+nvmf_reg_read64()               |       0
+nvmf_reg_write32()              |       0
+nvmf_connect_admin_queue()      |       1
+nvmf_connect_io_queue()         |       1
+
+Remove the at_head function parameter from __nvme_submit_sync_cmd() and
+and derive from nvme_command if the caller is nvmf_connect_admin_queue()
+or nvmf_connect_io_queue() or nvme_sec_submit() and adjust the rest
+of code accordingly.
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/host/core.c    | 20 +++++++++++++-------
+ drivers/nvme/host/fabrics.c | 10 +++++-----
+ drivers/nvme/host/nvme.h    |  3 +--
+ 3 files changed, 19 insertions(+), 14 deletions(-)
+
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index b8daf3ab9a22..41c0045ceb5e 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -996,13 +996,20 @@ static inline bool is_fabrics_io_connect_cmd(struct nvme_command *cmd)
+ 	       le16_to_cpu(cmd->connect.qid) > 0;
+ }
+ 
++static inline bool is_at_head(struct nvme_command *cmd)
++{
++	return (is_fabrics_admin_connect_cmd(cmd) ||
++	       is_fabrics_io_connect_cmd(cmd) ||
++	       cmd->common.opcode == nvme_admin_security_send ||
++	       cmd->common.opcode == nvme_admin_security_recv) ? true : false;
++}
++
+ /*
+  * Returns 0 on success.  If the result is negative, it's a Linux error code;
+  * if the result is positive, it's an NVM Express status code
+  */
+ int __nvme_submit_sync_cmd(struct request_queue *q, struct nvme_command *cmd,
+-		union nvme_result *result, void *buffer, unsigned bufflen,
+-		int at_head)
++		union nvme_result *result, void *buffer, unsigned bufflen)
+ {
+ 	blk_mq_req_flags_t flags = 0;
+ 	int qid = NVME_QID_ANY;
+@@ -1034,7 +1041,7 @@ int __nvme_submit_sync_cmd(struct request_queue *q, struct nvme_command *cmd,
+ 	}
+ 
+ 	req->rq_flags |= RQF_QUIET;
+-	ret = nvme_execute_rq(req, at_head);
++	ret = nvme_execute_rq(req, is_at_head(cmd));
+ 	if (result && ret >= 0)
+ 		*result = nvme_req(req)->result;
+  out:
+@@ -1046,7 +1053,7 @@ EXPORT_SYMBOL_GPL(__nvme_submit_sync_cmd);
+ int nvme_submit_sync_cmd(struct request_queue *q, struct nvme_command *cmd,
+ 		void *buffer, unsigned bufflen)
+ {
+-	return __nvme_submit_sync_cmd(q, cmd, NULL, buffer, bufflen, 0);
++	return __nvme_submit_sync_cmd(q, cmd, NULL, buffer, bufflen);
+ }
+ EXPORT_SYMBOL_GPL(nvme_submit_sync_cmd);
+ 
+@@ -1481,7 +1488,7 @@ static int nvme_features(struct nvme_ctrl *dev, u8 op, unsigned int fid,
+ 	c.features.fid = cpu_to_le32(fid);
+ 	c.features.dword11 = cpu_to_le32(dword11);
+ 
+-	ret = __nvme_submit_sync_cmd(dev->admin_q, &c, &res, buffer, buflen, 0);
++	ret = __nvme_submit_sync_cmd(dev->admin_q, &c, &res, buffer, buflen);
+ 	if (ret >= 0 && result)
+ 		*result = le32_to_cpu(res.u32);
+ 	return ret;
+@@ -2118,8 +2125,7 @@ int nvme_sec_submit(void *data, u16 spsp, u8 secp, void *buffer, size_t len,
+ 	cmd.common.cdw10 = cpu_to_le32(((u32)secp) << 24 | ((u32)spsp) << 8);
+ 	cmd.common.cdw11 = cpu_to_le32(len);
+ 
+-	return __nvme_submit_sync_cmd(ctrl->admin_q, &cmd, NULL, buffer, len,
+-			1);
++	return __nvme_submit_sync_cmd(ctrl->admin_q, &cmd, NULL, buffer, len);
+ }
+ EXPORT_SYMBOL_GPL(nvme_sec_submit);
+ #endif /* CONFIG_BLK_SED_OPAL */
+diff --git a/drivers/nvme/host/fabrics.c b/drivers/nvme/host/fabrics.c
+index 3ca1a10cfb1c..0d620e5285cf 100644
+--- a/drivers/nvme/host/fabrics.c
++++ b/drivers/nvme/host/fabrics.c
+@@ -152,7 +152,7 @@ int nvmf_reg_read32(struct nvme_ctrl *ctrl, u32 off, u32 *val)
+ 	cmd.prop_get.fctype = nvme_fabrics_type_property_get;
+ 	cmd.prop_get.offset = cpu_to_le32(off);
+ 
+-	ret = __nvme_submit_sync_cmd(ctrl->fabrics_q, &cmd, &res, NULL, 0, 0);
++	ret = __nvme_submit_sync_cmd(ctrl->fabrics_q, &cmd, &res, NULL, 0);
+ 
+ 	if (ret >= 0)
+ 		*val = le64_to_cpu(res.u64);
+@@ -197,7 +197,7 @@ int nvmf_reg_read64(struct nvme_ctrl *ctrl, u32 off, u64 *val)
+ 	cmd.prop_get.attrib = 1;
+ 	cmd.prop_get.offset = cpu_to_le32(off);
+ 
+-	ret = __nvme_submit_sync_cmd(ctrl->fabrics_q, &cmd, &res, NULL, 0, 0);
++	ret = __nvme_submit_sync_cmd(ctrl->fabrics_q, &cmd, &res, NULL, 0);
+ 
+ 	if (ret >= 0)
+ 		*val = le64_to_cpu(res.u64);
+@@ -241,7 +241,7 @@ int nvmf_reg_write32(struct nvme_ctrl *ctrl, u32 off, u32 val)
+ 	cmd.prop_set.offset = cpu_to_le32(off);
+ 	cmd.prop_set.value = cpu_to_le64(val);
+ 
+-	ret = __nvme_submit_sync_cmd(ctrl->fabrics_q, &cmd, NULL, NULL, 0, 0);
++	ret = __nvme_submit_sync_cmd(ctrl->fabrics_q, &cmd, NULL, NULL, 0);
+ 	if (unlikely(ret))
+ 		dev_err(ctrl->device,
+ 			"Property Set error: %d, offset %#x\n",
+@@ -386,7 +386,7 @@ int nvmf_connect_admin_queue(struct nvme_ctrl *ctrl)
+ 	strncpy(data->hostnqn, ctrl->opts->host->nqn, NVMF_NQN_SIZE);
+ 
+ 	ret = __nvme_submit_sync_cmd(ctrl->fabrics_q, &cmd, &res,
+-			data, sizeof(*data), 1);
++			data, sizeof(*data));
+ 	if (ret) {
+ 		nvmf_log_connect_error(ctrl, ret, le32_to_cpu(res.u32),
+ 				       &cmd, data);
+@@ -446,7 +446,7 @@ int nvmf_connect_io_queue(struct nvme_ctrl *ctrl, u16 qid)
+ 	strncpy(data->hostnqn, ctrl->opts->host->nqn, NVMF_NQN_SIZE);
+ 
+ 	ret = __nvme_submit_sync_cmd(ctrl->connect_q, &cmd, &res,
+-			data, sizeof(*data), 1);
++			data, sizeof(*data));
+ 	if (ret) {
+ 		nvmf_log_connect_error(ctrl, ret, le32_to_cpu(res.u32),
+ 				       &cmd, data);
+diff --git a/drivers/nvme/host/nvme.h b/drivers/nvme/host/nvme.h
+index 3e1c5fbf5603..3dbbc4b1a1c2 100644
+--- a/drivers/nvme/host/nvme.h
++++ b/drivers/nvme/host/nvme.h
+@@ -751,8 +751,7 @@ static inline bool nvme_is_unique_nsid(struct nvme_ctrl *ctrl,
+ int nvme_submit_sync_cmd(struct request_queue *q, struct nvme_command *cmd,
+ 		void *buf, unsigned bufflen);
+ int __nvme_submit_sync_cmd(struct request_queue *q, struct nvme_command *cmd,
+-		union nvme_result *result, void *buffer, unsigned bufflen,
+-		int at_head);
++		union nvme_result *result, void *buffer, unsigned bufflen);
+ int nvme_set_features(struct nvme_ctrl *dev, unsigned int fid,
+ 		      unsigned int dword11, void *buffer, size_t buflen,
+ 		      u32 *result);
+-- 
+2.29.0
+

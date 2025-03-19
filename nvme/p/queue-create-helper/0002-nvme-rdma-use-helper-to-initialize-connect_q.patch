@@ -1,0 +1,36 @@
+From e987fb3fcf72148bdf684f503fd9932a2692d64d Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Sat, 22 Jan 2022 13:30:14 -0800
+Subject: [PATCH 2/4] nvme-rdma: use helper to initialize connect_q
+
+Instead of opecoding initlialization and subsequent error handling of
+the controller's connect queue, use a helper to remove duplicate code
+in each of four transports FC/RDMA/TCP/LOOP.
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/host/rdma.c | 7 +++----
+ 1 file changed, 3 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/nvme/host/rdma.c b/drivers/nvme/host/rdma.c
+index 850f84d204d0..d033294b063e 100644
+--- a/drivers/nvme/host/rdma.c
++++ b/drivers/nvme/host/rdma.c
+@@ -978,11 +978,10 @@ static int nvme_rdma_configure_io_queues(struct nvme_rdma_ctrl *ctrl, bool new)
+ 			goto out_free_io_queues;
+ 		}
+ 
+-		ctrl->ctrl.connect_q = blk_mq_init_queue(&ctrl->tag_set);
+-		if (IS_ERR(ctrl->ctrl.connect_q)) {
+-			ret = PTR_ERR(ctrl->ctrl.connect_q);
++
++		ret = nvme_ctrl_init_connect_q(&(ctrl->ctrl));
++		if (ret)
+ 			goto out_free_tag_set;
+-		}
+ 	}
+ 
+ 	ret = nvme_rdma_start_io_queues(ctrl);
+-- 
+2.29.0
+

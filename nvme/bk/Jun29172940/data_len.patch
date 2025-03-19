@@ -1,0 +1,58 @@
+From: Amit Engel <amit.engel@dell.com>
+
+In feature id 0x81 NVME_FEAT_HOST_ID, nvmet_copy_to_sgl is called
+req->data_len shall hold a non-zero value which is
+'sizeof(req->sq->ctrl->hostid)'
+
+Signed-off-by: Amit Engel <amit.engel@dell.com>
+---
+ drivers/nvme/target/admin-cmd.c | 11 ++++++++++-
+ drivers/nvme/target/nvmet.h     |  2 ++
+ 2 files changed, 12 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/nvme/target/admin-cmd.c b/drivers/nvme/target/admin-cmd.c
+index 56c21b501185..f09d5fdc995f 100644
+--- a/drivers/nvme/target/admin-cmd.c
++++ b/drivers/nvme/target/admin-cmd.c
+@@ -24,6 +24,15 @@ u32 nvmet_get_log_page_len(struct nvme_command *cmd)
+ 	return len;
+ }
+ 
++u32 nvmet_feature_data_len(struct nvmet_req *req)
++{
++	u8 feature = req->cmd->common.cdw10 & 0xff;
++
++	if (feature == NVME_FEAT_HOST_ID)
++		return sizeof(req->sq->ctrl->hostid);
++	return 0;
++}
++
+ u64 nvmet_get_log_page_offset(struct nvme_command *cmd)
+ {
+ 	return le64_to_cpu(cmd->get_log_page.lpo);
+@@ -778,7 +787,7 @@ static void nvmet_execute_get_features(struct nvmet_req *req)
+ 	u32 cdw10 = le32_to_cpu(req->cmd->common.cdw10);
+ 	u16 status = 0;
+ 
+-	if (!nvmet_check_data_len(req, 0))
++	if (!nvmet_check_data_len(req, nvmet_feature_data_len(req))
+ 		return;
+ 
+ 	switch (cdw10 & 0xff) {
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index 46df45e837c9..6422489d96cd 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -434,6 +434,8 @@ u16 nvmet_zero_sgl(struct nvmet_req *req, off_t off, size_t len);
+ u32 nvmet_get_log_page_len(struct nvme_command *cmd);
+ u64 nvmet_get_log_page_offset(struct nvme_command *cmd);
+ 
++u32 nvmet_feature_data_len(struct nvmet_req *req);
++
+ extern struct list_head *nvmet_ports;
+ void nvmet_port_disc_changed(struct nvmet_port *port,
+ 		struct nvmet_subsys *subsys);
+-- 
+2.16.5
+
+

@@ -1,0 +1,95 @@
+From 235cb3c9b617b1eed1c841d366aef3c8d36d7bfa Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Sun, 30 Apr 2023 23:39:35 -0700
+Subject: [PATCH 3/4] nvmet: use ns flags to indicate readonly
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/target/admin-cmd.c | 10 +++++-----
+ drivers/nvme/target/core.c      |  2 +-
+ drivers/nvme/target/nvmet.h     |  3 ++-
+ 3 files changed, 8 insertions(+), 7 deletions(-)
+
+diff --git a/drivers/nvme/target/admin-cmd.c b/drivers/nvme/target/admin-cmd.c
+index bac300c775d5..6c4a7c62de84 100644
+--- a/drivers/nvme/target/admin-cmd.c
++++ b/drivers/nvme/target/admin-cmd.c
+@@ -565,7 +565,7 @@ static void nvmet_execute_identify_ns(struct nvmet_req *req)
+ 		id->lbaf[0].ms = cpu_to_le16(req->ns->metadata_size);
+ 	}
+ 
+-	if (req->ns->readonly)
++	if (test_bit(NVMET_NS_READONLY, &req->ns->flags))
+ 		id->nsattr |= NVME_NS_ATTR_RO;
+ done:
+ 	if (!status)
+@@ -769,13 +769,13 @@ static u16 nvmet_set_feat_write_protect(struct nvmet_req *req)
+ 	mutex_lock(&subsys->lock);
+ 	switch (write_protect) {
+ 	case NVME_NS_WRITE_PROTECT:
+-		req->ns->readonly = true;
++		set_bit(NVMET_NS_READONLY, &req->ns->flags);
+ 		status = nvmet_write_protect_flush_sync(req);
+ 		if (status)
+-			req->ns->readonly = false;
++			clear_bit(NVMET_NS_READONLY, &req->ns->flags);
+ 		break;
+ 	case NVME_NS_NO_WRITE_PROTECT:
+-		req->ns->readonly = false;
++		clear_bit(NVMET_NS_READONLY, &req->ns->flags);
+ 		status = 0;
+ 		break;
+ 	default:
+@@ -870,7 +870,7 @@ static u16 nvmet_get_feat_write_protect(struct nvmet_req *req)
+ 		return result;
+ 
+ 	mutex_lock(&subsys->lock);
+-	if (req->ns->readonly == true)
++	if (test_bit(NVMET_NS_READONLY, &req->ns->flags))
+ 		result = NVME_NS_WRITE_PROTECT;
+ 	else
+ 		result = NVME_NS_NO_WRITE_PROTECT;
+diff --git a/drivers/nvme/target/core.c b/drivers/nvme/target/core.c
+index b6e359af043a..df8d672b5f3c 100644
+--- a/drivers/nvme/target/core.c
++++ b/drivers/nvme/target/core.c
+@@ -863,7 +863,7 @@ static inline u16 nvmet_check_ana_state(struct nvmet_port *port,
+ 
+ static inline u16 nvmet_io_cmd_check_access(struct nvmet_req *req)
+ {
+-	if (unlikely(req->ns->readonly)) {
++	if (unlikely(test_bit(NVMET_NS_READONLY, &req->ns->flags))) {
+ 		switch (req->cmd->common.opcode) {
+ 		case nvme_cmd_read:
+ 		case nvme_cmd_flush:
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index ee8f10fbd083..5233b6ade5dd 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -59,6 +59,7 @@
+ enum nvmet_ns_flags_bits {
+ 	NVMET_NS_BDEV = 0,
+ 	NVMET_NS_ENABLED = 1,
++	NVMET_NS_READONLY = 2,
+ };
+ 
+ struct nvmet_ns {
+@@ -71,7 +72,6 @@ struct nvmet_ns {
+ 			struct file		*file;
+ 		} f;
+ 	};
+-	bool			readonly;
+ 	u32			nsid;
+ 	u32			blksize_shift;
+ 	loff_t			size;
+@@ -98,6 +98,7 @@ struct nvmet_ns {
+ 	 *   Bit           ON            OFF
+ 	 *    0	          bdev           file
+ 	 *    1           enabled        disabled
++	 *    2           readonly       read-write
+ 	 */
+ 	unsigned long		flags;
+ };
+-- 
+2.40.0
+

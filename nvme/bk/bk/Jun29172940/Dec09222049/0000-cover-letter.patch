@@ -1,0 +1,86 @@
+From 8bc87d6da127fa52cc2eb7403ada2a6f74a88803 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Mon, 9 Dec 2019 22:11:43 -0800
+Subject: [RFC PATCH 0/2] nvmet: add polling support
+
+Hi Christoph/Sagi/Keith,
+
+This patch series implements the polling support for the NVMeOF target
+with maintaining separate kthread for polling.
+
+By implementing the polling for the file and bdev I was able to create
+stubs for the target polling which will be useful for passthru code.
+
+1. General approach:-
+
+After submitting the request in (nvmet_file|bdev_execute_rw()) code path
+we issue request on the available polling thread's list (poll_list)
+which is shared between submission thread and the polling thread. We
+create per CPU two polling threads to improve the scalability for I/O
+submission.
+
+When polling thread is woken up by the submission thread it moves the
+request to its private list (done list) for processing if it finds
+completed request (by the backend bdev/file). This allows outstanding
+submission requests to make forward progress under pressure.
+
+When there are no completed requests on the poll_list then polling
+thread removes the request from the poll_list and calls backend
+specific poll function on this request until it gets the completion.
+On completion, it finishes the request in the same context over
+trandport.
+
+2. Testing and verification:-
+
+I did fio verification tests for a couple of days and didn't find
+any issues with data verification. Also, for bdev and file I could see
+the io_poll stats under debugfs with considered/invoked/success numbers
+being increased.
+
+3. Performance improvements:-
+
+There are still some performance improvements which can be done.
+
+4. User interface:-
+
+Users can optionally enable/disable polling with newly added configfs
+attribute use_poll. This only enables polling in case backend
+(bdev/file) supports it otherwise we just ignore this value.
+
+It will be great if you can provide some feedback.
+
+I'm aware of the io-wq code for io_using posted on the mailing list.
+I was just wondering should we explore that to implement the polling ?
+
+Patchset info :-
+
+Repo:-          git://git.infradead.org/nvme.git
+Bramch :-       nvme/for-5.5
+HEAD:-
+
+commit 7e4c6b9a5d22485acf009b3c3510a370f096dd54 (origin/nvme/for-5.5)
+Author: Keith Busch <kbusch@kernel.org>
+Date:   Fri Dec 6 08:11:17 2019 +0900
+
+    nvme/pci: Fix read queue count
+
+Regards,
+Chaitanya
+
+Chaitanya Kulkarni (2):
+  nvmet: add bdev-ns polling support
+  nvmet: add file-ns polling support
+
+ drivers/nvme/target/Makefile      |   3 +-
+ drivers/nvme/target/configfs.c    |  29 ++++++
+ drivers/nvme/target/core.c        |  17 +++
+ drivers/nvme/target/io-cmd-bdev.c |  61 +++++++++--
+ drivers/nvme/target/io-cmd-file.c |  60 +++++++++--
+ drivers/nvme/target/io-poll.c     | 165 ++++++++++++++++++++++++++++++
+ drivers/nvme/target/nvmet.h       |  40 +++++++-
+ 7 files changed, 354 insertions(+), 21 deletions(-)
+ create mode 100644 drivers/nvme/target/io-poll.c
+
+-- 
+2.22.1
+

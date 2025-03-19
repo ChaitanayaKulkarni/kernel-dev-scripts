@@ -1,0 +1,35 @@
+diff --git a/drivers/nvme/target/tcp.c b/drivers/nvme/target/tcp.c
+index 92b74d0b8686..a1a6f27131da 100644
+--- a/drivers/nvme/target/tcp.c
++++ b/drivers/nvme/target/tcp.c
+@@ -992,12 +992,25 @@ static int nvmet_tcp_handle_h2c_data_pdu(struct nvmet_tcp_queue *queue)
+ 	}
+ 
+ 	if (le32_to_cpu(data->data_offset) != cmd->rbytes_done) {
++		struct nvme_command *nvme_cmd = &queue->pdu.cmd.cmd;
++		struct nvmet_req *req = &cmd->req;
++
+ 		pr_err("ttag %u unexpected data offset %u (expected %u)\n",
+-			data->ttag, le32_to_cpu(data->data_offset),
+-			cmd->rbytes_done);
+-		/* FIXME: use path and transport errors */
+-		nvmet_req_complete(&cmd->req,
+-			NVME_SC_INVALID_FIELD | NVME_SC_DNR);
++				data->ttag, le32_to_cpu(data->data_offset),
++				cmd->rbytes_done);
++		memcpy(req->cmd, nvme_cmd, sizeof(*nvme_cmd));
++		if (unlikely(!nvmet_req_init(req, &queue->nvme_cq,
++				&queue->nvme_sq, &nvmet_tcp_ops))) {
++			pr_err("failed cmd %p id %d opcode %d, data_len: %d\n",
++				req->cmd, req->cmd->common.command_id,
++				req->cmd->common.opcode,
++				le32_to_cpu(req->cmd->common.dptr.sgl.length));
++			nvmet_tcp_handle_req_failure(queue, cmd, req);
++		} else {
++			/* FIXME: use path and transport errors */
++			nvmet_req_complete(&cmd->req,
++					NVME_SC_INVALID_FIELD |  NVME_SC_DNR);
++		}
+ 		return -EPROTO;
+ 	}
+ 

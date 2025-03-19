@@ -1,0 +1,154 @@
+From 291ab691103a4dc74fcf352bbd28999a58d41b40 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Mon, 16 Dec 2019 13:52:44 -0800
+Subject: [PATCH] nvmet: Always remove processed AER elements from list
+
+From: Daniel Wagner <dwagner at suse.de>
+
+All async events are enqueued via nvmet_add_async_event() which
+updates the ctrl->async_event_cmds[] array and additionally an struct
+nvmet_async_event is added to the ctrl->async_events list.
+
+Under normal operations the nvmet_async_event_work() updates again the
+ctrl->async_event_cmds and removes the corresponding struct
+nvmet_async_event from the list again. Though nvmet_sq_destroy() could
+be called which calles nvmet_async_events_free() which only updates
+the ctrl->async_event_cmds[] array.
+
+Add a new function nvmet_async_events_process() which processes the
+async events and updates both array and the list. With this we avoid
+having two places where the array and list are modified.
+
+When the status value is set != NVME_SC_SUCCESS that implies
+nvmet_async_events_process() is called from free events context.
+In this case after clearing the aen present on the ctrl->async_list we
+also loop over ctrl->async_event_cmds[] for any requests posted by the
+host for which we don't have the AEN in the ctrl->async_events list.
+
+Cc: Christoph Hellwig <hch at lst.de>
+Cc: Sagi Grimberg <sagi at grimberg.me>
+Cc: Johannes Thumshirn <jthumshirn at suse.de>
+Signed-off-by: Daniel Wagner <dwagner at suse.de>
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni at wdc.com>
+---
+
+Hi,
+
+I've added the code to loop over and clear out outstanding requests
+present in the ctrl->async_event_cmds[] for which aen is not generated.
+Also updated the patch description.
+
+I did the basic testing create/delete ctrl and enable/disable ns that
+did not produced any hands or errors.
+
+Regards,
+Chaitanya
+
+Following is the test log if anyone wants to take a look:-
+
+nvmet: adding nsid 1 to subsystem fs
+nvmet: creating controller 1 for subsystem fs for NQN \
+nqn.2014-08.org.nvmexpress:uuid:a0b58ccb-6b6a-4045-8ee1-641816bf548d.
+nvme nvme1: Please enable CONFIG_NVME_MULTIPATH for full support of multi-port devices.
+nvme nvme1: creating 12 I/O queues.
+nvme nvme1: new ctrl: "fs"
+# nvme list | tr -s ' ' ' ' | grep Linux | grep -v '\-\-\-\-'
+/dev/nvme1n1 c71f2d6a3f577a29 Linux 1 524.29 MB / 524.29 MB 1 B + 9 B 5.4.0-rc
+# cat /sys/kernel/config/nvmet/subsystems/fs/namespaces/1/enable 
+1
+# nvme list | tr -s ' ' ' ' | grep Linux | grep -v '\-\-\-\-'
+/dev/nvme1n1 c71f2d6a3f577a29 Linux 1 524.29 MB / 524.29 MB 1 B + 9 B 5.4.0-rc
+# echo 0 > /sys/kernel/config/nvmet/subsystems/fs/namespaces/1/enable 
+# nvme list | tr -s ' ' ' ' | grep Linux | grep -v '\-\-\-\-'
+# echo 1 > /sys/kernel/config/nvmet/subsystems/fs/namespaces/1/enable 
+# nvme list | tr -s ' ' ' ' | grep Linux | grep -v '\-\-\-\-'
+/dev/nvme1n1 c71f2d6a3f577a29 Linux 1 524.29 MB / 524.29 MB 1 B + 9 B 5.4.0-rc
+# echo 0 > /sys/kernel/config/nvmet/subsystems/fs/namespaces/1/enable 
+# nvme list | tr -s ' ' ' ' | grep Linux | grep -v '\-\-\-\-'
+# echo 1 > /sys/kernel/config/nvmet/subsystems/fs/namespaces/1/enable 
+
+---
+ drivers/nvme/target/core.c | 49 ++++++++++++++++++++++----------------
+ 1 file changed, 28 insertions(+), 21 deletions(-)
+
+diff --git a/drivers/nvme/target/core.c b/drivers/nvme/target/core.c
+index 28438b833c1b..5f7f6fd864fb 100644
+--- a/drivers/nvme/target/core.c
++++ b/drivers/nvme/target/core.c
+@@ -129,11 +129,32 @@ static u32 nvmet_async_event_result(struct nvmet_async_event *aen)
+ 	return aen->event_type | (aen->event_info << 8) | (aen->log_page << 16);
+ }
+ 
+-static void nvmet_async_events_free(struct nvmet_ctrl *ctrl)
++static void nvmet_async_events_process(struct nvmet_ctrl *ctrl, u16 status)
+ {
++	struct nvmet_async_event *aen;
+ 	struct nvmet_req *req;
+ 
+ 	while (1) {
++		mutex_lock(&ctrl->lock);
++		aen = list_first_entry_or_null(&ctrl->async_events,
++				struct nvmet_async_event, entry);
++		if (!aen || !ctrl->nr_async_event_cmds) {
++			mutex_unlock(&ctrl->lock);
++			break;
++		}
++
++		req = ctrl->async_event_cmds[--ctrl->nr_async_event_cmds];
++		if (status == 0)
++			nvmet_set_result(req, nvmet_async_event_result(aen));
++
++		list_del(&aen->entry);
++		kfree(aen);
++
++		mutex_unlock(&ctrl->lock);
++		nvmet_req_complete(req, status);
++	}
++
++	while (status) {
+ 		mutex_lock(&ctrl->lock);
+ 		if (!ctrl->nr_async_event_cmds) {
+ 			mutex_unlock(&ctrl->lock);
+@@ -146,31 +167,17 @@ static void nvmet_async_events_free(struct nvmet_ctrl *ctrl)
+ 	}
+ }
+ 
++static void nvmet_async_events_free(struct nvmet_ctrl *ctrl)
++{
++	nvmet_async_events_process(ctrl, NVME_SC_INTERNAL | NVME_SC_DNR);
++}
++
+ static void nvmet_async_event_work(struct work_struct *work)
+ {
+ 	struct nvmet_ctrl *ctrl =
+ 		container_of(work, struct nvmet_ctrl, async_event_work);
+-	struct nvmet_async_event *aen;
+-	struct nvmet_req *req;
+-
+-	while (1) {
+-		mutex_lock(&ctrl->lock);
+-		aen = list_first_entry_or_null(&ctrl->async_events,
+-				struct nvmet_async_event, entry);
+-		if (!aen || !ctrl->nr_async_event_cmds) {
+-			mutex_unlock(&ctrl->lock);
+-			return;
+-		}
+-
+-		req = ctrl->async_event_cmds[--ctrl->nr_async_event_cmds];
+-		nvmet_set_result(req, nvmet_async_event_result(aen));
+ 
+-		list_del(&aen->entry);
+-		kfree(aen);
+-
+-		mutex_unlock(&ctrl->lock);
+-		nvmet_req_complete(req, 0);
+-	}
++	nvmet_async_events_process(ctrl, 0);
+ }
+ 
+ void nvmet_add_async_event(struct nvmet_ctrl *ctrl, u8 event_type,
+-- 
+2.22.1
+
+
+

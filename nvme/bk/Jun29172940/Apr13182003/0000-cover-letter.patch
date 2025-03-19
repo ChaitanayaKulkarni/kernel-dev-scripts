@@ -1,0 +1,124 @@
+From 2c7ffbc5b908658249589cfc379e41e50d9db8f0 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Mon, 13 Apr 2020 17:27:04 -0700
+Subject: [PATCH V3 0/6] nvmet: add revalidate support 
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Hi,
+
+This patch series adds support for the NVMeOF target bdev-ns and 
+file-ns size re-validation.
+
+The first patch adds bdev/file backend, revalidation helpers. It
+was posted by Anthony Iliopoulos. I've fixed the comments posted on V1
+by keeping the authorship of the patch.
+
+The 2nd patch is needed since the change of size detection on the target
+should generate the AEN to the host. Right now there is no generic
+mechanism that allows us to add callbacks for the block and file backend 
+so that we will get the notification (if anyone knows please let me know,
+I'll be happy rework this series). So this just adds a lightweight global
+maintenance thread that checks for the size change and generates AEN when 
+needed.
+
+On loading the nvmet module, now it will start the global maintenance
+thread with the default parameters. Different users may require 
+different tunables based on their needs for the ns size revalidation and
+how their system performs. Instead of forcing a particular policy
+I've added different tunables for maintenance thread in the configfs
+for adjusting maintenance thread scheduling policy along with scheduling
+priority, sleep timeout for the thread (i.e. refresh interval between
+scan) and allowing namespace to participate in the size revalidation or
+not. It allows the user to have flexibility on namespace granularity so
+that the user can decide whether it wants a namespace to participate in
+the revalidation process. 
+
+Regarding performance impact I couldn't find huge difference, still
+trying to see if I miss somehing. Following are the collected numbers,
+for details please have a look at the end of the patch.
+
+1. Fio IOPS/BW With Resize Monitor Turned off/on :-
+---------------------------------------------------
+
+1.1 Off :-
+----------
+read: IOPS=170k, BW=664MiB/s (696MB/s)(38.9GiB/60004msec)
+read: IOPS=170k, BW=662MiB/s (694MB/s)(38.8GiB/60004msec)
+read: IOPS=168k, BW=656MiB/s (688MB/s)(38.4GiB/60003msec)
+
+1.2 On :-
+---------
+read: IOPS=166k, BW=647MiB/s (679MB/s)(37.9GiB/60004msec)
+read: IOPS=169k, BW=661MiB/s (694MB/s)(38.8GiB/60002msec)
+read: IOPS=169k, BW=662MiB/s (694MB/s)(38.8GiB/60003msec)
+
+2. Fio latency With Resize Monitor Turned off/on :-
+---------------------------------------------------
+
+2.1 Off :-
+----------
+lat (usec): min=166, max=321193, avg=6178.39, stdev=2166.33
+lat (usec): min=166, max=93211, avg=6045.70, stdev=1973.70
+lat (usec): min=161, max=77004, avg=6043.50, stdev=1929.77
+
+2.2. On :-
+----------
+lat (usec): min=138, max=69812, avg=6023.40, stdev=1840.05
+lat (usec): min=163, max=65740, avg=6038.86, stdev=1932.44
+lat (usec): min=158, max=102077, avg=6095.00, stdev=2023.92
+
+I've tested this with dedicated blktest which creates 10 subsys and 10
+ns per subsys with file backend and then generated async event from
+the target by changing the file size with truncate. I've verified that 
+new size for all the namespaces from target to host block device is
+propagated with this patch series with maintenance thread is enabled.      
+
+Regards,
+Chaitanya
+
+Changes from V2 :-
+
+1. Add a global maintenance thread with SCHED_IDLE default priority
+   so that it will have minimum impact on the CPU utilization when
+   target is busy.
+2. Add maintenance thread tuneables so that user can adjust this
+   feature from configfs. 
+3. Add a async event generation tracepoint for target.
+
+Changes from V1 :-
+
+1. Just use ns->size = i_size_read(ns->bdev->bd_inode) in the
+   nvmet_bdev_ns_revalidate().
+2. Remove !file check and use fill line for vfs_getattr() call in
+   nvmet_file_ns_revalidate().
+3. Add wrapper nvmet_ns_revalidate().
+4. Add 2nd patch to introduce per namespace thread to monitor the size by
+   calling nvmet_ns_revalidate() and generate AEN when size change is
+   detected.  
+5. Change return type of the nvmet_[bdev|file]ns_revalidate() from void
+   to bool.
+Anthony Iliopoulos (1):
+  nvmet: add ns revalidation support
+
+Chaitanya Kulkarni (6):
+  nvmet: add global thread for ns-resize AEN
+  nvmet: export resize thread start-stop
+  nvmet: export resize thread msec
+  nvmet: export resize thread sched attributes
+  nvmet: export ns resize thread attribute
+  nvmet: add async event tracing support
+
+ drivers/nvme/target/admin-cmd.c   |   4 +
+ drivers/nvme/target/configfs.c    | 140 +++++++++++++++++++++++++++++-
+ drivers/nvme/target/core.c        | 132 ++++++++++++++++++++++++++++
+ drivers/nvme/target/io-cmd-bdev.c |  12 +++
+ drivers/nvme/target/io-cmd-file.c |  16 ++++
+ drivers/nvme/target/nvmet.h       |  37 +++++++-
+ drivers/nvme/target/trace.h       |  28 ++++++
+ 7 files changed, 367 insertions(+), 2 deletions(-)
+
+-- 
+2.22.1
+

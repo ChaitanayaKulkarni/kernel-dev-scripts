@@ -1,0 +1,110 @@
+The average system CPU utilization for each category is as follows:
+
+nvme-orig: 17.495%
+nvme-new-no-reorder: 17.817%
+IOPS/BW :-
+
+nvme-orig:
+
+    Average IOPS: 72,690
+    Average BW: 283.9 MiB/s
+
+nvme-new-no-reorder:
+
+    Average IOPS: 72,580
+    Average BW: 283.4 MiB/s
+
+nvme-orig-10.fio:  read: IOPS=72.9k, BW=285MiB/s (299MB/s)(16.7GiB/60004msec)
+nvme-orig-1.fio:  read: IOPS=72.7k, BW=284MiB/s (298MB/s)(16.6GiB/60004msec)
+nvme-orig-2.fio:  read: IOPS=73.0k, BW=285MiB/s (299MB/s)(16.7GiB/60004msec)
+nvme-orig-3.fio:  read: IOPS=73.3k, BW=286MiB/s (300MB/s)(16.8GiB/60003msec)
+nvme-orig-4.fio:  read: IOPS=72.5k, BW=283MiB/s (297MB/s)(16.6GiB/60003msec)
+nvme-orig-5.fio:  read: IOPS=72.4k, BW=283MiB/s (297MB/s)(16.6GiB/60004msec)
+nvme-orig-6.fio:  read: IOPS=72.9k, BW=285MiB/s (299MB/s)(16.7GiB/60003msec)
+nvme-orig-7.fio:  read: IOPS=72.3k, BW=282MiB/s (296MB/s)(16.5GiB/60004msec)
+nvme-orig-8.fio:  read: IOPS=72.4k, BW=283MiB/s (296MB/s)(16.6GiB/60003msec)
+nvme-orig-9.fio:  read: IOPS=72.5k, BW=283MiB/s (297MB/s)(16.6GiB/60004msec)
+nvme (nvme-6.13) #
+nvme (nvme-6.13) # grep BW nvme-new-no-reorder-*fio
+nvme-new-no-reorder-10.fio:  read: IOPS=72.5k, BW=283MiB/s (297MB/s)(16.6GiB/60004msec)
+nvme-new-no-reorder-1.fio:  read: IOPS=72.5k, BW=283MiB/s (297MB/s)(16.6GiB/60004msec)
+nvme-new-no-reorder-2.fio:  read: IOPS=72.5k, BW=283MiB/s (297MB/s)(16.6GiB/60003msec)
+nvme-new-no-reorder-3.fio:  read: IOPS=71.7k, BW=280MiB/s (294MB/s)(16.4GiB/60005msec)
+nvme-new-no-reorder-4.fio:  read: IOPS=72.5k, BW=283MiB/s (297MB/s)(16.6GiB/60004msec)
+nvme-new-no-reorder-5.fio:  read: IOPS=72.6k, BW=284MiB/s (298MB/s)(16.6GiB/60003msec)
+nvme-new-no-reorder-6.fio:  read: IOPS=73.3k, BW=286MiB/s (300MB/s)(16.8GiB/60003msec)
+nvme-new-no-reorder-7.fio:  read: IOPS=72.8k, BW=284MiB/s (298MB/s)(16.7GiB/60003msec)
+nvme-new-no-reorder-8.fio:  read: IOPS=73.2k, BW=286MiB/s (300MB/s)(16.7GiB/60004msec)
+nvme-new-no-reorder-9.fio:  read: IOPS=72.2k, BW=282MiB/s (296MB/s)(16.5GiB/60005msec)
+
+CPU Usage :-
+
+nvme (nvme-6.13) # grep cpu nvme-orig*fio
+nvme-orig-10.fio:  cpu          : usr=0.56%, sys=17.40%, ctx=545174, majf=0, minf=835
+nvme-orig-1.fio:  cpu          : usr=0.56%, sys=17.54%, ctx=543681, majf=0, minf=857
+nvme-orig-2.fio:  cpu          : usr=0.55%, sys=17.52%, ctx=545372, majf=0, minf=810
+nvme-orig-3.fio:  cpu          : usr=0.55%, sys=17.62%, ctx=547764, majf=0, minf=814
+nvme-orig-4.fio:  cpu          : usr=0.57%, sys=17.52%, ctx=542440, majf=0, minf=874
+nvme-orig-5.fio:  cpu          : usr=0.57%, sys=17.47%, ctx=541413, majf=0, minf=835
+nvme-orig-6.fio:  cpu          : usr=0.54%, sys=17.53%, ctx=545241, majf=0, minf=843
+nvme-orig-7.fio:  cpu          : usr=0.56%, sys=17.46%, ctx=540442, majf=0, minf=841
+nvme-orig-8.fio:  cpu          : usr=0.58%, sys=17.40%, ctx=541155, majf=0, minf=819
+nvme-orig-9.fio:  cpu          : usr=0.57%, sys=17.49%, ctx=542227, majf=0, minf=819
+nvme (nvme-6.13) #
+nvme (nvme-6.13) # grep cpu nvme-new-no-reorder-*fio
+nvme-new-no-reorder-10.fio:  cpu          : usr=0.59%, sys=17.63%, ctx=541863, majf=0, minf=849
+nvme-new-no-reorder-1.fio:  cpu          : usr=0.58%, sys=17.83%, ctx=541539, majf=0, minf=853
+nvme-new-no-reorder-2.fio:  cpu          : usr=0.56%, sys=17.88%, ctx=542363, majf=0, minf=893
+nvme-new-no-reorder-3.fio:  cpu          : usr=0.58%, sys=17.87%, ctx=536775, majf=0, minf=858
+nvme-new-no-reorder-4.fio:  cpu          : usr=0.58%, sys=18.00%, ctx=541895, majf=0, minf=874
+nvme-new-no-reorder-5.fio:  cpu          : usr=0.58%, sys=17.92%, ctx=543253, majf=0, minf=901
+nvme-new-no-reorder-6.fio:  cpu          : usr=0.57%, sys=17.78%, ctx=547681, majf=0, minf=859
+nvme-new-no-reorder-7.fio:  cpu          : usr=0.58%, sys=17.89%, ctx=544035, majf=0, minf=869
+nvme-new-no-reorder-8.fio:  cpu          : usr=0.59%, sys=17.82%, ctx=546994, majf=0, minf=915
+nvme-new-no-reorder-9.fio:  cpu          : usr=0.61%, sys=17.55%, ctx=540134, majf=0, minf=869
+nvme (nvme-6.13) #
+
+
+aybe we can get rid of the local var pi_type ? [1]
+
+Irrespective of that :-
+
+Reviewed-by: Chaitanya Kulkarni <kch@nvidia.com>
+
+-ck
+
+[1]
+
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index 2f3b3911bce4..d587f541937e 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -1758,7 +1758,6 @@ static bool nvme_init_integrity(struct nvme_ns_head *head,
+                struct queue_limits *lim, struct nvme_ns_info *info)
+ {
+        struct blk_integrity *bi = &lim->integrity;
+-       int pi_type = head->pi_type;
+ 
+        memset(bi, 0, sizeof(*bi));
+ 
+@@ -1774,9 +1773,9 @@ static bool nvme_init_integrity(struct nvme_ns_head *head,
+                return nvme_ns_has_pi(head);
+ 
+        if (disable_pi)
+-               pi_type = 0;
++               goto out;
+ 
+-       switch (pi_type) {
++       switch (head->pi_type) {
+        case NVME_NS_DPS_PI_TYPE3:
+                switch (head->guard_type) {
+                case NVME_NVM_NS_16B_GUARD:
+@@ -1816,6 +1815,7 @@ static bool nvme_init_integrity(struct nvme_ns_head *head,
+                break;
+        }
+ 
++out:
+        bi->tuple_size = head->ms;
+        bi->pi_offset = info->pi_offset;
+        return true;
+

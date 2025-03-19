@@ -1,0 +1,62 @@
+From 291ab691103a4dc74fcf352bbd28999a58d41b40 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Mon, 16 Dec 2019 13:52:44 -0800
+Subject: [PATCH] block/genhd: Notify udev about capacity change
+
+Allow block/genhd to notify user space (via udev) about disk size changes
+using a new helper disk_set_capacity(), which is a wrapper on top
+of set_capacity(). disk_set_capacity() will only notify via udev if
+the current capacity or the target capacity is not zero.
+
+Suggested-by: Christoph Hellwig <hch@lst.de>
+Signed-off-by: Someswarudu Sangaraju <ssomesh@amazon.com>
+Signed-off-by: Balbir Singh <sblbir@amazon.com>
+---
+ block/genhd.c         | 19 +++++++++++++++++++
+ include/linux/genhd.h |  1 +
+ 2 files changed, 20 insertions(+)
+
+diff --git a/block/genhd.c b/block/genhd.c
+index ff6268970ddc..94faec98607b 100644
+--- a/block/genhd.c
++++ b/block/genhd.c
+@@ -46,6 +46,25 @@ static void disk_add_events(struct gendisk *disk);
+ static void disk_del_events(struct gendisk *disk);
+ static void disk_release_events(struct gendisk *disk);
+ 
++/*
++ * Set disk capacity and notify if the size is not currently
++ * zero and will not be set to zero
++ */
++void disk_set_capacity(struct gendisk *disk, sector_t size)
++{
++	sector_t capacity = get_capacity(disk);
++
++	set_capacity(disk, size);
++	if (capacity != 0 && size != 0) {
++		char *envp[] = { "RESIZE=1", NULL };
++
++		kobject_uevent_env(&disk_to_dev(disk)->kobj, KOBJ_CHANGE, envp);
++	}
++}
++
++EXPORT_SYMBOL_GPL(disk_set_capacity);
++
++
+ void part_inc_in_flight(struct request_queue *q, struct hd_struct *part, int rw)
+ {
+ 	if (queue_is_mq(q))
+diff --git a/include/linux/genhd.h b/include/linux/genhd.h
+index a927829bb73a..f1a5ddcc781d 100644
+--- a/include/linux/genhd.h
++++ b/include/linux/genhd.h
+@@ -449,6 +449,7 @@ static inline int get_disk_ro(struct gendisk *disk)
+ extern void disk_block_events(struct gendisk *disk);
+ extern void disk_unblock_events(struct gendisk *disk);
+ extern void disk_flush_events(struct gendisk *disk, unsigned int mask);
++extern void disk_set_capacity(struct gendisk *disk, sector_t size);
+ extern unsigned int disk_clear_events(struct gendisk *disk, unsigned int mask);
+ 
+ /* drivers/char/random.c */
+-- 
+2.16.5

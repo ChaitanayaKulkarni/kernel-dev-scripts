@@ -1,0 +1,70 @@
+From b4f461e41a3bb7f62aa03e5eff6fa7b262ed0194 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Wed, 30 Sep 2020 18:47:40 -0700
+Subject: [PATCH 1/3] nvmet: allow user to set the ns readonly
+
+From: mruijter@primelogic.nl
+
+User may want to export readonly ns to host in order to export
+read-only snapshots. Right now we don't have configfs attribute to
+allow user to export readonly ns.
+
+Add a configfs attribute such that user can set the ns and export ns
+readonly when it is not enabled.
+
+Signed-off-by: Mark Ruijter <mruijter@primelogic.nl>
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/configfs.c | 29 +++++++++++++++++++++++++++++
+ 1 file changed, 29 insertions(+)
+
+diff --git a/drivers/nvme/target/configfs.c b/drivers/nvme/target/configfs.c
+index 37e1d7784e17..90c55ffab802 100644
+--- a/drivers/nvme/target/configfs.c
++++ b/drivers/nvme/target/configfs.c
+@@ -570,6 +570,34 @@ static ssize_t nvmet_ns_buffered_io_store(struct config_item *item,
+ 
+ CONFIGFS_ATTR(nvmet_ns_, buffered_io);
+ 
++static ssize_t nvmet_ns_readonly_show(struct config_item *item, char *page)
++{
++	return sprintf(page, "%d\n", to_nvmet_ns(item)->readonly);
++}
++
++static ssize_t nvmet_ns_readonly_store(struct config_item *item,
++		const char *page, size_t count)
++{
++	struct nvmet_ns *ns = to_nvmet_ns(item);
++	bool val;
++
++	if (strtobool(page, &val))
++		return -EINVAL;
++
++	mutex_lock(&ns->subsys->lock);
++	if (ns->enabled) {
++		pr_err("disable ns before setting readonly value.\n");
++		mutex_unlock(&ns->subsys->lock);
++		return -EINVAL;
++	}
++
++	ns->readonly = val;
++	mutex_unlock(&ns->subsys->lock);
++	return count;
++}
++
++CONFIGFS_ATTR(nvmet_ns_, readonly);
++
+ static ssize_t nvmet_ns_revalidate_size_store(struct config_item *item,
+ 		const char *page, size_t count)
+ {
+@@ -602,6 +630,7 @@ static struct configfs_attribute *nvmet_ns_attrs[] = {
+ 	&nvmet_ns_attr_ana_grpid,
+ 	&nvmet_ns_attr_enable,
+ 	&nvmet_ns_attr_buffered_io,
++	&nvmet_ns_attr_readonly,
+ 	&nvmet_ns_attr_revalidate_size,
+ #ifdef CONFIG_PCI_P2PDMA
+ 	&nvmet_ns_attr_p2pmem,
+-- 
+2.22.1
+

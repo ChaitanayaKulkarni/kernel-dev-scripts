@@ -1,0 +1,55 @@
+CONFIG_NVME_USE_CID_GENCTR=y
+
+     0.03%     0.03%  kworker/40:2-mm  [nvme_core]  [k] nvme_find_rq                                 ◆
+     0.02%     0.02%  kworker/29:1-mm  [nvme_core]  [k] nvme_find_rq                                 ▒
+     0.02%     0.02%  kworker/8:1-mm_  [nvme_core]  [k] nvme_find_rq                                 ▒
+     0.02%     0.02%  kworker/32:2-mm  [nvme_core]  [k] nvme_find_rq                                 ▒
+     0.02%     0.02%  kworker/10:1-ev  [nvme_core]  [k] nvme_find_rq                                 ▒
+     0.02%     0.02%  kworker/22:1-mm  [nvme_core]  [k] nvme_find_rq                                 ▒
+     0.02%     0.02%  kworker/11:1-xf  [nvme_core]  [k] nvme_find_rq                                 ▒
+     0.02%     0.02%  kworker/20:1-mm  [nvme_core]  [k] nvme_find_rq                                 ▒
+     0.02%     0.02%  kworker/16:0-mm  [nvme_core]  [k] nvme_find_rq                                 ▒
+     0.02%     0.02%  kworker/36:1-ev  [nvme_core]  [k] nvme_find_rq                                 ▒
+     0.02%     0.02%  kworker/35:0-mm  [nvme_core]  [k] nvme_find_rq                                 ▒
+     0.02%     0.02%  kworker/24:2-ev  [nvme_core]  [k] nvme_find_rq                                 ▒
+     0.02%     0.02%  kworker/26:1-mm  [nvme_core]  [k] nvme_find_rq                                 ▒
+     0.02%     0.02%  kworker/1:1-mm_  [nvme_core]  [k] nvme_find_rq                                 ▒
+     0.02%     0.02%  kworker/33:2-mm  [nvme_core]  [k] nvme_find_rq                                 ▒
+     0.02%     0.02%  kworker/43:2-mm  [nvme_core]  [k] nvme_find_rq                                 ▒
+     0.02%     0.02%  kworker/41:0-mm  [nvme_core]  [k] nvme_find_rq                                 ▒
+     0.02%     0.02%  kworker/31:0-mm  [nvme_core]  [k] nvme_find_rq                                 ▒
+     0.02%     0.02%  kworker/27:0-mm  [nvme_core]  [k] nvme_find_rq                                 ▒
+     0.02%     0.02%  kworker/9:0-mm_  [nvme_core]  [k] nvme_find_rq                                 ▒
+     0.02%     0.02%  kworker/19:2-mm  [nvme_core]  [k] nvme_find_rq                                 ▒
+     0.02%     0.02%  kworker/34:1-ev  [nvme_core]  [k] nvme_find_rq                                 ▒
+     0.02%     0.02%  kworker/14:2-ev  [nvme_core]  [k] nvme_find_rq                                 ▒
+     0.02%     0.02%  kworker/38:0-mm  [nvme_core]  [k] nvme_find_rq                                 ▒
+     0.02%     0.02%  kworker/12:1-ev  [nvme_core]  [k] nvme_find_rq                                 ▒
+     0.02%     0.02%  kworker/21:2-mm  [nvme_core]  [k] nvme_find_rq                                 ▒
+     0.02%     0.02%  kworker/4:1-mm_  [nvme_core]  [k] nvme_find_rq                                 ▒
+     0.02%     0.02%  kworker/30:0-mm  [nvme_core]  [k] nvme_find_rq                                 ▒
+     0.02%     0.02%  kworker/3:1-eve  [nvme_core]  [k] nvme_find_rq                                 ▒
+     0.02%     0.02%  kworker/46:2-mm  [nvme_core]  [k] nvme_find_rq                                 ▒
+     0.02%     0.02%  kworker/7:0-mm_  [nvme_core]  [k] nvme_find_rq                                 ▒
+     0.02%     0.02%  kworker/15:1-ev  [nvme_core]  [k] nvme_find_rq                                 ▒
+     0.02%     0.02%  kworker/17:1-mm  [nvme_core]  [k] nvme_find_rq                                 ▒
+     0.02%     0.02%  kworker/37:0-mm  [nvme_core]  [k] nvme_find_rq                                 ▒
+     0.02%     0.02%  kworker/42:2-mm  [nvme_core]  [k] nvme_find_rq                                 ▒
+     0.02%     0.02%  kworker/47:1-ev  [nvme_core]  [k] nvme_find_rq                                 ▒
+     0.02%     0.02%  kworker/18:2-mm  [nvme_core]  [k] nvme_find_rq                                 ▒
+     0.02%     0.02%  kworker/45:1-mm  [nvme_core]  [k] nvme_find_rq                                 ▒
+     0.02%     0.02%  kworker/13:1-ev  [nvme_core]  [k] nvme_find_rq                                 ▒
+     0.02%     0.02%  kworker/44:1-ev  [nvme_core]  [k] nvme_find_rq                                 ▒
+     0.02%     0.02%  kworker/25:1-mm  [nvme_core]  [k] nvme_find_rq                                 ▒
+     0.02%     0.02%  kworker/5:1-eve  [nvme_core]  [k] nvme_find_rq                                 ▒
+     0.02%     0.02%  kworker/39:1-mm  [nvme_core]  [k] nvme_find_rq                                 ▒
+     0.02%     0.02%  kworker/23:3-ev  [nvme_core]  [k] nvme_find_rq                                 ▒
+     0.02%     0.02%  kworker/0:1-eve  [nvme_core]  [k] nvme_find_rq                                 ▒
+     0.02%     0.02%  kworker/2:2-eve  [nvme_core]  [k] nvme_find_rq                                 ▒
+     0.01%     0.01%  kworker/6:1-mm_  [nvme_core]  [k] nvme_find_rq                                 ▒
+     0.01%     0.01%  kworker/28:1-ev  [nvme_core]  [k] nvme_find_rq                                 ▒
+     0.01%     0.01%  kworker/28:0-at  [nvme_core]  [k] nvme_find_rq                                 ▒
+     0.00%     0.00%  fio              [nvme_core]  [k] nvme_find_rq                                 ▒
+     0.00%     0.00%  kworker/19:1-xf  [nvme_core]  [k] nvme_find_rq                                 ▒
+                                                                               
+

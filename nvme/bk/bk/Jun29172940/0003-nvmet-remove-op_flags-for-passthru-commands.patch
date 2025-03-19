@@ -1,0 +1,40 @@
+From 1e2e563df5cad1bcfa04f58fa7ad3ab840216b39 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Wed, 16 Sep 2020 23:58:09 -0700
+Subject: [PATCH 3/7] nvmet: remove op_flags for passthru commands
+
+For passthru commands setting op_flags has no meaning. Remove the code
+to set the op flags in nvmet_passthru_map_sg().
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/passthru.c | 8 +-------
+ 1 file changed, 1 insertion(+), 7 deletions(-)
+
+diff --git a/drivers/nvme/target/passthru.c b/drivers/nvme/target/passthru.c
+index 5b3631f4f3ea..bd759b3702f0 100644
+--- a/drivers/nvme/target/passthru.c
++++ b/drivers/nvme/target/passthru.c
+@@ -182,18 +182,12 @@ static int nvmet_passthru_map_sg(struct nvmet_req *req, struct request *rq)
+ {
+ 	int sg_cnt = req->sg_cnt;
+ 	struct scatterlist *sg;
+-	int op_flags = 0;
+ 	struct bio *bio;
+ 	int i, ret;
+ 
+-	if (req->cmd->common.opcode == nvme_cmd_flush)
+-		op_flags = REQ_FUA;
+-	else if (nvme_is_write(req->cmd))
+-		op_flags = REQ_SYNC | REQ_IDLE;
+-
+ 	bio = bio_alloc(GFP_KERNEL, min(sg_cnt, BIO_MAX_PAGES));
+ 	bio->bi_end_io = bio_put;
+-	bio->bi_opf = req_op(rq) | op_flags;
++	bio->bi_opf = req_op(rq);
+ 
+ 	for_each_sg(req->sg, sg, req->sg_cnt, i) {
+ 		if (bio_add_pc_page(rq->q, bio, sg_page(sg), sg->length,
+-- 
+2.22.1
+

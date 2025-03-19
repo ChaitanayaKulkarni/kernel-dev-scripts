@@ -1,0 +1,50 @@
+From 4b88207ffc66a9d37602d296979a6549a456b855 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Wed, 2 Jun 2021 13:33:02 -0700
+Subject: [PATCH 1/5] block: export blk_next_bio()
+
+The block layer provides emulation of zone management operations
+targeting all zones of a zoned block device only for the zone reset
+operation (REQ_OP_ZONE_RESET). In order to correctly implement
+exporting of zoned block devices with NVMeOF, emulating zone management
+operations targeting all zones of a device is also necessary for the
+open, close and finish zone operations (REQ_OP_ZONE_OPEN,
+REQ_OP_ZONE_CLOSE and REQ_OP_ZONE_FINISH).
+
+Instead of duplicating the code, export the existing helper from block
+layer so we can use a bio chaining pattern that is present in the block
+layer for REQ_OP_ZONE RESET all emulation in the NVMeOF zoned block
+device backend.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ block/blk-lib.c     | 1 +
+ include/linux/bio.h | 2 ++
+ 2 files changed, 3 insertions(+)
+
+diff --git a/block/blk-lib.c b/block/blk-lib.c
+index 7b256131b20b..9f09beadcbe3 100644
+--- a/block/blk-lib.c
++++ b/block/blk-lib.c
+@@ -21,6 +21,7 @@ struct bio *blk_next_bio(struct bio *bio, unsigned int nr_pages, gfp_t gfp)
+ 
+ 	return new;
+ }
++EXPORT_SYMBOL_GPL(blk_next_bio);
+ 
+ int __blkdev_issue_discard(struct block_device *bdev, sector_t sector,
+ 		sector_t nr_sects, gfp_t gfp_mask, int flags,
+diff --git a/include/linux/bio.h b/include/linux/bio.h
+index a0b4cfdf62a4..b2491ead22a0 100644
+--- a/include/linux/bio.h
++++ b/include/linux/bio.h
+@@ -822,4 +822,6 @@ static inline void bio_set_polled(struct bio *bio, struct kiocb *kiocb)
+ 		bio->bi_opf |= REQ_NOWAIT;
+ }
+ 
++struct bio *blk_next_bio(struct bio *bio, unsigned int nr_pages, gfp_t gfp);
++
+ #endif /* __LINUX_BIO_H */
+-- 
+2.22.1
+

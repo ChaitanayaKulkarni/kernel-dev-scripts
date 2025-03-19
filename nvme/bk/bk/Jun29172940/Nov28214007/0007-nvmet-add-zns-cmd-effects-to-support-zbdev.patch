@@ -1,0 +1,29 @@
+From e0190038cf014f969c1eed1cf98051dc35775177 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Tue, 17 Nov 2020 11:07:00 -0800
+Subject: [PATCH V2 7/9] nvmet: add zns cmd effects to support zbdev
+
+Update the target side command effects logs with support for
+ZNS commands for zbdev.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/admin-cmd.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/drivers/nvme/target/admin-cmd.c b/drivers/nvme/target/admin-cmd.c
+index cd368cbe3855..0099275951da 100644
+--- a/drivers/nvme/target/admin-cmd.c
++++ b/drivers/nvme/target/admin-cmd.c
+@@ -191,6 +191,8 @@ static void nvmet_execute_get_log_cmd_effects_ns(struct nvmet_req *req)
+ 	log->iocs[nvme_cmd_dsm]			= cpu_to_le32(1 << 0);
+ 	log->iocs[nvme_cmd_write_zeroes]	= cpu_to_le32(1 << 0);
+ 
++	nvmet_zns_add_cmd_effects(log);
++
+ 	status = nvmet_copy_to_sgl(req, 0, log, sizeof(*log));
+ 
+ 	kfree(log);
+-- 
+2.22.1
+

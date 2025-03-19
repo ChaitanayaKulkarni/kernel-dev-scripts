@@ -1,0 +1,115 @@
+From 68307e5ea24f28598c8883b9842de5f7fa6cb4aa Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Tue, 1 Oct 2019 17:30:19 -0700
+Subject: [PATCH 1/6] nvmet: add a workqueue to support polling
+
+This patch adds a new workqueue "io_poll_wq" which we use in the next
+patches to call blk_poll()/iocb->ki_filp->f_op->iopoll() in the tight
+loop until we get I/O completion callback from the low level driver.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/core.c        | 21 ++++++++++++++-------
+ drivers/nvme/target/io-cmd-bdev.c |  2 ++
+ drivers/nvme/target/io-cmd-file.c |  2 ++
+ drivers/nvme/target/nvmet.h       |  1 +
+ 4 files changed, 19 insertions(+), 7 deletions(-)
+
+diff --git a/drivers/nvme/target/core.c b/drivers/nvme/target/core.c
+index 3a67e244e568..3e616c0279c6 100644
+--- a/drivers/nvme/target/core.c
++++ b/drivers/nvme/target/core.c
+@@ -16,6 +16,7 @@
+ #include "nvmet.h"
+ 
+ struct workqueue_struct *buffered_io_wq;
++struct workqueue_struct *io_poll_wq;
+ static const struct nvmet_fabrics_ops *nvmet_transports[NVMF_TRTYPE_MAX];
+ static DEFINE_IDA(cntlid_ida);
+ 
+@@ -1457,16 +1458,18 @@ void nvmet_subsys_put(struct nvmet_subsys *subsys)
+ 
+ static int __init nvmet_init(void)
+ {
+-	int error;
++	int error = -ENOMEM;
+ 
+ 	nvmet_ana_group_enabled[NVMET_DEFAULT_ANA_GRPID] = 1;
+ 
+-	buffered_io_wq = alloc_workqueue("nvmet-buffered-io-wq",
+-			WQ_MEM_RECLAIM, 0);
+-	if (!buffered_io_wq) {
+-		error = -ENOMEM;
++	io_poll_wq = alloc_workqueue("nvmet-io-poll-wq", WQ_MEM_RECLAIM, 0);
++	if (!io_poll_wq)
+ 		goto out;
+-	}
++
++	buffered_io_wq =
++		alloc_workqueue("nvmet-buffered-io-wq", WQ_MEM_RECLAIM, 0);
++	if (!buffered_io_wq)
++		goto out_free_work_queue;
+ 
+ 	error = nvmet_init_discovery();
+ 	if (error)
+@@ -1480,7 +1483,10 @@ static int __init nvmet_init(void)
+ out_exit_discovery:
+ 	nvmet_exit_discovery();
+ out_free_work_queue:
+-	destroy_workqueue(buffered_io_wq);
++	if (buffered_io_wq)
++		destroy_workqueue(buffered_io_wq);
++	if (io_poll_wq)
++		destroy_workqueue(io_poll_wq);
+ out:
+ 	return error;
+ }
+@@ -1491,6 +1497,7 @@ static void __exit nvmet_exit(void)
+ 	nvmet_exit_discovery();
+ 	ida_destroy(&cntlid_ida);
+ 	destroy_workqueue(buffered_io_wq);
++	destroy_workqueue(io_poll_wq);
+ 
+ 	BUILD_BUG_ON(sizeof(struct nvmf_disc_rsp_page_entry) != 1024);
+ 	BUILD_BUG_ON(sizeof(struct nvmf_disc_rsp_page_hdr) != 1024);
+diff --git a/drivers/nvme/target/io-cmd-bdev.c b/drivers/nvme/target/io-cmd-bdev.c
+index 32008d85172b..0aa51e8cf80b 100644
+--- a/drivers/nvme/target/io-cmd-bdev.c
++++ b/drivers/nvme/target/io-cmd-bdev.c
+@@ -70,6 +70,8 @@ int nvmet_bdev_ns_enable(struct nvmet_ns *ns)
+ void nvmet_bdev_ns_disable(struct nvmet_ns *ns)
+ {
+ 	if (ns->bdev) {
++		if (io_poll_wq)
++			flush_workqueue(io_poll_wq);
+ 		blkdev_put(ns->bdev, FMODE_WRITE | FMODE_READ);
+ 		ns->bdev = NULL;
+ 	}
+diff --git a/drivers/nvme/target/io-cmd-file.c b/drivers/nvme/target/io-cmd-file.c
+index 05453f5d1448..7171830cffbf 100644
+--- a/drivers/nvme/target/io-cmd-file.c
++++ b/drivers/nvme/target/io-cmd-file.c
+@@ -18,6 +18,8 @@ void nvmet_file_ns_disable(struct nvmet_ns *ns)
+ 	if (ns->file) {
+ 		if (ns->buffered_io)
+ 			flush_workqueue(buffered_io_wq);
++		if (io_poll_wq)
++			flush_workqueue(io_poll_wq);
+ 		mempool_destroy(ns->bvec_pool);
+ 		ns->bvec_pool = NULL;
+ 		kmem_cache_destroy(ns->bvec_cache);
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index c51f8dd01dc4..60f06acf3e0c 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -321,6 +321,7 @@ struct nvmet_req {
+ };
+ 
+ extern struct workqueue_struct *buffered_io_wq;
++extern struct workqueue_struct *io_poll_wq;
+ 
+ static inline void nvmet_set_result(struct nvmet_req *req, u32 result)
+ {
+-- 
+2.22.1
+

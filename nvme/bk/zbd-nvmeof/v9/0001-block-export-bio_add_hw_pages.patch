@@ -1,0 +1,68 @@
+From 95ba910c14a4e6e09d2ab11f8bde459369569611 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Sat, 2 Jan 2021 19:07:30 -0800
+Subject: [PATCH V9 1/9] block: export bio_add_hw_pages()
+
+In order to implement the NVMe Zone Append command for NVMeOF target so
+that it can export generic Zoned Block Devices with host side NVMe Zoned
+Namespace interface, we need to build the bios with hardware limitations,
+i.e. we use bio_add_hw_page() which considers
+queue_max_zone_append_sectors() instead of bio_add_page().
+
+Without this API being exported NVMeOF target will require to use
+bio_add_hw_page() caller bio_iov_iter_get_pages(). That results in
+extra work that is inefficient.
+
+Export the API so that NVMeOF ZBD over ZNS backend can use it to build
+Zone Append bios.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ block/bio.c            | 1 +
+ block/blk.h            | 4 ----
+ include/linux/blkdev.h | 4 ++++
+ 3 files changed, 5 insertions(+), 4 deletions(-)
+
+diff --git a/block/bio.c b/block/bio.c
+index 1f2cc1fbe283..5cbd56b54f98 100644
+--- a/block/bio.c
++++ b/block/bio.c
+@@ -826,6 +826,7 @@ int bio_add_hw_page(struct request_queue *q, struct bio *bio,
+ 	bio->bi_iter.bi_size += len;
+ 	return len;
+ }
++EXPORT_SYMBOL_GPL(bio_add_hw_page);
+ 
+ /**
+  * bio_add_pc_page	- attempt to add page to passthrough bio
+diff --git a/block/blk.h b/block/blk.h
+index 7550364c326c..200030b2d74f 100644
+--- a/block/blk.h
++++ b/block/blk.h
+@@ -351,8 +351,4 @@ int bdev_resize_partition(struct block_device *bdev, int partno,
+ 		sector_t start, sector_t length);
+ int disk_expand_part_tbl(struct gendisk *disk, int target);
+ 
+-int bio_add_hw_page(struct request_queue *q, struct bio *bio,
+-		struct page *page, unsigned int len, unsigned int offset,
+-		unsigned int max_sectors, bool *same_page);
+-
+ #endif /* BLK_INTERNAL_H */
+diff --git a/include/linux/blkdev.h b/include/linux/blkdev.h
+index 070de09425ad..028ccc9bdf8d 100644
+--- a/include/linux/blkdev.h
++++ b/include/linux/blkdev.h
+@@ -2005,6 +2005,10 @@ struct block_device *I_BDEV(struct inode *inode);
+ struct block_device *bdgrab(struct block_device *bdev);
+ void bdput(struct block_device *);
+ 
++int bio_add_hw_page(struct request_queue *q, struct bio *bio,
++		struct page *page, unsigned int len, unsigned int offset,
++		unsigned int max_sectors, bool *same_page);
++
+ #ifdef CONFIG_BLOCK
+ void invalidate_bdev(struct block_device *bdev);
+ int truncate_bdev_range(struct block_device *bdev, fmode_t mode, loff_t lstart,
+-- 
+2.22.1
+

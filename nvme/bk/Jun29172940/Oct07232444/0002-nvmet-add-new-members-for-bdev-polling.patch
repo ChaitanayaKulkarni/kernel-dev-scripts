@@ -1,0 +1,33 @@
+From 1daf79375ff07f2c035d806660f40dd57222df37 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Tue, 1 Oct 2019 20:27:24 -0700
+Subject: [PATCH 2/6] nvmet: add new members for bdev-polling
+
+This patch adds new structure members required to implement (bdev-ns)
+block device backed namespace polling.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/nvmet.h | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index 60f06acf3e0c..6f5d017961e0 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -294,7 +294,11 @@ struct nvmet_req {
+ 	struct bio_vec		inline_bvec[NVMET_MAX_INLINE_BIOVEC];
+ 	union {
+ 		struct {
+-			struct bio      inline_bio;
++			struct bio		inline_bio;
++			blk_qc_t		cookie;
++			struct work_struct	work;
++			struct completion	waiting;
++			bool			polled;
+ 		} b;
+ 		struct {
+ 			bool			mpool_alloc;
+-- 
+2.22.1
+

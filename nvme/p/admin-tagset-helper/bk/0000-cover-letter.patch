@@ -1,0 +1,31 @@
+From d80ac6679f9bfdd6bbbae8a6fb234da02b07e1b9 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Sat, 22 Jan 2022 23:02:19 -0800
+Subject: [PATCH 00/11] *** SUBJECT HERE ***
+
+*** BLURB HERE ***
+
+Chaitanya Kulkarni (11):
+  nvme-fc: add a helper to initialize connect_q
+  nvme-rdma: use helper to initialize connect_q
+  nvme-tcp: use helper to initialize connect_q
+  nvme-loop: use helper to initialize connect_q
+  nvme-fc: centralize admin tagset initialization
+  nvme-rdma: centralize admin tagset initialization
+  nvme-tcp: ccentralize admin tagset initialization
+  nvme-loop: centralize admin tagset initialization
+  nvme-loop: centralize io tagset initialization
+  nvme-rdma: use io tagset initialization helper
+  nvme-tcp: use io tagset initialization helper
+
+ drivers/nvme/host/fabrics.h | 34 ++++++++++++++++++++++++++++++++++
+ drivers/nvme/host/fc.c      | 18 +++++-------------
+ drivers/nvme/host/nvme.h    |  8 ++++++++
+ drivers/nvme/host/rdma.c    | 31 ++++++++++---------------------
+ drivers/nvme/host/tcp.c     | 31 +++++++++----------------------
+ drivers/nvme/target/loop.c  | 32 ++++++++++----------------------
+ 6 files changed, 76 insertions(+), 78 deletions(-)
+
+-- 
+2.29.0
+

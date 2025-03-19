@@ -1,0 +1,68 @@
+From 9ae2e974d8fdfc7dbad9c59e58bb5dc1d9dd2e15 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Thu, 7 Apr 2022 21:04:09 -0700
+Subject: [PATCH 1/5] nvme-core: fix qid param blk_mq_alloc_request_hctx
+
+Only caller of the __nvme_submit_sync_cmd() with qid value not equal to
+NVME_QID_ANY is nvmf_connect_io_queues(), where qid value is alway set
+to > 0.
+
+[1] __nvme_submit_sync_cmd() callers with  qid parameter from :-
+
+	Caller			|	qid parameter
+------------------------------------------------------
+* nvme_fc_connect_io_cmd()      |
+   nvmf_connect_io_queue()	|	qid > 0
+* nvme_rdma_start_io_queues()   |
+   nvme_rdma_start_io_queue()   |
+    nvmf_connect_io_queues()	|	qid > 0
+* nvme_tcp_start_io_queues()    |
+   nvme_tcp_start_io_queue()    |
+    nvmf_connect_io_queues()	|	qid > 0
+* nvme_loop_connect_io_queue()  |
+   nvmf_connect_io_queues()	|	qid > 0
+
+When qid value of the function parameter __nvme_submit_sync_cmd() is > 0
+from above caller we use blk_mq_alloc_request_hctx() where we pass last
+parameter as 0 if qid value is set to 0 i.e. :-
+
+1076 int __nvme_submit_sync_cmd(struct request_queue *q, struct nvme_command *cmd,
+1077                 union nvme_result *result, void *buffer, unsigned bufflen,
+1078                 int qid, int at_head, blk_mq_req_flags_t flags)
+1079 {
+1080         struct request *req;
+1081         int ret;
+1082
+1083         if (qid == NVME_QID_ANY)
+1084                 req = blk_mq_alloc_request(q, nvme_req_op(cmd), flags);
+1085         else
+1086                 req = blk_mq_alloc_request_hctx(q, nvme_req_op(cmd), flags,
+1087                                                 qid ? qid - 1 : 0);
+
+But qid function paramater value of the __nvme_submit_sync_cmd() will
+never be 0 from above caller list see [1].
+
+Remove the conditional operator to pass the qid as 0 in the call to
+blk_mq_alloc_requst_hctx().
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/host/core.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index 1631967c5998..60f65f9ba2cf 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -1084,7 +1084,7 @@ int __nvme_submit_sync_cmd(struct request_queue *q, struct nvme_command *cmd,
+ 		req = blk_mq_alloc_request(q, nvme_req_op(cmd), flags);
+ 	else
+ 		req = blk_mq_alloc_request_hctx(q, nvme_req_op(cmd), flags,
+-						qid ? qid - 1 : 0);
++						qid - 1);
+ 
+ 	if (IS_ERR(req))
+ 		return PTR_ERR(req);
+-- 
+2.29.0
+

@@ -1,0 +1,33 @@
+From 188381b1f65754e8cca7c79c8aef665577e782f3 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Thu, 21 Nov 2019 22:14:00 -0800
+Subject: [PATCH 0/2] nvmet: make model and ctrl-id configurable
+
+Hi,
+
+This is a small patch series which allows user to configure the
+model and the controller ID.
+
+The changelog is present in the respective patches.
+
+The patch-series for the nvmetcli with new attribute support
+will follow this one shortly.
+
+Regards,
+Chaitanya
+
+Chaitanya Kulkarni (1):
+  nvmet: make ctrl-id configurable
+
+Mark Ruijter (1):
+  nvmet: make ctrl model configurable
+
+ drivers/nvme/target/admin-cmd.c |  12 +++-
+ drivers/nvme/target/configfs.c  | 115 ++++++++++++++++++++++++++++++++
+ drivers/nvme/target/core.c      |  10 ++-
+ drivers/nvme/target/nvmet.h     |   6 ++
+ 4 files changed, 139 insertions(+), 4 deletions(-)
+
+-- 
+2.22.1
+

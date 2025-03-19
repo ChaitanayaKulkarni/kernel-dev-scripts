@@ -1,0 +1,77 @@
+From 4976a2612ff715497f57ad70f2e1651b20b77c8a Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Wed, 29 Jul 2020 17:54:46 -0700
+Subject: [PATCH] xarray: use __xa_load() version
+
+This patch adds a new xarray API __xa_load() that moves xa_load() core
+to its low level function __xa_load(). Caller is responsible for handling
+RCU locking. This API is needed for NVMe subsystem so that it can take
+an advantage of the RCU locking provided by the XAarray for reference
+counting.
+
+This is a preparation patch for replacing linked list with XArray for
+NVMe host and core subsystem.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ include/linux/xarray.h | 22 ++++++++++++++++++++++
+ lib/xarray.c           |  7 +------
+ 2 files changed, 23 insertions(+), 6 deletions(-)
+
+diff --git a/include/linux/xarray.h b/include/linux/xarray.h
+index b4d70e7568b2..d9bb8e28848d 100644
+--- a/include/linux/xarray.h
++++ b/include/linux/xarray.h
+@@ -1505,6 +1505,28 @@ void xas_pause(struct xa_state *);
+ 
+ void xas_create_range(struct xa_state *);
+ 
++/**
++ * __xa_load() - core load API without rcu read locking.
++ * @xa: XArray.
++ * @index: index into array.
++ *
++ * Context: Any context.  Takes and releases the RCU lock.
++ * Return: The entry at @index in @xa.
++ */
++static inline void *__xa_load(struct xarray *xa, unsigned long index)
++{
++       XA_STATE(xas, xa, index);
++       void *entry;
++
++       do {
++               entry = xas_load(&xas);
++               if (xa_is_zero(entry))
++                       entry = NULL;
++       } while (xas_retry(&xas, entry));
++
++       return entry;
++}
++
+ /**
+  * xas_reload() - Refetch an entry from the xarray.
+  * @xas: XArray operation state.
+diff --git a/lib/xarray.c b/lib/xarray.c
+index e9e641d3c0c3..949bedc174ad 100644
+--- a/lib/xarray.c
++++ b/lib/xarray.c
+@@ -1297,15 +1297,10 @@ EXPORT_SYMBOL_GPL(xas_find_conflict);
+  */
+ void *xa_load(struct xarray *xa, unsigned long index)
+ {
+-	XA_STATE(xas, xa, index);
+ 	void *entry;
+ 
+ 	rcu_read_lock();
+-	do {
+-		entry = xas_load(&xas);
+-		if (xa_is_zero(entry))
+-			entry = NULL;
+-	} while (xas_retry(&xas, entry));
++	entry = __xa_load(xa, index);
+ 	rcu_read_unlock();
+ 
+ 	return entry;
+-- 
+2.26.0
+

@@ -1,0 +1,14 @@
+[RANDREAD]
+ioengine=libaio
+direct=1
+rw=randread
+norandommap
+randrepeat=0
+runtime=1m
+iodepth=1
+numjobs=64
+bs=4k
+time_based
+overwrite=0
+size=900m
+group_reporting

@@ -1,0 +1,89 @@
+From 5494edbc87798c9b771abe6ca04e65afc1aa3b0c Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Thu, 7 Apr 2022 12:11:37 -0700
+Subject: [PATCH 1/2] nvmet: handle admin default command set identifier
+
+The NVMeOF in kernel host when configuring non-mdts limits uses
+idnetify controller cns value to NVME_ID_CNS_CS_CTRL and csi value to
+NVME_CSI_NVM. In target code we only handle case for NVME_ID_CNS_CS_CTRL
+and NVME_CSI_ZNS when CONFIG_BLK_DEV_ZONED is set.
+
+Handle missing case for CONFIG_BLK_DEV_ZONED and !CONFIG_BLK_DEV_ZONED
+so it can handle NVME_ID_CNS_CS_CTRL with NVME_CSI_NVM.
+
+This is needed to mask out the errors reported by the blktests.
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/target/admin-cmd.c | 16 ++++++++--------
+ drivers/nvme/target/nvmet.h     |  2 +-
+ drivers/nvme/target/zns.c       |  2 +-
+ 3 files changed, 10 insertions(+), 10 deletions(-)
+
+diff --git a/drivers/nvme/target/admin-cmd.c b/drivers/nvme/target/admin-cmd.c
+index 397daaf51f1b..b7194d00a592 100644
+--- a/drivers/nvme/target/admin-cmd.c
++++ b/drivers/nvme/target/admin-cmd.c
+@@ -342,7 +342,7 @@ static void nvmet_execute_get_log_page(struct nvmet_req *req)
+ 	nvmet_req_complete(req, NVME_SC_INVALID_FIELD | NVME_SC_DNR);
+ }
+ 
+-static void nvmet_execute_identify_ctrl(struct nvmet_req *req)
++static void nvmet_execute_identify_cns_cs_ctrl_nvm(struct nvmet_req *req)
+ {
+ 	struct nvmet_ctrl *ctrl = req->sq->ctrl;
+ 	struct nvmet_subsys *subsys = ctrl->subsys;
+@@ -710,17 +710,17 @@ static void nvmet_execute_identify(struct nvmet_req *req)
+ 	case NVME_ID_CNS_CTRL:
+ 		switch (req->cmd->identify.csi) {
+ 		case NVME_CSI_NVM:
+-			return nvmet_execute_identify_ctrl(req);
++			return nvmet_execute_identify_cns_cs_ctrl_nvm(req);
+ 		}
+ 		break;
+ 	case NVME_ID_CNS_CS_CTRL:
+-		if (IS_ENABLED(CONFIG_BLK_DEV_ZONED)) {
+-			switch (req->cmd->identify.csi) {
+-			case NVME_CSI_ZNS:
+-				return nvmet_execute_identify_cns_cs_ctrl(req);
+-			default:
++		switch (req->cmd->identify.csi) {
++		case NVME_CSI_NVM:
++			return nvmet_execute_identify_cns_cs_ctrl_nvm(req);
++		case NVME_CSI_ZNS:
++			if (IS_ENABLED(CONFIG_BLK_DEV_ZONED))
+ 				break;
+-			}
++			return nvmet_execute_identify_cns_cs_ctrl_zns(req);
+ 		}
+ 		break;
+ 	case NVME_ID_CNS_NS_ACTIVE_LIST:
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index 69818752a33a..fdb6956314ad 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -547,7 +547,7 @@ bool nvmet_ns_revalidate(struct nvmet_ns *ns);
+ u16 blk_to_nvme_status(struct nvmet_req *req, blk_status_t blk_sts);
+ 
+ bool nvmet_bdev_zns_enable(struct nvmet_ns *ns);
+-void nvmet_execute_identify_cns_cs_ctrl(struct nvmet_req *req);
++void nvmet_execute_identify_cns_cs_ctrl_zns(struct nvmet_req *req);
+ void nvmet_execute_identify_cns_cs_ns(struct nvmet_req *req);
+ void nvmet_bdev_execute_zone_mgmt_recv(struct nvmet_req *req);
+ void nvmet_bdev_execute_zone_mgmt_send(struct nvmet_req *req);
+diff --git a/drivers/nvme/target/zns.c b/drivers/nvme/target/zns.c
+index e34718b09550..5003d48b6630 100644
+--- a/drivers/nvme/target/zns.c
++++ b/drivers/nvme/target/zns.c
+@@ -71,7 +71,7 @@ bool nvmet_bdev_zns_enable(struct nvmet_ns *ns)
+ 	return true;
+ }
+ 
+-void nvmet_execute_identify_cns_cs_ctrl(struct nvmet_req *req)
++void nvmet_execute_identify_cns_cs_ctrl_zns(struct nvmet_req *req)
+ {
+ 	u8 zasl = req->sq->ctrl->subsys->zasl;
+ 	struct nvmet_ctrl *ctrl = req->sq->ctrl;
+-- 
+2.29.0
+

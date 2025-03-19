@@ -1,0 +1,31 @@
+nvme-core: Clear any SGL flags in passthru commands
+
+The host driver should decide whether to use SGLs or PRPs and they
+currently assume the flags are cleared after the call to
+nvme_setup_cmd(). However, passed-through commands may erroneously
+set these bits; so clear them for all cases.
+
+Signed-off-by: Logan Gunthorpe <logang@deltatee.com>
+Reviewed-by: Sagi Grimberg <sagi@grimberg.me>
+---
+ drivers/nvme/host/core.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index f3c037f5a9ba..d22859543e4b 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -756,6 +756,8 @@ blk_status_t nvme_setup_cmd(struct nvme_ns *ns, struct request *req,
+ 	case REQ_OP_DRV_IN:
+ 	case REQ_OP_DRV_OUT:
+ 		memcpy(cmd, nvme_req(req)->cmd, sizeof(*cmd));
++		/* passthru commands should let the driver set the SGL flags */
++		cmd->common.flags &= ~NVME_CMD_SGL_ALL;
+ 		break;
+ 	case REQ_OP_FLUSH:
+ 		nvme_setup_flush(ns, cmd);
+-- 
+2.20.1
+
+
+

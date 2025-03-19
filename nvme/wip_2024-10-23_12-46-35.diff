@@ -1,0 +1,28 @@
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index 84cb859a911d..0ace069c3e26 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -1808,6 +1808,11 @@ static bool nvme_init_integrity(struct nvme_ns_head *head,
+ 		break;
+ 	}
+ 
++	/*
++	 * PI can be disabled when diable_pi is set even if namespace supports
++	 * it, we still need to set the tuple_size and bi_offset irrrespective
++	 * of that.
++	 */
+ 	bi->tuple_size = head->ms;
+ 	bi->pi_offset = info->pi_offset;
+ 	return true;
+diff --git a/include/linux/nvme.h b/include/linux/nvme.h
+index b58d9405d65e..3fdaf0b46572 100644
+--- a/include/linux/nvme.h
++++ b/include/linux/nvme.h
+@@ -571,6 +571,7 @@ enum {
+ 	NVME_NS_DPC_PI_TYPE1	= 1 << 0,
+ 	NVME_NS_DPS_PI_FIRST	= 1 << 3,
+ 	NVME_NS_DPS_PI_MASK	= 0x7,
++	NVME_NS_DPS_PI_DISABLED = 0,
+ 	NVME_NS_DPS_PI_TYPE1	= 1,
+ 	NVME_NS_DPS_PI_TYPE2	= 2,
+ 	NVME_NS_DPS_PI_TYPE3	= 3,

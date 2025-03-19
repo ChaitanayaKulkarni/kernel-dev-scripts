@@ -1,0 +1,35 @@
+From dc9c28cc17834d3011e507bb35882aa1bc2602fc Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Sat, 12 Sep 2020 21:57:10 -0700
+Subject: [PATCH V4 3/7] lightnvm: use I/O timeout in nvm submit user cmd
+
+In the function nvme_nvm_submit_user_cmd() it uses ADMIN_TIMEOUT when
+caller doesn't specify value for the timeout variable.
+
+For now we don't set the request queue's queuedata for admin command.
+
+Use newly introduced helper function nvme_default_timeout() to set the
+block layer request timeout value which sets the appropriate I/O or
+Admin timeout values when caller doesn't specify the timeout value.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/host/lightnvm.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/nvme/host/lightnvm.c b/drivers/nvme/host/lightnvm.c
+index 8e562d0f2c30..a4b84c996352 100644
+--- a/drivers/nvme/host/lightnvm.c
++++ b/drivers/nvme/host/lightnvm.c
+@@ -774,7 +774,7 @@ static int nvme_nvm_submit_user_cmd(struct request_queue *q,
+ 		goto err_cmd;
+ 	}
+ 
+-	rq->timeout = timeout ? timeout : ADMIN_TIMEOUT;
++	nvme_default_timeout(rq, timeout);
+ 
+ 	if (ppa_buf && ppa_len) {
+ 		ppa_list = dma_pool_alloc(dev->dma_pool, GFP_KERNEL, &ppa_dma);
+-- 
+2.22.1
+

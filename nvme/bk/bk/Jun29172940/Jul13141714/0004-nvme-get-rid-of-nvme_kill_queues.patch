@@ -1,0 +1,117 @@
+From 574dc7bdcf3087a2aff50834a89e73c98970f80b Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Mon, 13 Jul 2020 11:10:09 -0700
+Subject: [PATCH 04/11] nvme: get rid of nvme_kill_queues()
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/host/core.c | 37 ++++++++++++++++++++++---------------
+ drivers/nvme/host/nvme.h |  6 +++++-
+ drivers/nvme/host/pci.c  |  4 ++--
+ 3 files changed, 29 insertions(+), 18 deletions(-)
+
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index 619d4b5632c4..79875ce458fe 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -4107,7 +4107,7 @@ void nvme_remove_namespaces(struct nvme_ctrl *ctrl)
+ 	 * potentially having to clean up the failed sync later.
+ 	 */
+ 	if (ctrl->state == NVME_CTRL_DEAD)
+-		nvme_kill_queues(ctrl);
++		nvme_queue_act(ctrl, NVME_KILL_QUEUES);
+ 
+ 	xa_lock(&ctrl->namespaces);
+ 	xa_for_each(&ctrl->namespaces, idx, ns) {
+@@ -4452,26 +4452,33 @@ int nvme_init_ctrl(struct nvme_ctrl *ctrl, struct device *dev,
+ }
+ EXPORT_SYMBOL_GPL(nvme_init_ctrl);
+ 
+-/**
+- * nvme_kill_queues(): Ends all namespace queues
+- * @ctrl: the dead controller that needs to end
+- *
+- * Call this function when the driver determines it is unable to get the
+- * controller in a state capable of servicing IO.
+- */
+-void nvme_kill_queues(struct nvme_ctrl *ctrl)
++void nvme_queue_act(struct nvme_ctrl *ctrl, enum nvme_queue_act op)
+ {
+ 	struct nvme_ns *ns;
+ 	unsigned long idx;
+ 
+-	/* Forcibly unquiesce queues to avoid blocking dispatch */
+-	if (ctrl->admin_q && !blk_queue_dying(ctrl->admin_q))
+-		blk_mq_unquiesce_queue(ctrl->admin_q);
++	switch (op) {
++	case NVME_KILL_QUEUES:
++		/* Forcibly unquiesce queues to avoid blocking dispatch */
++		if (ctrl->admin_q && !blk_queue_dying(ctrl->admin_q))
++			blk_mq_unquiesce_queue(ctrl->admin_q);
++		break;
++	default:
++		break;
++	}
+ 
+-	xa_for_each(&ctrl->namespaces, idx, ns)
+-		nvme_set_queue_dying(ns);
++	xa_for_each(&ctrl->namespaces, idx, ns) {
++		switch (op) {
++		case NVME_KILL_QUEUES:
++			nvme_set_queue_dying(ns);
++			break;
++		default:
++			pr_warn("invalid %s op 0x%x\n", __func__, op);
++			break;
++		}
++	}
+ }
+-EXPORT_SYMBOL_GPL(nvme_kill_queues);
++EXPORT_SYMBOL_GPL(nvme_queue_act);
+ 
+ void nvme_unfreeze(struct nvme_ctrl *ctrl)
+ {
+diff --git a/drivers/nvme/host/nvme.h b/drivers/nvme/host/nvme.h
+index 1e8dedee74df..b1cde85e9a85 100644
+--- a/drivers/nvme/host/nvme.h
++++ b/drivers/nvme/host/nvme.h
+@@ -545,9 +545,13 @@ int nvme_sec_submit(void *data, u16 spsp, u8 secp, void *buffer, size_t len,
+ void nvme_complete_async_event(struct nvme_ctrl *ctrl, __le16 status,
+ 		volatile union nvme_result *res);
+ 
++enum nvme_queue_act {
++	NVME_KILL_QUEUES = 1,
++};
++
++void nvme_queue_act(struct nvme_ctrl *ctrl, enum nvme_queue_act op);
+ void nvme_stop_queues(struct nvme_ctrl *ctrl);
+ void nvme_start_queues(struct nvme_ctrl *ctrl);
+-void nvme_kill_queues(struct nvme_ctrl *ctrl);
+ void nvme_sync_queues(struct nvme_ctrl *ctrl);
+ void nvme_unfreeze(struct nvme_ctrl *ctrl);
+ void nvme_wait_freeze(struct nvme_ctrl *ctrl);
+diff --git a/drivers/nvme/host/pci.c b/drivers/nvme/host/pci.c
+index 19e27dd17108..ce04a76a48af 100644
+--- a/drivers/nvme/host/pci.c
++++ b/drivers/nvme/host/pci.c
+@@ -2509,7 +2509,7 @@ static void nvme_remove_dead_ctrl(struct nvme_dev *dev)
+ 	nvme_change_ctrl_state(&dev->ctrl, NVME_CTRL_DELETING);
+ 	nvme_get_ctrl(&dev->ctrl);
+ 	nvme_dev_disable(dev, false);
+-	nvme_kill_queues(&dev->ctrl);
++	nvme_queue_act(&dev->ctrl, NVME_KILL_QUEUES);
+ 	if (!queue_work(nvme_wq, &dev->remove_work))
+ 		nvme_put_ctrl(&dev->ctrl);
+ }
+@@ -2617,7 +2617,7 @@ static void nvme_reset_work(struct work_struct *work)
+ 	 */
+ 	if (dev->online_queues < 2) {
+ 		dev_warn(dev->ctrl.device, "IO queues not created\n");
+-		nvme_kill_queues(&dev->ctrl);
++		nvme_queue_act(&dev->ctrl, NVME_KILL_QUEUES);
+ 		nvme_remove_namespaces(&dev->ctrl);
+ 		nvme_free_tagset(dev);
+ 	} else {
+-- 
+2.26.0
+

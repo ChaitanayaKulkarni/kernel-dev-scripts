@@ -1,0 +1,30 @@
+From f202b2a004adafc3a8a5e68986b310e282654534 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Tue, 20 Apr 2021 19:51:45 -0700
+Subject: [PATCH V14 0/4] *** SUBJECT HERE ***
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+*** BLURB HERE ***
+
+Chaitanya Kulkarni (4):
+  nvmet: add req cns error complete helper
+  nvmet: add nvmet_req_bio put helper for backends
+  nvmet: add Command Set Identifier support
+  nvmet: add ZBD over ZNS backend support
+
+ drivers/nvme/target/Makefile      |   1 +
+ drivers/nvme/target/admin-cmd.c   | 123 ++++++-
+ drivers/nvme/target/core.c        |  32 +-
+ drivers/nvme/target/io-cmd-bdev.c |  29 +-
+ drivers/nvme/target/nvmet.h       |  28 ++
+ drivers/nvme/target/passthru.c    |   3 +-
+ drivers/nvme/target/zns.c         | 565 ++++++++++++++++++++++++++++++
+ include/linux/nvme.h              |   8 +
+ 8 files changed, 755 insertions(+), 34 deletions(-)
+ create mode 100644 drivers/nvme/target/zns.c
+
+-- 
+2.22.1
+

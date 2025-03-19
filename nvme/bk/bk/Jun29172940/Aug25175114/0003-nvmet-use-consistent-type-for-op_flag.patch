@@ -1,0 +1,35 @@
+From b643b8deddf7cde6797936e3f9b01b11324c67fb Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Thu, 6 Aug 2020 23:08:30 -0700
+Subject: [PATCH V2 03/11] nvmet: use consistent type for op_flag
+
+In function nvmet_passthru_map_sg() we set the bio->bi_opf ored with
+req_op and op_flags set based on the NVMe cmd. The variable bio->bi_opf
+is declared as unsigned int use same type for op_flag.
+
+Also, adjust the order according to new length.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Reviewed By: Logan Gunthorpe <logang@deltatee.com>
+---
+ drivers/nvme/target/passthru.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/nvme/target/passthru.c b/drivers/nvme/target/passthru.c
+index 15dd63e14227..682291fb6d7b 100644
+--- a/drivers/nvme/target/passthru.c
++++ b/drivers/nvme/target/passthru.c
+@@ -180,9 +180,9 @@ static void nvmet_passthru_req_done(struct request *rq,
+ 
+ static int nvmet_passthru_map_sg(struct nvmet_req *req, struct request *rq)
+ {
++	unsigned int op_flags = 0;
+ 	int sg_cnt = req->sg_cnt;
+ 	struct scatterlist *sg;
+-	int op_flags = 0;
+ 	struct bio *bio;
+ 	int i, ret;
+ 
+-- 
+2.22.1
+

@@ -1,0 +1,39 @@
+From dea05fa3d8a8f83993707731a6e4c396cfdddd1d Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Tue, 8 Oct 2019 10:39:56 -0700
+Subject: [PATCH 0/6] nvmet: add support for bdev/file ns I/O polling
+
+Hi,
+
+This patch series implements per request based polling for bdev/file
+backed namespace with the separate thread issuing
+blk_poll()/iocb->ki_filp->f_op->iopoll() calls respectively till the
+completion of the request.
+
+There is some code repetition but I kept it for better readability.
+
+Please note that I've lightly tested this code, upon some feedback
+I'll have testcases for both bdev and file-backed ns types with
+configfs interface.
+
+Regards,
+Chaitanya
+
+Chaitanya Kulkarni (6):
+  nvmet: add a workqueue to support polling
+  nvmet: add new members for bdev-polling
+  nvmet: implement polling for bdev-ns
+  nvmet: add new members for file-polling
+  nvmet: implement polling for file-ns
+  nvmet: add configfs interface to toggle polling
+
+ drivers/nvme/target/configfs.c    | 30 ++++++++++++++++++++++++++
+ drivers/nvme/target/core.c        | 22 +++++++++++++------
+ drivers/nvme/target/io-cmd-bdev.c | 34 ++++++++++++++++++++++++++++-
+ drivers/nvme/target/io-cmd-file.c | 36 ++++++++++++++++++++++++++++---
+ drivers/nvme/target/nvmet.h       | 10 ++++++++-
+ 5 files changed, 120 insertions(+), 12 deletions(-)
+
+-- 
+2.22.1
+

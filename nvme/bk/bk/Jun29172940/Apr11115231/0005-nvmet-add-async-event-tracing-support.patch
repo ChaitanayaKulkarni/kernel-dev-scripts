@@ -1,0 +1,72 @@
+From 2a17f1ff482d60c80320f7e28c7cfd3019efa0f9 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Sat, 11 Apr 2020 11:49:58 -0700
+Subject: [PATCH V3 5/5] nvmet: add async event tracing support
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+This adds a new tracepoint for the target to trace async event. This
+is helpful in debugging and comparing host and target side async events.  
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/core.c  |  2 ++
+ drivers/nvme/target/trace.h | 28 ++++++++++++++++++++++++++++
+ 2 files changed, 30 insertions(+)
+
+diff --git a/drivers/nvme/target/core.c b/drivers/nvme/target/core.c
+index 3da672a100e4..53e3213ac701 100644
+--- a/drivers/nvme/target/core.c
++++ b/drivers/nvme/target/core.c
+@@ -154,6 +154,8 @@ static void nvmet_async_events_process(struct nvmet_ctrl *ctrl, u16 status)
+ 		kfree(aen);
+ 
+ 		mutex_unlock(&ctrl->lock);
++		trace_nvmet_async_event(ctrl,
++				(req->cqe->result.u32 & 0xff00) >> 8);
+ 		nvmet_req_complete(req, status);
+ 	}
+ }
+diff --git a/drivers/nvme/target/trace.h b/drivers/nvme/target/trace.h
+index e645caa882dd..d0267226c9a0 100644
+--- a/drivers/nvme/target/trace.h
++++ b/drivers/nvme/target/trace.h
+@@ -130,6 +130,34 @@ TRACE_EVENT(nvmet_req_complete,
+ 
+ );
+ 
++#define aer_name(aer) { aer, #aer }
++
++TRACE_EVENT(nvmet_async_event,
++	TP_PROTO(struct nvmet_ctrl *ctrl, u32 result),
++	TP_ARGS(ctrl, result),
++	TP_STRUCT__entry(
++		__field(int, ctrl_id)
++		__field(u32, result)
++	),
++	TP_fast_assign(
++		__entry->ctrl_id = ctrl->cntlid;
++		__entry->result = result;
++	),
++	TP_printk("nvmet%d: NVME_AEN=%#08x [%s]",
++		__entry->ctrl_id, __entry->result,
++		__print_symbolic(__entry->result,
++		aer_name(NVME_AER_NOTICE_NS_CHANGED),
++		aer_name(NVME_AER_NOTICE_ANA),
++		aer_name(NVME_AER_NOTICE_FW_ACT_STARTING),
++		aer_name(NVME_AER_NOTICE_DISC_CHANGED),
++		aer_name(NVME_AER_ERROR),
++		aer_name(NVME_AER_SMART),
++		aer_name(NVME_AER_CSS),
++		aer_name(NVME_AER_VS))
++	)
++);
++#undef aer_name
++
+ #endif /* _TRACE_NVMET_H */
+ 
+ #undef TRACE_INCLUDE_PATH
+-- 
+2.22.1
+

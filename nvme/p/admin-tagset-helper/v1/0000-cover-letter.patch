@@ -1,0 +1,35 @@
+From 3dccaabb5df510313010213d7a03a52d3580aa30 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Thu, 27 Jan 2022 00:11:34 -0800
+Subject: [PATCH 0/9] nvme: add helpers and remove duplicate code
+
+HI,
+
+Instead of opencoding connect_q initialization/error handling and the
+initialization of the admin tagset, add common helpers to remove the
+ducplicate code in different transports.
+
+-ck
+
+Chaitanya Kulkarni (9):
+  nvme-fc: add a helper to initialize connect_q
+  nvme-rdma: use helper to initialize connect_q
+  nvme-tcp: use helper to initialize connect_q
+  nvme-loop: use helper to initialize connect_q
+  nvme-fc: centralize admin tagset initialization
+  nvme-pci: use helper for tagset initialization
+  nvme-rdma: use helper for tagset initialization
+  nvme-tcp: use helper for tagset initialization
+  nvme-loop: use helper for tagset initialization
+
+ drivers/nvme/host/fc.c     | 18 +++++-------------
+ drivers/nvme/host/nvme.h   | 25 +++++++++++++++++++++++++
+ drivers/nvme/host/pci.c    | 11 +++--------
+ drivers/nvme/host/rdma.c   | 19 ++++++-------------
+ drivers/nvme/host/tcp.c    | 18 +++++-------------
+ drivers/nvme/target/loop.c | 19 ++++++-------------
+ 6 files changed, 50 insertions(+), 60 deletions(-)
+
+-- 
+2.29.0
+

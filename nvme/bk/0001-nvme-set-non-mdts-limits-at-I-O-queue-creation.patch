@@ -1,0 +1,212 @@
+From 33f234577b6d9571e2a9297d4fe71032501f37d6 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Mon, 16 May 2022 17:36:02 -0700
+Subject: [PATCH] nvme: set non-mdts limits at I/O queue creation
+
+In current implementation we set the non-mdts limits by calling
+nvme_init_non_mdts_limits() from nvme_init_ctrl_finish().
+This also tries to set the limits for the discovery controller which
+has no I/O queues resulting in the warning message reported by the
+nvme_log_error() when running blktest nvme/002: -
+
+[ 2005.155946] run blktests nvme/002 at 2022-04-09 16:57:47
+[ 2005.192223] loop: module loaded
+[ 2005.196429] nvmet: adding nsid 1 to subsystem blktests-subsystem-0
+[ 2005.200334] nvmet: adding nsid 1 to subsystem blktests-subsystem-1
+
+<------------------------------SNIP---------------------------------->
+
+[ 2008.958108] nvmet: adding nsid 1 to subsystem blktests-subsystem-997
+[ 2008.962082] nvmet: adding nsid 1 to subsystem blktests-subsystem-998
+[ 2008.966102] nvmet: adding nsid 1 to subsystem blktests-subsystem-999
+[ 2008.973132] nvmet: creating discovery controller 1 for subsystem nqn.2014-08.org.nvmexpress.discovery for NQN testhostnqn.
+*[ 2008.973196] nvme1: Identify(0x6), Invalid Field in Command (sct 0x0 / sc 0x2) MORE DNR*
+[ 2008.974595] nvme nvme1: new ctrl: "nqn.2014-08.org.nvmexpress.discovery"
+[ 2009.103248] nvme nvme1: Removing ctrl: NQN "nqn.2014-08.org.nvmexpress.discovery"
+
+Export the nvme_init_non_mdts_limits() and move the same call from
+nvme_ctrl_finish() to each transport right before each transport calls
+the nvme_scan_work() from nvme_start_ctrl() path, then proceeds to the
+ns allocation where these limits max_discard_{segments|sectors} and
+max_write_zeroes_sectors are actually used in folllwing path :-
+
+A. nvme_scan_work()
+...
+nvme_validate_or_alloc_ns()
+  nvme_alloc_ns()
+   nvme_update_ns_info()
+    nvme_update_disk_info()
+     nvme_config_discard()
+     blk_queue_max_write_zeroes_sectors()
+
+1. FC:-
+nvme_fc_create_association()
+   call nvme_init_mdts_limits() <---
+  nvme_start_ctrl()
+   nvme_scan_queue()
+    nvme_scan_work()
+     path to ns alloc & accessing ctrl non mdts limits see above A.
+
+2. PCIe:-
+nvme_reset_work()
+  nvme_dev_add()
+   call nvme_init_mdts_limits() <---
+  nvme_start_ctrl()
+   nvme_scan_queue()
+    nvme_scan_work()
+     path to ns alloc & accessing ctrl non mdts limits see above A.
+
+3. RDMA :-
+nvme_rdma_setup_ctrl
+  nvme_rdma_configure_io_queues
+   call nvme_init_mdts_limits() <---
+  nvme_start_ctrl()
+   nvme_scan_queue()
+    nvme_scan_work()
+     path to ns alloc & accessing ctrl non mdts limits see above A.
+
+4. TCP :-
+nvme_tcp_setup_ctrl
+  nvme_tcp_configure_io_queues
+   call nvme_init_mdts_limits() <---
+  nvme_start_ctrl()
+   nvme_scan_queue()
+    nvme_scan_work()
+     path to ns alloc & accessing ctrl non mdts limits see above A.
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/host/core.c   | 7 ++-----
+ drivers/nvme/host/fc.c     | 4 ++++
+ drivers/nvme/host/nvme.h   | 1 +
+ drivers/nvme/host/pci.c    | 7 +++++++
+ drivers/nvme/host/rdma.c   | 4 ++++
+ drivers/nvme/host/tcp.c    | 4 ++++
+ drivers/nvme/target/loop.c | 4 ++++
+ 7 files changed, 26 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index 42f9772abc4d..8bc0d10931e7 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -2854,7 +2854,7 @@ static inline u32 nvme_mps_to_sectors(struct nvme_ctrl *ctrl, u32 units)
+ 	return val;
+ }
+ 
+-static int nvme_init_non_mdts_limits(struct nvme_ctrl *ctrl)
++int nvme_init_non_mdts_limits(struct nvme_ctrl *ctrl)
+ {
+ 	struct nvme_command c = { };
+ 	struct nvme_id_ctrl_nvm *id;
+@@ -2905,6 +2905,7 @@ static int nvme_init_non_mdts_limits(struct nvme_ctrl *ctrl)
+ 	kfree(id);
+ 	return ret;
+ }
++EXPORT_SYMBOL_GPL(nvme_init_non_mdts_limits);
+ 
+ static int nvme_init_identify(struct nvme_ctrl *ctrl)
+ {
+@@ -3082,10 +3083,6 @@ int nvme_init_ctrl_finish(struct nvme_ctrl *ctrl)
+ 	if (ret)
+ 		return ret;
+ 
+-	ret = nvme_init_non_mdts_limits(ctrl);
+-	if (ret < 0)
+-		return ret;
+-
+ 	ret = nvme_configure_apst(ctrl);
+ 	if (ret < 0)
+ 		return ret;
+diff --git a/drivers/nvme/host/fc.c b/drivers/nvme/host/fc.c
+index 080f85f4105f..a04a0627b0a0 100644
+--- a/drivers/nvme/host/fc.c
++++ b/drivers/nvme/host/fc.c
+@@ -3168,6 +3168,10 @@ nvme_fc_create_association(struct nvme_fc_ctrl *ctrl)
+ 	 */
+ 
+ 	if (ctrl->ctrl.queue_count > 1) {
++		ret = nvme_init_non_mdts_limits(&ctrl->ctrl);
++		if (ret < 0)
++			goto out_term_aen_ops;
++
+ 		if (!ctrl->ioq_live)
+ 			ret = nvme_fc_create_io_queues(ctrl);
+ 		else
+diff --git a/drivers/nvme/host/nvme.h b/drivers/nvme/host/nvme.h
+index 81c4f5379c0c..2f3c6fcaa440 100644
+--- a/drivers/nvme/host/nvme.h
++++ b/drivers/nvme/host/nvme.h
+@@ -784,6 +784,7 @@ long nvme_ns_head_chr_ioctl(struct file *file, unsigned int cmd,
+ long nvme_dev_ioctl(struct file *file, unsigned int cmd,
+ 		unsigned long arg);
+ int nvme_getgeo(struct block_device *bdev, struct hd_geometry *geo);
++int nvme_init_non_mdts_limits(struct nvme_ctrl *ctrl);
+ 
+ extern const struct attribute_group *nvme_ns_id_attr_groups[];
+ extern const struct pr_ops nvme_pr_ops;
+diff --git a/drivers/nvme/host/pci.c b/drivers/nvme/host/pci.c
+index 5a98a7de0964..2ceca29ad997 100644
+--- a/drivers/nvme/host/pci.c
++++ b/drivers/nvme/host/pci.c
+@@ -2526,6 +2526,13 @@ static void nvme_dev_add(struct nvme_dev *dev)
+ {
+ 	int ret;
+ 
++	ret = nvme_init_non_mdts_limits(&dev->ctrl);
++	if (ret < 0) {
++		dev_warn(dev->ctrl.device,
++				"reading non mdts limit error: %d\n", ret);
++		return;
++	}
++
+ 	if (!dev->ctrl.tagset) {
+ 		dev->tagset.ops = &nvme_mq_ops;
+ 		dev->tagset.nr_hw_queues = dev->online_queues - 1;
+diff --git a/drivers/nvme/host/rdma.c b/drivers/nvme/host/rdma.c
+index b87c8ae41d9b..7acce264375d 100644
+--- a/drivers/nvme/host/rdma.c
++++ b/drivers/nvme/host/rdma.c
+@@ -971,6 +971,10 @@ static int nvme_rdma_configure_io_queues(struct nvme_rdma_ctrl *ctrl, bool new)
+ 	if (ret)
+ 		return ret;
+ 
++	ret = nvme_init_non_mdts_limits(&ctrl->ctrl);
++	if (ret < 0)
++		goto out_free_io_queues;
++
+ 	if (new) {
+ 		ctrl->ctrl.tagset = nvme_rdma_alloc_tagset(&ctrl->ctrl, false);
+ 		if (IS_ERR(ctrl->ctrl.tagset)) {
+diff --git a/drivers/nvme/host/tcp.c b/drivers/nvme/host/tcp.c
+index bb67538d241b..2a9c32afb6e7 100644
+--- a/drivers/nvme/host/tcp.c
++++ b/drivers/nvme/host/tcp.c
+@@ -1899,6 +1899,10 @@ static int nvme_tcp_configure_io_queues(struct nvme_ctrl *ctrl, bool new)
+ 	if (ret)
+ 		return ret;
+ 
++	ret = nvme_init_non_mdts_limits(ctrl);
++	if (ret < 0)
++		goto out_free_io_queues;
++
+ 	if (new) {
+ 		ctrl->tagset = nvme_tcp_alloc_tagset(ctrl, false);
+ 		if (IS_ERR(ctrl->tagset)) {
+diff --git a/drivers/nvme/target/loop.c b/drivers/nvme/target/loop.c
+index 59024af2da2e..2ac9017e966a 100644
+--- a/drivers/nvme/target/loop.c
++++ b/drivers/nvme/target/loop.c
+@@ -522,6 +522,10 @@ static int nvme_loop_create_io_queues(struct nvme_loop_ctrl *ctrl)
+ {
+ 	int ret;
+ 
++	ret = nvme_init_non_mdts_limits(&ctrl->ctrl);
++	if (ret < 0)
++		return ret;
++
+ 	ret = nvme_loop_init_io_queues(ctrl);
+ 	if (ret)
+ 		return ret;
+-- 
+2.29.0
+

@@ -1,0 +1,38 @@
+From 5734f3f232daac61e9ef393c13c5bf38845afbdb Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Sun, 23 Jan 2022 16:20:31 -0800
+Subject: [PATCH 07/14] nvme-rdma: use helper for tagset initialization
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/host/rdma.c | 12 +++---------
+ 1 file changed, 3 insertions(+), 9 deletions(-)
+
+diff --git a/drivers/nvme/host/rdma.c b/drivers/nvme/host/rdma.c
+index d033294b063e..1195bb1d5b89 100644
+--- a/drivers/nvme/host/rdma.c
++++ b/drivers/nvme/host/rdma.c
+@@ -799,17 +799,11 @@ static struct blk_mq_tag_set *nvme_rdma_alloc_tagset(struct nvme_ctrl *nctrl,
+ 
+ 	if (admin) {
+ 		set = &ctrl->admin_tag_set;
+-		memset(set, 0, sizeof(*set));
+-		set->ops = &nvme_rdma_admin_mq_ops;
+-		set->queue_depth = NVME_AQ_MQ_TAG_DEPTH;
+-		set->reserved_tags = NVMF_RESERVED_TAGS;
+-		set->numa_node = nctrl->numa_node;
++		nvme_init_admin_tagset(set, ctrl, nctrl->numa_node,
++				&nvme_rdma_admin_mq_ops, BLK_MQ_F_NO_SCHED,
++				NVMF_RESERVED_TAGS);
+ 		set->cmd_size = sizeof(struct nvme_rdma_request) +
+ 				NVME_RDMA_DATA_SGL_SIZE;
+-		set->driver_data = ctrl;
+-		set->nr_hw_queues = 1;
+-		set->timeout = NVME_ADMIN_TIMEOUT;
+-		set->flags = BLK_MQ_F_NO_SCHED;
+ 	} else {
+ 		set = &ctrl->tag_set;
+ 		memset(set, 0, sizeof(*set));
+-- 
+2.29.0
+

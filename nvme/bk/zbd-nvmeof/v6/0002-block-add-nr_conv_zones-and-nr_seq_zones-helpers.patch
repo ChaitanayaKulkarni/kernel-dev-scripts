@@ -1,0 +1,183 @@
+From abceef7bfdf9b278c492c755bf5f242159ef51e5 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Fri, 11 Dec 2020 21:21:44 -0800
+Subject: [PATCH V6 2/7] block: add nr_conv_zones and nr_seq_zones helpers
+
+Add two request members that are needed to implement the NVMeOF ZBD 
+backend which exports a number of conventional zones and a number of
+sequential zones so we don't have to repeat the work what
+blk_revalidate_disk_zones() already does.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+
+I've tested this with null_blk :-
+
+# cat test.sh 
+for cv_zones in 100 200 300 400 500 600 700 800 900;                                               
+do
+	echo "-----------------------------------"
+	modprobe null_blk zoned=1 zone_nr_conv=$cv_zones
+	echo -n "/sys/block/nullb0/queue/nr_conv_zones = ";
+	cat /sys/block/nullb0/queue/nr_conv_zones; 
+	echo -n "/sys/block/nullb0/queue/nr_seq_zones  = ";
+	cat /sys/block/nullb0/queue/nr_seq_zones;
+	modprobe -r null_blk
+done 
+
+# sh ./test.sh 
+-----------------------------------
+/sys/block/nullb0/queue/nr_conv_zones = 100
+/sys/block/nullb0/queue/nr_seq_zones  = 900
+-----------------------------------
+/sys/block/nullb0/queue/nr_conv_zones = 200
+/sys/block/nullb0/queue/nr_seq_zones  = 800
+-----------------------------------
+/sys/block/nullb0/queue/nr_conv_zones = 300
+/sys/block/nullb0/queue/nr_seq_zones  = 700
+-----------------------------------
+/sys/block/nullb0/queue/nr_conv_zones = 400
+/sys/block/nullb0/queue/nr_seq_zones  = 600
+-----------------------------------
+/sys/block/nullb0/queue/nr_conv_zones = 500
+/sys/block/nullb0/queue/nr_seq_zones  = 500
+-----------------------------------
+/sys/block/nullb0/queue/nr_conv_zones = 600
+/sys/block/nullb0/queue/nr_seq_zones  = 400
+-----------------------------------
+/sys/block/nullb0/queue/nr_conv_zones = 700
+/sys/block/nullb0/queue/nr_seq_zones  = 300
+-----------------------------------
+/sys/block/nullb0/queue/nr_conv_zones = 800
+/sys/block/nullb0/queue/nr_seq_zones  = 200
+-----------------------------------
+/sys/block/nullb0/queue/nr_conv_zones = 900
+/sys/block/nullb0/queue/nr_seq_zones  = 100
+
+---
+ block/blk-sysfs.c      | 14 ++++++++++++++
+ block/blk-zoned.c      |  9 +++++++++
+ include/linux/blkdev.h | 13 +++++++++++++
+ 3 files changed, 36 insertions(+)
+
+diff --git a/block/blk-sysfs.c b/block/blk-sysfs.c
+index b513f1683af0..f10cf45ae177 100644
+--- a/block/blk-sysfs.c
++++ b/block/blk-sysfs.c
+@@ -307,6 +307,16 @@ static ssize_t queue_nr_zones_show(struct request_queue *q, char *page)
+ 	return queue_var_show(blk_queue_nr_zones(q), page);
+ }
+ 
++static ssize_t queue_nr_conv_zones_show(struct request_queue *q, char *page)
++{
++	return queue_var_show(blk_queue_nr_conv_zones(q), page);
++}
++
++static ssize_t queue_nr_seq_zones_show(struct request_queue *q, char *page)
++{
++	return queue_var_show(blk_queue_nr_seq_zones(q), page);
++}
++
+ static ssize_t queue_max_open_zones_show(struct request_queue *q, char *page)
+ {
+ 	return queue_var_show(queue_max_open_zones(q), page);
+@@ -588,6 +598,8 @@ QUEUE_RO_ENTRY(queue_zone_append_max, "zone_append_max_bytes");
+ 
+ QUEUE_RO_ENTRY(queue_zoned, "zoned");
+ QUEUE_RO_ENTRY(queue_nr_zones, "nr_zones");
++QUEUE_RO_ENTRY(queue_nr_conv_zones, "nr_conv_zones");
++QUEUE_RO_ENTRY(queue_nr_seq_zones, "nr_seq_zones");
+ QUEUE_RO_ENTRY(queue_max_open_zones, "max_open_zones");
+ QUEUE_RO_ENTRY(queue_max_active_zones, "max_active_zones");
+ 
+@@ -642,6 +654,8 @@ static struct attribute *queue_attrs[] = {
+ 	&queue_nonrot_entry.attr,
+ 	&queue_zoned_entry.attr,
+ 	&queue_nr_zones_entry.attr,
++	&queue_nr_conv_zones_entry.attr,
++	&queue_nr_seq_zones_entry.attr,
+ 	&queue_max_open_zones_entry.attr,
+ 	&queue_max_active_zones_entry.attr,
+ 	&queue_nomerges_entry.attr,
+diff --git a/block/blk-zoned.c b/block/blk-zoned.c
+index 6817a673e5ce..ea38c7928e41 100644
+--- a/block/blk-zoned.c
++++ b/block/blk-zoned.c
+@@ -390,6 +390,8 @@ struct blk_revalidate_zone_args {
+ 	unsigned long	*conv_zones_bitmap;
+ 	unsigned long	*seq_zones_wlock;
+ 	unsigned int	nr_zones;
++	unsigned int	nr_conv_zones;
++	unsigned int	nr_seq_zones;
+ 	sector_t	zone_sectors;
+ 	sector_t	sector;
+ };
+@@ -449,6 +451,7 @@ static int blk_revalidate_zone_cb(struct blk_zone *zone, unsigned int idx,
+ 				return -ENOMEM;
+ 		}
+ 		set_bit(idx, args->conv_zones_bitmap);
++		args->nr_conv_zones++;
+ 		break;
+ 	case BLK_ZONE_TYPE_SEQWRITE_REQ:
+ 	case BLK_ZONE_TYPE_SEQWRITE_PREF:
+@@ -458,6 +461,7 @@ static int blk_revalidate_zone_cb(struct blk_zone *zone, unsigned int idx,
+ 			if (!args->seq_zones_wlock)
+ 				return -ENOMEM;
+ 		}
++		args->nr_seq_zones++;
+ 		break;
+ 	default:
+ 		pr_warn("%s: Invalid zone type 0x%x at sectors %llu\n",
+@@ -489,6 +493,9 @@ int blk_revalidate_disk_zones(struct gendisk *disk,
+ 	struct request_queue *q = disk->queue;
+ 	struct blk_revalidate_zone_args args = {
+ 		.disk		= disk,
++		/* just for redability */
++		.nr_conv_zones	= 0,
++		.nr_seq_zones	= 0,
+ 	};
+ 	unsigned int noio_flag;
+ 	int ret;
+@@ -519,6 +526,8 @@ int blk_revalidate_disk_zones(struct gendisk *disk,
+ 	if (ret >= 0) {
+ 		blk_queue_chunk_sectors(q, args.zone_sectors);
+ 		q->nr_zones = args.nr_zones;
++		q->nr_conv_zones = args.nr_conv_zones;
++		q->nr_seq_zones = args.nr_seq_zones;
+ 		swap(q->seq_zones_wlock, args.seq_zones_wlock);
+ 		swap(q->conv_zones_bitmap, args.conv_zones_bitmap);
+ 		if (update_driver_data)
+diff --git a/include/linux/blkdev.h b/include/linux/blkdev.h
+index 2bdaa7cacfa3..697ded01e049 100644
+--- a/include/linux/blkdev.h
++++ b/include/linux/blkdev.h
+@@ -526,6 +526,9 @@ struct request_queue {
+ 	unsigned long		*seq_zones_wlock;
+ 	unsigned int		max_open_zones;
+ 	unsigned int		max_active_zones;
++	unsigned int		nr_conv_zones;
++	unsigned int		nr_seq_zones;
++
+ #endif /* CONFIG_BLK_DEV_ZONED */
+ 
+ 	/*
+@@ -726,6 +729,16 @@ static inline unsigned int blk_queue_nr_zones(struct request_queue *q)
+ 	return blk_queue_is_zoned(q) ? q->nr_zones : 0;
+ }
+ 
++static inline unsigned int blk_queue_nr_conv_zones(struct request_queue *q)
++{
++	return blk_queue_is_zoned(q) ? q->nr_conv_zones : 0;
++}
++
++static inline unsigned int blk_queue_nr_seq_zones(struct request_queue *q)
++{
++	return blk_queue_is_zoned(q) ? q->nr_seq_zones : 0;
++}
++
+ static inline unsigned int blk_queue_zone_no(struct request_queue *q,
+ 					     sector_t sector)
+ {
+-- 
+2.22.1
+

@@ -1,0 +1,494 @@
+From bb95929794a014511d8a7f544b4f6577b23e1c46 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Sat, 26 Oct 2019 20:24:31 -0700
+Subject: [PATCH 1/2] nvmet: add bdev-ns polling support
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/Makefile      |   3 +-
+ drivers/nvme/target/configfs.c    |  29 +++++++
+ drivers/nvme/target/core.c        |  13 +++
+ drivers/nvme/target/io-cmd-bdev.c |  65 +++++++++++++--
+ drivers/nvme/target/io-poll.c     | 163 ++++++++++++++++++++++++++++++++++++++
+ drivers/nvme/target/nvmet.h       |  32 +++++++-
+ 6 files changed, 296 insertions(+), 9 deletions(-)
+ create mode 100644 drivers/nvme/target/io-poll.c
+
+diff --git a/drivers/nvme/target/Makefile b/drivers/nvme/target/Makefile
+index 2b33836..8877ba1 100644
+--- a/drivers/nvme/target/Makefile
++++ b/drivers/nvme/target/Makefile
+@@ -10,7 +10,8 @@ obj-$(CONFIG_NVME_TARGET_FCLOOP)	+= nvme-fcloop.o
+ obj-$(CONFIG_NVME_TARGET_TCP)		+= nvmet-tcp.o
+ 
+ nvmet-y		+= core.o configfs.o admin-cmd.o fabrics-cmd.o \
+-			discovery.o io-cmd-file.o io-cmd-bdev.o
++			discovery.o io-cmd-file.o io-cmd-bdev.o \
++			io-poll.o
+ nvme-loop-y	+= loop.o
+ nvmet-rdma-y	+= rdma.o
+ nvmet-fc-y	+= fc.o
+diff --git a/drivers/nvme/target/configfs.c b/drivers/nvme/target/configfs.c
+index 98613a4..0e6e8b0 100644
+--- a/drivers/nvme/target/configfs.c
++++ b/drivers/nvme/target/configfs.c
+@@ -545,6 +545,34 @@ static ssize_t nvmet_ns_buffered_io_store(struct config_item *item,
+ 
+ CONFIGFS_ATTR(nvmet_ns_, buffered_io);
+ 
++static ssize_t nvmet_ns_use_poll_show(struct config_item *item, char *page)
++{
++	return sprintf(page, "%d\n", to_nvmet_ns(item)->use_poll);
++}
++
++static ssize_t nvmet_ns_use_poll_store(struct config_item *item,
++		const char *page, size_t count)
++{
++	struct nvmet_ns *ns = to_nvmet_ns(item);
++	bool val;
++
++	if (strtobool(page, &val))
++		return -EINVAL;
++
++	mutex_lock(&ns->subsys->lock);
++	if (ns->enabled) {
++		pr_err("disable ns before setting use_poll value.\n");
++		mutex_unlock(&ns->subsys->lock);
++		return -EINVAL;
++	}
++
++	ns->use_poll = val;
++	mutex_unlock(&ns->subsys->lock);
++	return count;
++}
++
++CONFIGFS_ATTR(nvmet_ns_, use_poll);
++
+ static struct configfs_attribute *nvmet_ns_attrs[] = {
+ 	&nvmet_ns_attr_device_path,
+ 	&nvmet_ns_attr_device_nguid,
+@@ -552,6 +580,7 @@ static ssize_t nvmet_ns_buffered_io_store(struct config_item *item,
+ 	&nvmet_ns_attr_ana_grpid,
+ 	&nvmet_ns_attr_enable,
+ 	&nvmet_ns_attr_buffered_io,
++	&nvmet_ns_attr_use_poll,
+ #ifdef CONFIG_PCI_P2PDMA
+ 	&nvmet_ns_attr_p2pmem,
+ #endif
+diff --git a/drivers/nvme/target/core.c b/drivers/nvme/target/core.c
+index 28438b8..d8f9130 100644
+--- a/drivers/nvme/target/core.c
++++ b/drivers/nvme/target/core.c
+@@ -510,6 +510,18 @@ static void nvmet_p2pmem_ns_add_p2p(struct nvmet_ctrl *ctrl,
+ 		ns->nsid);
+ }
+ 
++inline void nvmet_req_done(struct nvmet_req *req)
++{
++	if (req->ns->bdev)
++		nvmet_bdev_req_complete(req);
++}
++
++inline void nvmet_req_poll_complete(struct nvmet_req *req)
++{
++	if (req->ns->bdev)
++		nvmet_bdev_poll_complete(req);
++}
++
+ int nvmet_ns_enable(struct nvmet_ns *ns)
+ {
+ 	struct nvmet_subsys *subsys = ns->subsys;
+@@ -653,6 +665,7 @@ struct nvmet_ns *nvmet_ns_alloc(struct nvmet_subsys *subsys, u32 nsid)
+ 
+ 	uuid_gen(&ns->uuid);
+ 	ns->buffered_io = false;
++	ns->use_poll = false;
+ 
+ 	return ns;
+ }
+diff --git a/drivers/nvme/target/io-cmd-bdev.c b/drivers/nvme/target/io-cmd-bdev.c
+index 04a9cd2..fcf9c89 100644
+--- a/drivers/nvme/target/io-cmd-bdev.c
++++ b/drivers/nvme/target/io-cmd-bdev.c
+@@ -49,10 +49,11 @@ void nvmet_bdev_set_limits(struct block_device *bdev, struct nvme_id_ns *id)
+ 
+ int nvmet_bdev_ns_enable(struct nvmet_ns *ns)
+ {
++	int fmode = FMODE_READ | FMODE_WRITE;
++	struct request_queue *q;
+ 	int ret;
+ 
+-	ns->bdev = blkdev_get_by_path(ns->device_path,
+-			FMODE_READ | FMODE_WRITE, NULL);
++	ns->bdev = blkdev_get_by_path(ns->device_path, fmode, NULL);
+ 	if (IS_ERR(ns->bdev)) {
+ 		ret = PTR_ERR(ns->bdev);
+ 		if (ret != -ENOTBLK) {
+@@ -60,16 +61,22 @@ int nvmet_bdev_ns_enable(struct nvmet_ns *ns)
+ 					ns->device_path, PTR_ERR(ns->bdev));
+ 		}
+ 		ns->bdev = NULL;
+-		return ret;
++		goto out;
+ 	}
+ 	ns->size = i_size_read(ns->bdev->bd_inode);
+ 	ns->blksize_shift = blksize_bits(bdev_logical_block_size(ns->bdev));
+-	return 0;
++
++	q = bdev_get_queue(ns->bdev);
++	ns->poll = ns->use_poll && test_bit(QUEUE_FLAG_POLL, &q->queue_flags);
++	ret = ns->poll ? nvmet_ns_start_poll(ns) : 0;
++out:
++	return ret;
+ }
+ 
+ void nvmet_bdev_ns_disable(struct nvmet_ns *ns)
+ {
+ 	if (ns->bdev) {
++		ns->poll ? nvmet_ns_stop_poll(ns) : 0;
+ 		blkdev_put(ns->bdev, FMODE_WRITE | FMODE_READ);
+ 		ns->bdev = NULL;
+ 	}
+@@ -133,21 +140,45 @@ static u16 blk_to_nvme_status(struct nvmet_req *req, blk_status_t blk_sts)
+ 	return status;
+ }
+ 
+-static void nvmet_bio_done(struct bio *bio)
++void nvmet_bdev_req_complete(struct nvmet_req *req)
+ {
+-	struct nvmet_req *req = bio->bi_private;
++	struct bio *bio = req->b.last_bio;
+ 
+ 	nvmet_req_complete(req, blk_to_nvme_status(req, bio->bi_status));
+ 	if (bio != &req->b.inline_bio)
+ 		bio_put(bio);
+ }
+ 
++static void nvmet_bio_done(struct bio *bio)
++{
++	struct nvmet_req *req = bio->bi_private;
++
++	req->b.last_bio = bio;
++
++	req->poll ? complete(&req->wait) : nvmet_bdev_req_complete(req);
++}
++
++void nvmet_bdev_poll_complete(struct nvmet_req *req)
++{
++	struct request_queue *q = bdev_get_queue(req->ns->bdev);
++
++	while (!completion_done(&req->wait)) {
++		int ret = blk_poll(q, req->b.cookie, true);
++		if (ret < 0) {
++			pr_err("tid %d poll error %d", req->t->id, ret);
++			break;
++		}
++	}
++	nvmet_bdev_req_complete(req);
++}
++
+ static void nvmet_bdev_execute_rw(struct nvmet_req *req)
+ {
+ 	int sg_cnt = req->sg_cnt;
+ 	struct bio *bio;
+ 	struct scatterlist *sg;
+ 	sector_t sector;
++	struct blk_plug plug;
+ 	int op, op_flags = 0, i;
+ 
+ 	if (!nvmet_check_data_len(req, nvmet_rw_len(req)))
+@@ -185,6 +216,8 @@ static void nvmet_bdev_execute_rw(struct nvmet_req *req)
+ 	bio->bi_end_io = nvmet_bio_done;
+ 	bio_set_op_attrs(bio, op, op_flags);
+ 
++	if (!req->poll)
++		blk_start_plug(&plug);
+ 	for_each_sg(req->sg, sg, req->sg_cnt, i) {
+ 		while (bio_add_page(bio, sg_page(sg), sg->length, sg->offset)
+ 				!= sg->length) {
+@@ -203,7 +236,21 @@ static void nvmet_bdev_execute_rw(struct nvmet_req *req)
+ 		sg_cnt--;
+ 	}
+ 
+-	submit_bio(bio);
++	req->b.last_bio = bio;
++	if (req->poll)
++		req->b.last_bio->bi_opf |= REQ_HIPRI;
++	/*
++	 * Add this I/O to poll_list for this thread before we submit,
++	 * and wake up the poll thread after submission of the I/O,
++	 * so that poll thread can finish the I/Os.
++	 */
++	nvmet_req_prep_poll(req);
++
++	req->b.cookie = submit_bio(bio);
++	if (!req->poll)
++		blk_finish_plug(&plug);
++
++	nvmet_req_issue_poll(req);
+ }
+ 
+ static void nvmet_bdev_execute_flush(struct nvmet_req *req)
+@@ -328,15 +375,19 @@ u16 nvmet_bdev_parse_io_cmd(struct nvmet_req *req)
+ 	switch (cmd->common.opcode) {
+ 	case nvme_cmd_read:
+ 	case nvme_cmd_write:
++		req->poll = req->ns->poll;
+ 		req->execute = nvmet_bdev_execute_rw;
+ 		return 0;
+ 	case nvme_cmd_flush:
++		req->poll = false;
+ 		req->execute = nvmet_bdev_execute_flush;
+ 		return 0;
+ 	case nvme_cmd_dsm:
++		req->poll = false;
+ 		req->execute = nvmet_bdev_execute_dsm;
+ 		return 0;
+ 	case nvme_cmd_write_zeroes:
++		req->poll = false;
+ 		req->execute = nvmet_bdev_execute_write_zeroes;
+ 		return 0;
+ 	default:
+diff --git a/drivers/nvme/target/io-poll.c b/drivers/nvme/target/io-poll.c
+new file mode 100644
+index 0000000..d8f667e
+--- /dev/null
++++ b/drivers/nvme/target/io-poll.c
+@@ -0,0 +1,163 @@
++#include <linux/blkdev.h>
++#include <linux/module.h>
++#include <linux/sched/signal.h>
++#include <linux/kthread.h>
++#include <uapi/linux/sched/types.h>
++
++#include "nvmet.h"
++
++static int nvmet_poll_thread(void *data);
++
++int nvmet_ns_start_poll(struct nvmet_ns *ns)
++{
++	struct nvmet_poll_data *t;
++	int ret = 0;
++	int i;
++
++	t = kzalloc(sizeof(*t) * num_online_cpus(), GFP_KERNEL);
++	if (!t) {
++		ret = -ENOMEM;
++		goto out;
++	}
++
++	for (i = 0; i < num_online_cpus(); i++) {
++		init_completion(&t[i].thread_complete);
++		init_waitqueue_head(&t[i].poll_waitq);
++		INIT_LIST_HEAD(&t[i].list);
++		INIT_LIST_HEAD(&t[i].done);
++		mutex_init(&t[i].list_lock);
++		t[i].id = i;
++
++		t[i].thread = kthread_create(nvmet_poll_thread, &t[i],
++					     "nvmet_poll_thread%s/%d",
++					     ns->device_path, i);
++
++		if (IS_ERR(t[i].thread)) {
++			ret = PTR_ERR(t[i].thread);
++			goto err;
++		}
++
++		kthread_bind(t[i].thread, i);
++		wake_up_process(t[i].thread);
++		wait_for_completion(&t[i].thread_complete);
++	}
++
++	ns->t = t;
++out:
++	return ret;
++err:
++	nvmet_ns_stop_poll(ns);
++	goto out;
++}
++
++void nvmet_ns_stop_poll(struct nvmet_ns *ns)
++{
++	struct nvmet_poll_data *t = ns->t;
++	int i;
++
++	for (i = 0; i < num_online_cpus(); i++) {
++		if (!t[i].thread)
++			continue;
++
++		if (wq_has_sleeper(&t[i].poll_waitq))
++			wake_up(&t[i].poll_waitq);
++		kthread_park(t[i].thread);
++		kthread_stop(t[i].thread);
++	}
++}
++
++static void nvmet_poll(struct nvmet_poll_data *t)
++{
++	struct nvmet_req *req, *tmp;
++	lockdep_assert_held(&t->list_lock);
++
++	list_for_each_entry_safe(req, tmp, &t->list, poll_entry) {
++
++		if (completion_done(&req->wait)) {
++			list_move_tail(&req->poll_entry, &t->done);
++			continue;
++		}
++
++		if (!list_empty(&t->done))
++			break;
++
++		list_del(&req->poll_entry);
++		mutex_unlock(&t->list_lock);
++		nvmet_req_poll_complete(req);
++		mutex_lock(&t->list_lock);
++	}
++
++	mutex_unlock(&t->list_lock);
++	/*
++	 * In future we can also add batch timeout or nr request to complete.
++	 */
++	while (!list_empty(&t->done)) {
++		/*
++		 * We lock and unlock for t->list which gurantee progress of
++		 * nvmet_xxx_rw_execute() when under pressure while we complete
++		 * the request.
++		 */
++		req = list_first_entry(&t->done, struct nvmet_req, poll_entry);
++		list_del(&req->poll_entry);
++		nvmet_req_done(req);
++	}
++
++	mutex_lock(&t->list_lock);
++}
++
++static int nvmet_poll_thread(void *data)
++{
++	struct nvmet_poll_data *t = (struct nvmet_poll_data *) data;
++	DEFINE_WAIT(wait);
++
++	complete(&t->thread_complete);
++
++	while (!kthread_should_park()) {
++
++		mutex_lock(&t->list_lock);
++		while (!list_empty(&t->list) && !need_resched())
++			nvmet_poll(t);
++		mutex_unlock(&t->list_lock);
++
++		prepare_to_wait(&t->poll_waitq, &wait, TASK_INTERRUPTIBLE);
++		if (signal_pending(current))
++			flush_signals(current);
++		smp_mb();
++		schedule();
++
++		finish_wait(&t->poll_waitq, &wait);
++	}
++
++	kthread_parkme();
++	return 0;
++}
++
++inline void nvmet_req_prep_poll(struct nvmet_req *req)
++{
++	if (!req->poll)
++		return;
++
++	init_completion(&req->wait);
++	req->t = &req->ns->t[smp_processor_id()];
++}
++
++inline void nvmet_req_issue_poll(struct nvmet_req *req)
++{
++	bool done;
++
++	if (!req->poll)
++		return;
++
++	do {
++		done = completion_done(&req->wait);
++	} while (!mutex_trylock(&req->t->list_lock));
++
++	if (done)
++		list_add(&req->poll_entry, &req->t->list);
++	else
++		list_add_tail(&req->poll_entry, &req->t->list);
++	mutex_unlock(&req->t->list_lock);
++
++	if (wq_has_sleeper(&req->t->poll_waitq))
++		wake_up(&req->t->poll_waitq);
++}
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index 46df45e..a459990 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -49,11 +49,22 @@
+ #define IPO_IATTR_CONNECT_SQE(x)	\
+ 	(cpu_to_le32(offsetof(struct nvmf_connect_command, x)))
+ 
++struct nvmet_poll_data {
++	struct completion		thread_complete;
++	wait_queue_head_t		poll_waitq;
++	struct mutex			list_lock;
++	struct task_struct		*thread;
++	struct list_head		list;
++	struct list_head		done;
++	unsigned int			id;
++};
++
+ struct nvmet_ns {
+ 	struct list_head	dev_link;
+ 	struct percpu_ref	ref;
+ 	struct block_device	*bdev;
+ 	struct file		*file;
++	struct nvmet_poll_data	*t;
+ 	bool			readonly;
+ 	u32			nsid;
+ 	u32			blksize_shift;
+@@ -63,6 +74,8 @@ struct nvmet_ns {
+ 	u32			anagrpid;
+ 
+ 	bool			buffered_io;
++	bool			use_poll;
++	bool			poll;
+ 	bool			enabled;
+ 	struct nvmet_subsys	*subsys;
+ 	const char		*device_path;
+@@ -292,9 +305,15 @@ struct nvmet_req {
+ 	struct nvmet_ns		*ns;
+ 	struct scatterlist	*sg;
+ 	struct bio_vec		inline_bvec[NVMET_MAX_INLINE_BIOVEC];
++	struct completion	wait;
++	bool			poll;
++	struct nvmet_poll_data  *t;
++	struct list_head	poll_entry;
+ 	union {
+ 		struct {
+-			struct bio      inline_bio;
++			struct bio		inline_bio;
++			blk_qc_t		cookie;
++			struct bio		*last_bio;
+ 		} b;
+ 		struct {
+ 			bool			mpool_alloc;
+@@ -442,6 +461,17 @@ void nvmet_subsys_disc_changed(struct nvmet_subsys *subsys,
+ void nvmet_add_async_event(struct nvmet_ctrl *ctrl, u8 event_type,
+ 		u8 event_info, u8 log_page);
+ 
++int nvmet_ns_start_poll(struct nvmet_ns *ns);
++void nvmet_ns_stop_poll(struct nvmet_ns *ns);
++void nvmet_req_prep_poll(struct nvmet_req *req);
++void nvmet_req_issue_poll(struct nvmet_req *req);
++
++void nvmet_req_poll_complete(struct nvmet_req *req);
++void nvmet_bdev_poll_complete(struct nvmet_req *req);
++void nvmet_bdev_req_complete(struct nvmet_req *req);
++void nvmet_req_done(struct nvmet_req *req);
++
++
+ #define NVMET_QUEUE_SIZE	1024
+ #define NVMET_NR_QUEUES		128
+ #define NVMET_MAX_CMD		NVMET_QUEUE_SIZE
+-- 
+1.8.3.1
+

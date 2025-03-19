@@ -1,0 +1,51 @@
+From bd01a72a31d658462033f5ecee4f1344525c009d Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Sat, 22 Jan 2022 13:29:28 -0800
+Subject: [PATCH 01/14] nvme-fc: add a helper to initialize connect_q
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/host/fc.c   | 6 ++----
+ drivers/nvme/host/nvme.h | 8 ++++++++
+ 2 files changed, 10 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/nvme/host/fc.c b/drivers/nvme/host/fc.c
+index 71b3108c22f0..23c896a138a3 100644
+--- a/drivers/nvme/host/fc.c
++++ b/drivers/nvme/host/fc.c
+@@ -2916,11 +2916,9 @@ nvme_fc_create_io_queues(struct nvme_fc_ctrl *ctrl)
+ 
+ 	ctrl->ctrl.tagset = &ctrl->tag_set;
+ 
+-	ctrl->ctrl.connect_q = blk_mq_init_queue(&ctrl->tag_set);
+-	if (IS_ERR(ctrl->ctrl.connect_q)) {
+-		ret = PTR_ERR(ctrl->ctrl.connect_q);
++	ret = nvme_ctrl_init_connect_q(&(ctrl->ctrl));
++	if (ret)
+ 		goto out_free_tag_set;
+-	}
+ 
+ 	ret = nvme_fc_create_hw_io_queues(ctrl, ctrl->ctrl.sqsize + 1);
+ 	if (ret)
+diff --git a/drivers/nvme/host/nvme.h b/drivers/nvme/host/nvme.h
+index fe224016418e..6096fa886e90 100644
+--- a/drivers/nvme/host/nvme.h
++++ b/drivers/nvme/host/nvme.h
+@@ -894,6 +894,14 @@ static inline int nvme_update_zone_info(struct nvme_ns *ns, unsigned lbaf)
+ }
+ #endif
+ 
++static inline int nvme_ctrl_init_connect_q(struct nvme_ctrl *ctrl)
++{
++	ctrl->connect_q = blk_mq_init_queue(ctrl->tagset);
++	if (IS_ERR(ctrl->connect_q))
++		return PTR_ERR(ctrl->connect_q);
++	return 0;
++}
++
+ static inline struct nvme_ns *nvme_get_ns_from_dev(struct device *dev)
+ {
+ 	return dev_to_disk(dev)->private_data;
+-- 
+2.29.0
+

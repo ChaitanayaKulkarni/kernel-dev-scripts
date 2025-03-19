@@ -1,0 +1,48 @@
+From 3000f6cf0686599f74b3084f8942b08ef6fbf992 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Fri, 7 Apr 2023 20:47:55 -0700
+Subject: [PATCH 4/4] nvmet: allow user to mark file-ns write-protected
+
+Right now we open file-ns in read-write mode. This doesn't allow us to
+export the file which is marked read-only.
+
+Allow user to export the readonly file by considering the
+ns->write_protect configfs attribute when opening the file. Use O_RDWR
+when ns->write_protect is not set.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/target/io-cmd-file.c | 14 +++++++++++++-
+ 1 file changed, 13 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/nvme/target/io-cmd-file.c b/drivers/nvme/target/io-cmd-file.c
+index 2d068439b129..c439f529c012 100644
+--- a/drivers/nvme/target/io-cmd-file.c
++++ b/drivers/nvme/target/io-cmd-file.c
+@@ -32,9 +32,21 @@ void nvmet_file_ns_disable(struct nvmet_ns *ns)
+ 
+ int nvmet_file_ns_enable(struct nvmet_ns *ns)
+ {
+-	int flags = O_RDWR | O_LARGEFILE;
++	int flags = O_LARGEFILE;
+ 	int ret = 0;
+ 
++	switch (ns->write_protect) {
++	case NVME_NS_WRITE_PROTECT_PERMANENT:
++	case NVME_NS_WRITE_PROTECT:
++		flags |= O_RDONLY | O_LARGEFILE;
++		break;
++	case NVME_NS_NO_WRITE_PROTECT:
++		flags |= O_RDONLY | O_RDWR | O_LARGEFILE;
++		break;
++	default:
++		return -EINVAL;
++	}
++
+ 	if (!ns->buffered_io)
+ 		flags |= O_DIRECT;
+ 
+-- 
+2.29.0
+

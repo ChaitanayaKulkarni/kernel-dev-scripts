@@ -1,0 +1,46 @@
+From feecc8944f93700b7519afb7d7b592d76b15ff05 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Tue, 17 Nov 2020 16:47:17 -0800
+Subject: [PATCH 0/9] nvmet: add ZBD backend
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Hi,
+
+NVMeOF Host is capable of handling the Zoned Block Devices (ZBD) in the 
+ZNS mode. For NVMeOF, NVMe PCIe ZNS support is enabled with the
+passthru backend. There is no support for a generic block device
+backend to handle the ZBD drives.
+
+This adds support to export the ZBD drives to host from the target
+with NVMeOF using the ZNS interface.
+
+Regards,
+Chaitanya
+
+Chaitanya Kulkarni (9):
+  block: export __bio_iov_append_get_pages()
+  nvmet: add ZNS support for bdev-ns
+  nvmet: trim down id-desclist to use req->ns
+  nvmet: add NVME_CSI_ZNS in ns-desc for zbd bdev
+  nvmet: add cns-cs-ctrl in id-ctrl for ZNS bdev
+  nvmet: add cns-cs-ns in id-ctrl for ZNS bdev
+  nvmet: add zns cmd effects to support zbd bdev
+  nvmet: add zns bdev config support
+  nvmet: add ZNS based I/O cmds handlers
+
+ block/bio.c                       |   3 +-
+ drivers/nvme/target/Makefile      |   2 +
+ drivers/nvme/target/admin-cmd.c   |  38 ++--
+ drivers/nvme/target/io-cmd-bdev.c |  11 +
+ drivers/nvme/target/io-cmd-file.c |   2 +-
+ drivers/nvme/target/nvmet.h       |  52 +++++
+ drivers/nvme/target/zns.c         | 349 ++++++++++++++++++++++++++++++
+ include/linux/bio.h               |   1 +
+ 8 files changed, 443 insertions(+), 15 deletions(-)
+ create mode 100644 drivers/nvme/target/zns.c
+
+-- 
+2.22.1
+

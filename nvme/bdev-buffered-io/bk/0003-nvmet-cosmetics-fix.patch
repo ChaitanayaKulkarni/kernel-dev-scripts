@@ -1,0 +1,30 @@
+From 84d007644f8964d984fb0888bf5504e00edbe5ea Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Mon, 17 Jan 2022 17:22:36 -0800
+Subject: [PATCH 3/3] nvmet: cosmetics fix
+
+Remove the extra line since the block shift calculation for the file
+backend fits in the to one line.
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/target/io-cmd-file.c | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/drivers/nvme/target/io-cmd-file.c b/drivers/nvme/target/io-cmd-file.c
+index da5d9a570b15..9ccc7c163161 100644
+--- a/drivers/nvme/target/io-cmd-file.c
++++ b/drivers/nvme/target/io-cmd-file.c
+@@ -44,8 +44,7 @@ int nvmet_file_ns_revalidate(struct nvmet_ns *ns)
+ 	 * i_blkbits can be greater than the universally accepted upper bound,
+ 	 * so make sure we export a sane namespace lba_shift.
+ 	 */
+-	ns->blksize_shift = min_t(u8,
+-			file_inode(ns->file)->i_blkbits, 12);
++	ns->blksize_shift = min_t(u8, file_inode(ns->file)->i_blkbits, 12);
+ 
+ 	return ret;
+ }
+-- 
+2.29.0
+

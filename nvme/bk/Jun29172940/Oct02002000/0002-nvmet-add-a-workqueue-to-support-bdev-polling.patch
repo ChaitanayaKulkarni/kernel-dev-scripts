@@ -1,0 +1,82 @@
+From 467611498fa1f766f9dc9dc9b001c4dd52d0d1ee Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Tue, 1 Oct 2019 17:30:19 -0700
+Subject: [PATCH 2/4] nvmet: add a workqueue to support bdev polling
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/core.c  | 20 +++++++++++++-------
+ drivers/nvme/target/nvmet.h |  1 +
+ 2 files changed, 14 insertions(+), 7 deletions(-)
+
+diff --git a/drivers/nvme/target/core.c b/drivers/nvme/target/core.c
+index 3a67e244e568..dda2d9a295e6 100644
+--- a/drivers/nvme/target/core.c
++++ b/drivers/nvme/target/core.c
+@@ -16,6 +16,7 @@
+ #include "nvmet.h"
+ 
+ struct workqueue_struct *buffered_io_wq;
++struct workqueue_struct *io_poll_wq;
+ static const struct nvmet_fabrics_ops *nvmet_transports[NVMF_TRTYPE_MAX];
+ static DEFINE_IDA(cntlid_ida);
+ 
+@@ -1457,16 +1458,17 @@ void nvmet_subsys_put(struct nvmet_subsys *subsys)
+ 
+ static int __init nvmet_init(void)
+ {
+-	int error;
++	int error = -ENOMEM;
+ 
+ 	nvmet_ana_group_enabled[NVMET_DEFAULT_ANA_GRPID] = 1;
+ 
+-	buffered_io_wq = alloc_workqueue("nvmet-buffered-io-wq",
+-			WQ_MEM_RECLAIM, 0);
+-	if (!buffered_io_wq) {
+-		error = -ENOMEM;
++	io_poll_wq = alloc_workqueue("nvmet-io-poll-wq", WQ_MEM_RECLAIM, 0);
++	if (!io_poll_wq)
++		goto out_free_work_queue;
++	buffered_io_wq =
++		alloc_workqueue("nvmet-buffered-io-wq", WQ_MEM_RECLAIM, 0);
++	if (!buffered_io_wq)
+ 		goto out;
+-	}
+ 
+ 	error = nvmet_init_discovery();
+ 	if (error)
+@@ -1480,7 +1482,10 @@ static int __init nvmet_init(void)
+ out_exit_discovery:
+ 	nvmet_exit_discovery();
+ out_free_work_queue:
+-	destroy_workqueue(buffered_io_wq);
++	if (buffered_io_wq)
++		destroy_workqueue(buffered_io_wq);
++	if (io_poll_wq)
++		destroy_workqueue(io_poll_wq);
+ out:
+ 	return error;
+ }
+@@ -1491,6 +1496,7 @@ static void __exit nvmet_exit(void)
+ 	nvmet_exit_discovery();
+ 	ida_destroy(&cntlid_ida);
+ 	destroy_workqueue(buffered_io_wq);
++	destroy_workqueue(io_poll_wq);
+ 
+ 	BUILD_BUG_ON(sizeof(struct nvmf_disc_rsp_page_entry) != 1024);
+ 	BUILD_BUG_ON(sizeof(struct nvmf_disc_rsp_page_hdr) != 1024);
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index c0510a1ae520..547c68bd9197 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -327,6 +327,7 @@ struct nvmet_req {
+ };
+ 
+ extern struct workqueue_struct *buffered_io_wq;
++extern struct workqueue_struct *io_poll_wq;
+ 
+ static inline void nvmet_set_result(struct nvmet_req *req, u32 result)
+ {
+-- 
+2.22.1
+

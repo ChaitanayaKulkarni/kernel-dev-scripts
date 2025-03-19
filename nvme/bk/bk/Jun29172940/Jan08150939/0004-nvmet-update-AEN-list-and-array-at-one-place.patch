@@ -1,0 +1,127 @@
+From 89b33535dc80dc03487d05db8c6624fe18e307ad Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Tue, 17 Dec 2019 15:08:45 -0800
+Subject: [PATCH V2 4/4] nvmet: update AEN list and array at one place
+
+From: Daniel Wagner <dwagner@suse.de>
+
+All async events are enqueued via nvmet_add_async_event() which
+updates the ctrl->async_event_cmds[] array and additionally an struct
+nvmet_async_event is added to the ctrl->async_events list.
+
+Under normal operations the nvmet_async_event_work() updates again the
+ctrl->async_event_cmds and removes the corresponding struct
+nvmet_async_event from the list again. Though nvmet_sq_destroy() could
+be called which calles nvmet_async_events_free() which only updates
+the ctrl->async_event_cmds[] array.
+
+Add a new function nvmet_async_events_process() which processes the
+async events and updates both array and the list. With this we avoid
+having two places where the array and list are modified.
+
+When the status value is set != NVME_SC_SUCCESS that implies
+nvmet_async_events_process() is called from free events context.
+In this case after clearing the aen present on the ctrl->async_list we
+also loop over ctrl->async_event_cmds[] for any requests posted by the
+host for which we don't have the AEN in the ctrl->async_events list.
+
+Signed-off-by: Daniel Wagner <dwagner@suse.de>
+[chaitanya.kulkarni@wdc.com
+ * Added the code to loop over and clear out outstanding requests
+   present in the ctrl->async_event_cmds[] for which aen is not
+   generated.
+ * Update patch description and title to fit kernel log style.
+]
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+* Changes from V1:-
+
+1. Generate patch on nvme-5.6 branch.
+---
+ drivers/nvme/target/core.c | 53 +++++++++++++++++++++-----------------
+ 1 file changed, 30 insertions(+), 23 deletions(-)
+
+diff --git a/drivers/nvme/target/core.c b/drivers/nvme/target/core.c
+index 61f2e324b90b..c8285381738c 100644
+--- a/drivers/nvme/target/core.c
++++ b/drivers/nvme/target/core.c
+@@ -129,27 +129,8 @@ static u32 nvmet_async_event_result(struct nvmet_async_event *aen)
+ 	return aen->event_type | (aen->event_info << 8) | (aen->log_page << 16);
+ }
+ 
+-static void nvmet_async_events_free(struct nvmet_ctrl *ctrl)
+-{
+-	struct nvmet_req *req;
+-
+-	while (1) {
+-		mutex_lock(&ctrl->lock);
+-		if (!ctrl->nr_async_event_cmds) {
+-			mutex_unlock(&ctrl->lock);
+-			return;
+-		}
+-
+-		req = ctrl->async_event_cmds[--ctrl->nr_async_event_cmds];
+-		mutex_unlock(&ctrl->lock);
+-		nvmet_req_complete(req, NVME_SC_INTERNAL | NVME_SC_DNR);
+-	}
+-}
+-
+-static void nvmet_async_event_work(struct work_struct *work)
++static void nvmet_async_events_process(struct nvmet_ctrl *ctrl, u16 status)
+ {
+-	struct nvmet_ctrl *ctrl =
+-		container_of(work, struct nvmet_ctrl, async_event_work);
+ 	struct nvmet_async_event *aen;
+ 	struct nvmet_req *req;
+ 
+@@ -159,18 +140,44 @@ static void nvmet_async_event_work(struct work_struct *work)
+ 				struct nvmet_async_event, entry);
+ 		if (!aen || !ctrl->nr_async_event_cmds) {
+ 			mutex_unlock(&ctrl->lock);
+-			return;
++			break;
+ 		}
+ 
+ 		req = ctrl->async_event_cmds[--ctrl->nr_async_event_cmds];
+-		nvmet_set_result(req, nvmet_async_event_result(aen));
++		if (status == 0)
++			nvmet_set_result(req, nvmet_async_event_result(aen));
+ 
+ 		list_del(&aen->entry);
+ 		kfree(aen);
+ 
+ 		mutex_unlock(&ctrl->lock);
+-		nvmet_req_complete(req, 0);
++		nvmet_req_complete(req, status);
+ 	}
++
++	if (!status)
++		return;
++
++	mutex_lock(&ctrl->lock);
++	while (ctrl->nr_async_event_cmds) {
++		req = ctrl->async_event_cmds[--ctrl->nr_async_event_cmds];
++		mutex_unlock(&ctrl->lock);
++		nvmet_req_complete(req, status);
++		mutex_lock(&ctrl->lock);
++	}
++	mutex_unlock(&ctrl->lock);
++}
++
++static void nvmet_async_events_free(struct nvmet_ctrl *ctrl)
++{
++	nvmet_async_events_process(ctrl, NVME_SC_INTERNAL | NVME_SC_DNR);
++}
++
++static void nvmet_async_event_work(struct work_struct *work)
++{
++	struct nvmet_ctrl *ctrl =
++		container_of(work, struct nvmet_ctrl, async_event_work);
++
++	nvmet_async_events_process(ctrl, 0);
+ }
+ 
+ void nvmet_add_async_event(struct nvmet_ctrl *ctrl, u8 event_type,
+-- 
+2.22.1
+

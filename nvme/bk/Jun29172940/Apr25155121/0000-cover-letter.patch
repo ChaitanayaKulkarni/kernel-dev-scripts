@@ -1,0 +1,456 @@
+From e1e866e7d6c30d359aeeab0eb5cfb1ac2463ddb1 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Wed, 15 Apr 2020 14:38:07 -0700
+Subject: [PATCH V3 0/7] nvmet: add target ns revalidate support
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Hi,
+
+This patch series adds support for the NVMeOF target bdev-ns and 
+file-ns size re-validation.
+
+The first patch adds bdev/file backend, revalidation helpers. It
+was posted by Anthony Iliopoulos. I've fixed the comments posted on V1
+by keeping the authorship of the patch.
+
+The 2nd patch is needed since the change of size detection on the target
+should generate the AEN to the host. Right now there is no generic
+mechanism that allows us to add callbacks for the block and file backend 
+so that we will get the notification (if anyone knows please let me
+know, I'll be happy rework this series). So this just adds light-weight
+global maintenance thread that checks for the size change and generates
+AEN when needed.
+
+Now loading the nvmet module, it will start the global maintenance
+thread with the default parameters. Different users may require 
+different tunables based on their needs for the ns size revalidation and
+how their system performs. Instead of forcing a particular policy I've
+added different tunables for maintenance thread in the configfs for 
+adjusting maintenance thread scheduling policy along with scheduling
+priority, sleep timeout for the thread (i.e. refresh interval between
+scan) and allowing namespace to participate in the size revalidation or
+not. It allows the user to have flexibility on namespace granularity so
+that the user can decide whether it wants a namespace to participate in
+the revalidation process. 
+
+Regarding functional testing :-
+
+I've tested this with a dedicated blktest which creates 10 subsys and 10
+ns per subsys with file backend and then generated async event from
+the target by changing the file size with truncate with nvme-loop.
+I've verified that new size for all the namespaces from target to host
+block device is propagated with this patch series when maintenance
+thread is enabled.       
+
+Regarding performance testing :-
+
+Impact I couldn't find huge difference, still trying to see if I miss
+somehing. Following are the collected numbers, for details of the 
+methodology please have a look at the end of the patch.
+
+1. Fio IOPS/BW With Resize Monitor Turned off/on :-
+---------------------------------------------------
+1.1 Off :-
+----------
+# echo 0 > /sys/kernel/config/nvmet/subsystems/control_resize_refresh 
+[ 1094.203726] nvmet: nvmet_ns_resize_monitor 573 Monitor Goodbye 
+[ 1094.203883] nvmet: nvmet_disable_ns_resize_monitor 1577 DISABLED 
+read: IOPS=168k, BW=658MiB/s (690MB/s)(38.5GiB/60007msec)
+read: IOPS=167k, BW=654MiB/s (686MB/s)(38.3GiB/60004msec)
+read: IOPS=168k, BW=658MiB/s (690MB/s)(38.5GiB/60004msec)
+read: IOPS=168k, BW=658MiB/s (690MB/s)(38.6GiB/60005msec)
+read: IOPS=166k, BW=648MiB/s (680MB/s)(37.0GiB/60009msec)
+read: IOPS=168k, BW=658MiB/s (690MB/s)(38.5GiB/60003msec)
+read: IOPS=168k, BW=658MiB/s (690MB/s)(38.5GiB/60003msec)
+read: IOPS=169k, BW=658MiB/s (690MB/s)(38.6GiB/60006msec)
+read: IOPS=168k, BW=656MiB/s (688MB/s)(38.4GiB/60004msec)
+1.2 On :-
+---------
+# echo 1 > /sys/kernel/config/nvmet/subsystems/control_resize_refresh 
+# echo 1 > /sys/kernel/config/nvmet/subsystems/control_resize_timeout 
+[ 5336.754319] nvmet: nvmet_enable_ns_resize_monitor 1552 Monitor Hello 
+[ 5336.754663] nvmet: nvmet_enable_ns_resize_monitor 1556 ENABLED 
+[ 5336.754685] nvmet: nvmet_ns_resize_monitor 552 Monitor Hello 
+read: IOPS=168k, BW=655MiB/s (687MB/s)(38.4GiB/60006msec)
+read: IOPS=142k, BW=554MiB/s (580MB/s)(32.4GiB/60003msec)
+read: IOPS=168k, BW=658MiB/s (690MB/s)(38.5GiB/60003msec)
+read: IOPS=168k, BW=655MiB/s (687MB/s)(38.4GiB/60002msec)
+read: IOPS=168k, BW=657MiB/s (689MB/s)(38.5GiB/60003msec)
+read: IOPS=168k, BW=658MiB/s (690MB/s)(38.5GiB/60004msec)
+read: IOPS=169k, BW=659MiB/s (691MB/s)(38.6GiB/60003msec)
+read: IOPS=168k, BW=656MiB/s (688MB/s)(38.4GiB/60002msec)
+read: IOPS=169k, BW=659MiB/s (691MB/s)(38.6GiB/60003msec)
+
+2. Fio latency With Resize Monitor Turned off/on :-
+---------------------------------------------------
+2.1 Off :-
+----------
+# echo 0 > /sys/kernel/config/nvmet/subsystems/control_resize_refresh 
+[ 1094.203726] nvmet: nvmet_ns_resize_monitor 573 Monitor Goodbye 
+[ 1094.203883] nvmet: nvmet_disable_ns_resize_monitor 1577 DISABLED 
+lat (usec): min=132, max=52678, avg=6079.19, stdev=1363.88
+lat (usec): min=149, max=67465, avg=6112.28, stdev=1413.36
+lat (usec): min=158, max=60909, avg=6081.65, stdev=1268.04
+lat (usec): min=227, max=53860, avg=6077.59, stdev=1267.18
+lat (usec): min=170, max=719682, avg=6167.66, stdev=1905.63
+lat (usec): min=156, max=59967, avg=6078.86, stdev=1334.39
+lat (usec): min=146, max=52313, avg=6079.96, stdev=1337.53
+lat (usec): min=167, max=55577, avg=6074.54, stdev=1361.47
+lat (usec): min=146, max=49626, avg=6095.29, stdev=1304.03
+2.2. On :-
+----------
+# echo 1 > /sys/kernel/config/nvmet/subsystems/control_resize_refresh 
+# echo 1 > /sys/kernel/config/nvmet/subsystems/control_resize_timeout 
+[ 5336.754319] nvmet: nvmet_enable_ns_resize_monitor 1552 Monitor Hello 
+[ 5336.754663] nvmet: nvmet_enable_ns_resize_monitor 1556 ENABLED 
+[ 5336.754685] nvmet: nvmet_ns_resize_monitor 552 Monitor Hello 
+lat (usec): min=141, max=63001, avg=6103.25, stdev=1383.30
+lat (usec): min=266, max=64597, avg=7224.60, stdev=2373.59
+lat (usec): min=151, max=64977, avg=6080.20, stdev=1286.61
+lat (usec): min=188, max=47260, avg=6104.01, stdev=1365.08
+lat (usec): min=188, max=57818, avg=6088.90, stdev=1335.74
+lat (usec): min=100, max=47576, avg=6081.35, stdev=1312.35
+lat (usec): min=171, max=55718, avg=6069.51, stdev=1353.18
+lat (usec): min=168, max=49303, avg=6096.46, stdev=1321.67
+lat (usec): min=138, max=48412, avg=6070.14, stdev=1314.59
+
+Regards,
+Chaitanya
+
+Changes from V2 :-
+
+1. Add a global maintenance thread with SCHED_IDLE default policy
+   so that it will have minimum impact on the CPU utilization when
+   target is busy.
+2. Add maintenance thread tuneables so that user can adjust this
+   feature from configfs and have more fine grained policy. 
+3. Add an async event generation tracepoint for target. This is
+   needed in order to test the events across the transport.
+
+Changes from V1 :-
+
+1. Just use ns->size = i_size_read(ns->bdev->bd_inode) in the
+   nvmet_bdev_ns_revalidate().
+2. Remove !file check and use fill line for vfs_getattr() call in
+   nvmet_file_ns_revalidate().
+3. Add wrapper nvmet_ns_revalidate().
+4. Add 2nd patch to introduce per namespace thread to monitor the size
+   by calling nvmet_ns_revalidate() and generate AEN when size change
+   is detected.  
+5. Change return type of the nvmet_[bdev|file]ns_revalidate() from void
+   to bool.
+
+Anthony Iliopoulos (1):
+  nvmet: add ns revalidation support
+
+Chaitanya Kulkarni (6):
+  nvmet: add global thread for ns-resize AEN
+  nvmet: export resize thread enable-disable attr
+  nvmet: export resize thread scan interval
+  nvmet: export resize thread sched attributes
+  nvmet: export ns resize monitor attribute
+  nvmet: add async event tracing support
+
+ drivers/nvme/target/admin-cmd.c   |   4 +
+ drivers/nvme/target/configfs.c    | 156 +++++++++++++++++++++++++++++-
+ drivers/nvme/target/core.c        | 132 +++++++++++++++++++++++++
+ drivers/nvme/target/io-cmd-bdev.c |  12 +++
+ drivers/nvme/target/io-cmd-file.c |  16 +++
+ drivers/nvme/target/nvmet.h       |  37 ++++++-
+ drivers/nvme/target/trace.h       |  28 ++++++
+ 7 files changed, 383 insertions(+), 2 deletions(-)
+
+1. Functional Testing :-
+
+1.1 Create 10 subsys/10 ns per subsys and generate AEN for each namespace
+    and verify size change reflected on the host for all 100 ns.
+test() {
+        echo "Running ${TEST_NAME}"
+
+        local port
+        local file_path
+        local nr_ss=10
+        local nr_ns=10
+        local orig_size=10G
+        local new_size=1G
+        local subsys_name="blktests-subsystem"
+
+        file_path="${TMPDIR}/img1"
+        truncate -s ${orig_size} "${file_path}"
+        _setup_nvmet
+        port="$(_create_nvmet_port "loop")"
+        for ((i = 1; i <= nr_ss; i++)); do
+                _create_nvmet_subsystem "${subsys_name}${i}" "${file_path}" \
+                        "91fdba0d-f87b-4c25-b80f-db7be1418b9e"
+                for ((j = 2; j <= nr_ns; j++)); do
+                        file_path="${TMPDIR}/img${i}${j}"
+                        truncate -s ${orig_size} "${file_path}"
+                        _create_nvmet_ns "${subsys_name}${i}" "${j}" "${file_path}"
+                done
+                _add_nvmet_subsys_to_port "${port}" "${subsys_name}${i}"
+                nvme connect -t loop -n "${subsys_name}${i}"
+        done
+
+        sleep 1
+
+        echo "Original Size of NVMeOF host device:-"
+        for i in `nvme list | grep "Linux" | tr -s ' ' ' ' | cut -f 1 -d ' ' | sort`; do
+                lsblk ${i} --output NAME,SIZE | grep -v NAME | sort
+        done
+        for ((i = nr_ss; i >= 1; i--)); do
+                for ((j = nr_ns; j > 1; j--)); do
+                        file_path="${TMPDIR}/img${i}${j}"
+                        truncate -s ${new_size} ${file_path}
+                        # Allow maintenance thread to generate AEN
+                        sleep 1
+                done
+        done
+        echo "New Size of NVMeOF host device:-"
+        for i in `nvme list | grep "Linux" | tr -s ' ' ' ' | cut -f 1 -d ' ' | sort`; do
+                lsblk ${i} --output NAME,SIZE | grep -v NAME
+        done
+
+        for ((i = nr_ss; i >= 1; i--)); do
+                nvme disconnect -n "${subsys_name}${i}"
+                _remove_nvmet_subsystem_from_port "${port}" "${subsys_name}${i}"
+                for ((j = nr_ns; j > 1; j--)); do
+                        _remove_nvmet_ns "${subsys_name}${i}" $j
+                        file_path="${TMPDIR}/img${i}${j}"
+                        rm ${file_path}
+                done
+                _remove_nvmet_subsystem "${subsys_name}${i}"
+        done
+
+        _remove_nvmet_port "${port}"
+
+        file_path="${TMPDIR}/img1"
+        rm "${file_path}"
+
+        echo "Test complete"
+}
+
+1.2 Decrease the size of the namespace gradually by 100M and verify AEN on
+    host and target with gracefull shutdown for the application which running
+    I/O traffic on the host.
+
+1.2.1 Create nvmeof loop based file backed target and connect to host.
+[83222.015323] nvme1n1: detected capacity change from 0 to 986316800
+
+1.2.2 Truncate backend file gradually :-
+for i in 800 700 600 500 400 # 400 # <---- fio job size
+do
+	truncate -s ${i}m /mnt/backend0/backend0
+	sleep 4
+done
+
+1.2.3 fio job to generate I/O traffc :-
+# cat fio//randread.fio 
+[RANDREAD]
+ioengine=libaio
+direct=1
+rw=randread
+norandommap
+randrepeat=0
+runtime=30s
+iodepth=8
+numjobs=12
+bs=4k
+time_based
+overwrite=0
+size=500m  <--- fio job file size
+
+fio fio/randread.fio --filename=/dev/nvme1n1
+RANDREAD: (g=0): rw=randread, bs=(R) 4096B-4096B, (W) 4096B-4096B, (T) 4096B-4096B, ioengine=libaio, iodepth=8
+...
+fio-3.8-5-g464b
+Starting 12 processes
+fio: io_u error on file /dev/nvme1n1: No space left on device: read offset=502120448, buflen=4096
+fio: io_u error on file /dev/nvme1n1: No space left on device: read offset=506044416, buflen=4096
+fio: io_u error on file /dev/nvme1n1: No space left on device: read offset=505094144, buflen=4096
+fio: io_u error on file /dev/nvme1n1: No space left on device: read offset=434446336, buflen=4096
+fio: io_u error on file /dev/nvme1n1: No space left on device: read offset=436948992, buflen=4096
+fio: io_u error on file /dev/nvme1n1: No space left on device: read offset=431280128, buflen=4096
+fio: io_u error on file /dev/nvme1n1: No space left on device: read offset=491143168, buflen=4096
+fio: io_u error on file /dev/nvme1n1: No space left on device: read offset=507174912, buflen=4096
+fio: io_u error on file /dev/nvme1n1: No space left on device: read offset=514990080, buflen=4096
+fio: io_u error on file /dev/nvme1n1: No space left on device: read offset=524247040, buflen=4096
+fio: io_u error on file /dev/nvme1n1: No space left on device: read offset=478760960, buflen=4096
+fio: pid=15123, err=28/file:io_u.c:1744, func=io_u error, error=No space left on device
+fio: io_u error on file /dev/nvme1n1: No space left on device: read offset=466919424, buflen=4096
+fio: pid=15131, err=28/file:io_u.c:1744, func=io_u error, error=No space left on device
+fio: pid=15129, err=28/file:io_u.c:1744, func=io_u error, error=No space left on device
+fio: pid=15122, err=28/file:io_u.c:1744, func=io_u error, error=No space left on device
+fio: io_u error on file /dev/nvme1n1: No space left on device: read offset=524111872, buflen=4096
+fio: io_u error on file /dev/nvme1n1: No space left on device: read offset=479281152, buflen=4096
+fio: io_u error on file /dev/nvme1n1: No space left on device: read offset=450961408, buflen=4096
+fio: io_u error on file /dev/nvme1n1: No space left on device: read offset=469983232, buflen=4096
+fio: io_u error on file /dev/nvme1n1: No space left on device: read offset=513048576, buflen=4096
+fio: pid=15127, err=28/file:io_u.c:1744, func=io_u error, error=No space left on device
+fio: io_u error on file /dev/nvme1n1: No space left on device: read offset=420630528, buflen=4096
+fio: pid=15121, err=28/file:io_u.c:1744, func=io_u error, error=No space left on device
+fio: pid=15130, err=28/file:io_u.c:1744, func=io_u error, error=No space left on device
+fio: pid=15124, err=28/file:io_u.c:1744, func=io_u error, error=No space left on device
+fio: pid=15132, err=28/file:io_u.c:1744, func=io_u error, error=No space left on device
+fio: io_u error on file /dev/nvme1n1: No space left on device: read offset=449703936, buflen=4096
+fio: pid=15126, err=28/file:io_u.c:1744, func=io_u error, error=No space left on device
+fio: io_u error on file /dev/nvme1n1: No space left on device: read offset=523735040, buflen=4096
+fio: io_u error on file /dev/nvme1n1: No space left on device: read offset=454336512, buflen=4096
+fio: io_u error on file /dev/nvme1n1: No space left on device: read offset=480763904, buflen=4096
+fio: io_u error on file /dev/nvme1n1: No space left on device: read offset=452882432, buflen=4096
+fio: pid=15128, err=28/file:io_u.c:1744, func=io_u error, error=No space left on device
+fio: io_u error on file /dev/nvme1n1: No space left on device: read offset=472510464, buflen=4096
+fio: io_u error on file /dev/nvme1n1: No space left on device: read offset=488837120, buflen=4096
+fio: pid=15125, err=28/file:io_u.c:1744, func=io_u error, error=No space left on device
+
+RANDREAD: (groupid=0, jobs=12): err=28 (file:io_u.c:1744, func=io_u error, error=No space left on device): pid=15121: Tue Apr 14 21:11:22 2020
+   read: IOPS=530k, BW=2072MiB/s (2173MB/s)(50.3GiB/24836msec)
+    slat (usec): min=7, max=19057, avg=11.69, stdev=21.57
+    clat (usec): min=50, max=37133, avg=168.44, stdev=169.93
+     lat (usec): min=72, max=37184, avg=180.21, stdev=172.74
+    clat percentiles (usec):
+     |  1.00th=[  143],  5.00th=[  145], 10.00th=[  147], 20.00th=[  151],
+     | 30.00th=[  153], 40.00th=[  153], 50.00th=[  155], 60.00th=[  159],
+     | 70.00th=[  163], 80.00th=[  172], 90.00th=[  221], 95.00th=[  239],
+     | 99.00th=[  326], 99.50th=[  355], 99.90th=[  445], 99.95th=[  519],
+     | 99.99th=[  734]
+   bw (  KiB/s): min=151000, max=192448, per=8.34%, avg=176897.17, stdev=6830.17, samples=588
+   iops        : min=37750, max=48112, avg=44224.25, stdev=1707.56, samples=588
+  lat (usec)   : 100=0.01%, 250=96.38%, 500=3.56%, 750=0.05%, 1000=0.01%
+  lat (msec)   : 2=0.01%, 4=0.01%, 10=0.01%, 20=0.01%, 50=0.01%
+  cpu          : usr=4.74%, sys=61.53%, ctx=1647598, majf=0, minf=360
+  IO depths    : 1=0.1%, 2=0.1%, 4=0.1%, 8=100.0%, 16=0.0%, 32=0.0%, >=64=0.0%
+     submit    : 0=0.0%, 4=100.0%, 8=0.0%, 16=0.0%, 32=0.0%, 64=0.0%, >=64=0.0%
+     complete  : 0=0.0%, 4=100.0%, 8=0.1%, 16=0.0%, 32=0.0%, 64=0.0%, >=64=0.0%
+     issued rwts: total=13173135,0,0,0 short=0,0,0,0 dropped=0,0,0,0
+     latency   : target=0, window=0, percentile=100.00%, depth=8
+
+Run status group 0 (all jobs):
+   READ: bw=2072MiB/s (2173MB/s), 2072MiB/s-2072MiB/s (2173MB/s-2173MB/s), io=50.3GiB (53.0GB), run=24836-24836msec
+
+Disk stats (read/write):
+  nvme1n1: ios=0/0, merge=0/0, ticks=0/0, in_queue=0, util=0.00%
+
+1.2.4 Examine AEN in the trace for both host and target :-
+# cat /sys/kernel/debug/tracing/events/nvme/nvme_async_event/enable
+1
+# cat /sys/kernel/debug/tracing/events/nvmet/nvmet_async_event/enable
+1
+# cat /sys/kernel/debug/tracing/trace_pipe 
+nvmet_async_event: nvmet1: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme1: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet1: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme1: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet1: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme1: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvmet_async_event: nvmet1: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+nvme_async_event: nvme1: NVME_AEN=0x000000 [NVME_AER_NOTICE_NS_CHANGED]
+
+2. Performance Testing :- 
+
+2.1 Performance Set up Script :-
+
+SS=fs
+SSPATH=/sys/kernel/config/nvmet/subsystems/${SS}/
+PORTS=/sys/kernel/config/nvmet/ports
+
+load_modules()
+{
+	modprobe nvme
+	modprobe nvme-fabrics
+	modprobe nvmet
+	modprobe nvme-loop
+	sleep 3 
+}
+
+make_nullb()
+{
+	local src=drivers/block/
+	local dest=/lib/modules/`uname -r`/kernel/drivers/block
+
+	modprobe -r null_blk
+	makej M=drivers/block/
+	\cp ${src}/null_blk.ko ${dest}/
+	modprobe null_blk nr_devices=32 gb=1
+	sleep 1
+}
+
+make_target()
+{
+	tree /sys/kernel/config
+	mkdir ${SSPATH}
+
+	for i in `seq 1 32`; do
+		mkdir ${SSPATH}/namespaces/${i}
+		file=/dev/nullb$((i-1))
+		echo -n ${file} > ${SSPATH}/namespaces/${i}/device_path
+		cat ${SSPATH}/namespaces/${i}/device_path
+		echo 0 > ${SSPATH}/namespaces/${i}/buffered_io
+		cat ${SSPATH}/namespaces/${i}/buffered_io
+		echo 1 > ${SSPATH}/namespaces/${i}/enable 
+	done
+
+	mkdir ${PORTS}/1/
+	echo -n "loop" > ${PORTS}/1/addr_trtype 
+	echo -n 1 > ${SSPATH}/attr_allow_any_host
+	ln -s ${SSPATH} ${PORTS}/1/subsystems/
+	sleep 1
+}
+
+connect()
+{
+	echo  "transport=loop,nqn=fs" > /dev/nvme-fabrics
+	sleep 1
+}
+
+main()
+{
+	load_modules
+	make_nullb
+	make_target
+	connect
+	dmesg -c
+}
+
+2.2 Fio Job :-
+
+[global]
+ioengine=libaio
+direct=1
+rw=randread
+norandommap
+allrandrepeat=1
+runtime=1m
+iodepth=32
+bs=4k
+time_based
+overwrite=0
+size=900m
+group_reporting
+
+[job1]
+name=test1
+filename=/dev/nvme1n1
+rw=randread
+
+[job2]
+name=test2
+filename=/dev/nvme1n2
+rw=randread
+
+[job3]
+name=test3
+filename=/dev/nvme1n3
+rw=randread
+.
+.
+.
+
+[job32]
+name=test32
+filename=/dev/nvme1n32
+rw=randread
+-- 
+2.22.1
+

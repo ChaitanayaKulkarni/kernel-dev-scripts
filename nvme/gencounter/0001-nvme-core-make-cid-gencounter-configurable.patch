@@ -1,0 +1,109 @@
+From 945f84ca06ec299ae075ed32bb3604b761c16524 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Thu, 9 Dec 2021 14:14:10 -0800
+Subject: [PATCH V2 1/2] nvme-core: make cid gencounter configurable
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/host/core.c |  4 +---
+ drivers/nvme/host/nvme.h | 40 ++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 41 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index 92c7cb063aad..ca391b22cb07 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -991,7 +991,6 @@ EXPORT_SYMBOL_GPL(nvme_cleanup_cmd);
+ blk_status_t nvme_setup_cmd(struct nvme_ns *ns, struct request *req)
+ {
+ 	struct nvme_command *cmd = nvme_req(req)->cmd;
+-	struct nvme_ctrl *ctrl = nvme_req(req)->ctrl;
+ 	blk_status_t ret = BLK_STS_OK;
+ 
+ 	if (!(req->rq_flags & RQF_DONTPREP))
+@@ -1038,8 +1037,7 @@ blk_status_t nvme_setup_cmd(struct nvme_ns *ns, struct request *req)
+ 		return BLK_STS_IOERR;
+ 	}
+ 
+-	if (!(ctrl->quirks & NVME_QUIRK_SKIP_CID_GEN))
+-		nvme_req(req)->genctr++;
++	nvme_increase_cid_genctr(req);
+ 	cmd->common.command_id = nvme_cid(req);
+ 	trace_nvme_setup_cmd(req, cmd);
+ 	return ret;
+diff --git a/drivers/nvme/host/nvme.h b/drivers/nvme/host/nvme.h
+index 9b095ee01364..27d426a1bef2 100644
+--- a/drivers/nvme/host/nvme.h
++++ b/drivers/nvme/host/nvme.h
+@@ -153,7 +153,9 @@ enum nvme_quirks {
+ struct nvme_request {
+ 	struct nvme_command	*cmd;
+ 	union nvme_result	result;
++#ifdef CONFIG_NVME_DEBUG_USE_CID_GENCTR
+ 	u8			genctr;
++#endif
+ 	u8			retries;
+ 	u8			flags;
+ 	u16			status;
+@@ -496,6 +498,7 @@ struct nvme_ctrl_ops {
+ 	int (*get_address)(struct nvme_ctrl *ctrl, char *buf, int size);
+ };
+ 
++#ifdef CONFIG_NVME_DEBUG_USE_CID_GENCTR
+ /*
+  * nvme command_id is constructed as such:
+  * | xxxx | xxxxxxxxxxxx |
+@@ -506,6 +509,12 @@ struct nvme_ctrl_ops {
+ #define nvme_genctr_from_cid(cid)		((cid & 0xf000) >> 12)
+ #define nvme_tag_from_cid(cid)			(cid & 0xfff)
+ 
++static inline void nvme_increase_cid_genctr(struct request *rq)
++{
++	if (!(nvme_req(rq)->ctrl->quirks & NVME_QUIRK_SKIP_CID_GEN))
++		nvme_req(rq)->genctr++;
++}
++
+ static inline u16 nvme_cid(struct request *rq)
+ {
+ 	return nvme_cid_install_genctr(nvme_req(rq)->genctr) | rq->tag;
+@@ -538,6 +547,37 @@ static inline struct request *nvme_cid_to_rq(struct blk_mq_tags *tags,
+ {
+ 	return blk_mq_tag_to_rq(tags, nvme_tag_from_cid(command_id));
+ }
++#else
++#define nvme_tag_from_cid(cid)			(cid)
++
++static inline void nvme_increase_cid_genctr(struct request *rq)
++{
++}
++
++static inline u16 nvme_cid(struct request *rq)
++{
++	return rq->tag;
++}
++
++static inline struct request *nvme_cid_to_rq(struct blk_mq_tags *tags,
++                u16 command_id)
++{
++	return blk_mq_tag_to_rq(tags, command_id);
++}
++
++static inline struct request *nvme_find_rq(struct blk_mq_tags *tags,
++		u16 command_id)
++{
++	u16 tag = nvme_tag_from_cid(command_id);
++	struct request *rq;
++
++	rq = blk_mq_tag_to_rq(tags, tag);
++	if (unlikely(!rq))
++		pr_err("could not locate request for tag %#x\n", tag);
++
++	return rq;
++}
++#endif /* CONFIG_NVME_DEBUG_USE_CID_GENCTR */
+ 
+ #ifdef CONFIG_FAULT_INJECTION_DEBUG_FS
+ void nvme_fault_inject_init(struct nvme_fault_inject *fault_inj,
+-- 
+2.29.0
+

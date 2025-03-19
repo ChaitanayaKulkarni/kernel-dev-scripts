@@ -1,0 +1,13 @@
+diff --git a/drivers/nvme/target/core.c b/drivers/nvme/target/core.c
+index ed2424f8a396..a08b0e8b9b88 100644
+--- a/drivers/nvme/target/core.c
++++ b/drivers/nvme/target/core.c
+@@ -441,7 +441,7 @@ u16 nvmet_req_find_ns(struct nvmet_req *req)
+ 	struct nvmet_subsys *subsys = nvmet_req_subsys(req);
+ 
+ 	req->ns = xa_load(&subsys->namespaces, nsid);
+-	if (unlikely(!req->ns)) {
++	if (unlikely(!req->ns) || !req->ns->enabled) {
+ 		req->error_loc = offsetof(struct nvme_common_command, nsid);
+ 		if (nvmet_subsys_nsid_exists(subsys, nsid))
+ 			return NVME_SC_INTERNAL_PATH_ERROR;

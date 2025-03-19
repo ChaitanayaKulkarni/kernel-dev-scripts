@@ -1,0 +1,180 @@
+From a6b201352ef03d50a8e4e7d2639d2ed962411826 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Tue, 14 Jan 2025 18:26:58 -0800
+Subject: [PATCH V2] nvmet: fix compilation errors
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+nvmet_alloc_ctrl() only takes nvmet_alloc_ctrl_args. nvmet_alloc_ctrl
+doesn't have nvmet_req argument. In nvmet_alloc_ctrl nvmet_req is
+needed when setting up authentication capabilities since call to
+nvmet_setup_auth() requires nvmet_req argument which later uses req->sq
+to determnine if tls is enabled or not.
+
+That leads to following compilation errors:-
+
+target/fabrics-cmd.c: In function ‘nvmet_execute_admin_connect’:
+target/fabrics-cmd.c:318:35: error: too few arguments to function ‘nvmet_connect_result’
+      |                       ^~~~~~~~~~~
+target/fabrics-cmd.c:237:12: note: declared here
+  237 | static u32 nvmet_connect_result(struct nvmet_ctrl *ctrl, struct nvmet_req *req)
+      |            ^~~~~~~~~~~~~~~~~~~~
+make[4]: *** [/mnt/data/nvme/scripts/Makefile.build:194: target/fabrics-cmd.o] Error 1
+make[4]: *** Waiting for unfinished jobs....
+target/core.c: In function ‘nvmet_alloc_ctrl’:
+target/core.c:1527:37: error: ‘struct nvmet_alloc_ctrl_args’ has no member named ‘req’
+ 1527 |         struct nvmet_req *req = args->req;
+      |                                     ^~
+target/core.c:1635:25: error: too few arguments to function ‘nvmet_setup_auth’
+ 1635 |         dhchap_status = nvmet_setup_auth(ctrl);
+      |                         ^~~~~~~~~~~~~~~~
+In file included from target/trace.h:19,
+                 from target/core.c:16:
+target/nvmet.h:879:4: note: declared here
+  879 | u8 nvmet_setup_auth(struct nvmet_ctrl *ctrl, struct nvmet_req *req);
+      |    ^~~~~~~~~~~~~~~~
+target/core.c:1654:17: error: too few arguments to function ‘nvmet_has_auth’
+ 1654 |                 nvmet_has_auth(ctrl) ? " with DH-HMAC-CHAP" : "");
+      |                 ^~~~~~~~~~~~~~
+  889 | static inline bool nvmet_has_auth(struct nvmet_ctrl *ctrl, struct nvmet_req *req)
+      |                    ^~~~~~~~~~~~~~
+target/core.c:1527:27: warning: unused variable ‘req’ [-Wunused-variable]
+ 1527 |         struct nvmet_req *req = args->req;
+      |                           ^~~
+
+Fix these errors with addition of the nvmet_req *req parameter to
+nvmet_alloc_ctrl(), new prototype :-
+
+struct nvmet_ctrl *nvmet_alloc_ctrl(struct nvmet_alloc_ctrl_args *args,
+				    struct nvmet_req *req);
+
+When nvmet_alloc_ctrl() is called from nvmet_execute_admin_connect() use
+nvmet_execute_admin_connect()'s function parameter nvmet_req *req as
+a second argument to nvmet_alloc_ctrl() and when nvmet_alloc_ctrl() is
+called from nvmet_pci_epf_create_ctrl() pass NULL as a second argument
+since as of now we don't have a way to know if pci epf needs nvme target
+authentication.
+
+Also, fix the nvmet_has_auth() and nvmet_setup_auth() calls from function
+nvmet_alloc_ctrl() by adding the nvmet_req *req argument. Fix the
+nvmet_connect_result() call by adding the nvmet_req *req argument. Now
+that we have nvmet_req *req argument, remove local variable nvmet_req 
+and arg->req assignment, since there is no nvmet_req *req present in the 
+struct nvmet_alloc_ctrl_args.
+
+Fixes: 6202783184bf ("nvmet: Improve nvmet_alloc_ctrl() interface and implementation")
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+Reviewed-by: Damien Le Moal <dlemoal@kernel.org>
+---
+V2:-
+
+1. Commit log fix :-
+   s/nvmet_alloc_ctr/nvmet_alloc_ctrl (Damien)
+   s/argumrnt/argument/               (Damien, Bart)
+   s/compliation/compilation          (Damien)
+2. Add Fixes tag.                     (Jens)
+3. Add RB tag and fix the patch subject line.
+
+ drivers/nvme/target/core.c        | 8 ++++----
+ drivers/nvme/target/fabrics-cmd.c | 4 ++--
+ drivers/nvme/target/nvmet.h       | 6 +++++-
+ drivers/nvme/target/pci-epf.c     | 2 +-
+ 4 files changed, 12 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/nvme/target/core.c b/drivers/nvme/target/core.c
+index ef424f7e0ed6..d642d0f40b0a 100644
+--- a/drivers/nvme/target/core.c
++++ b/drivers/nvme/target/core.c
+@@ -1522,9 +1522,9 @@ static void nvmet_fatal_error_handler(struct work_struct *work)
+ 	ctrl->ops->delete_ctrl(ctrl);
+ }
+ 
+-struct nvmet_ctrl *nvmet_alloc_ctrl(struct nvmet_alloc_ctrl_args *args)
++struct nvmet_ctrl *nvmet_alloc_ctrl(struct nvmet_alloc_ctrl_args *args,
++				    struct nvmet_req *req)
+ {
+-	struct nvmet_req *req = args->req;
+ 	struct nvmet_subsys *subsys;
+ 	struct nvmet_ctrl *ctrl;
+ 	u32 kato = args->kato;
+@@ -1632,7 +1632,7 @@ struct nvmet_ctrl *nvmet_alloc_ctrl(struct nvmet_alloc_ctrl_args *args)
+ 	if (args->hostid)
+ 		uuid_copy(&ctrl->hostid, args->hostid);
+ 
+-	dhchap_status = nvmet_setup_auth(ctrl);
++	dhchap_status = nvmet_setup_auth(ctrl, req);
+ 	if (dhchap_status) {
+ 		pr_err("Failed to setup authentication, dhchap status %u\n",
+ 		       dhchap_status);
+@@ -1651,7 +1651,7 @@ struct nvmet_ctrl *nvmet_alloc_ctrl(struct nvmet_alloc_ctrl_args *args)
+ 		nvmet_is_disc_subsys(ctrl->subsys) ? "discovery" : "nvm",
+ 		ctrl->cntlid, ctrl->subsys->subsysnqn, ctrl->hostnqn,
+ 		ctrl->pi_support ? " T10-PI is enabled" : "",
+-		nvmet_has_auth(ctrl) ? " with DH-HMAC-CHAP" : "");
++		nvmet_has_auth(ctrl, req) ? " with DH-HMAC-CHAP" : "");
+ 
+ 	return ctrl;
+ 
+diff --git a/drivers/nvme/target/fabrics-cmd.c b/drivers/nvme/target/fabrics-cmd.c
+index d1e03c120893..3b3af19f8aaf 100644
+--- a/drivers/nvme/target/fabrics-cmd.c
++++ b/drivers/nvme/target/fabrics-cmd.c
+@@ -305,7 +305,7 @@ static void nvmet_execute_admin_connect(struct nvmet_req *req)
+ 	args.hostid = &d->hostid;
+ 	args.kato = c->kato;
+ 
+-	ctrl = nvmet_alloc_ctrl(&args);
++	ctrl = nvmet_alloc_ctrl(&args, req);
+ 	if (!ctrl)
+ 		goto out;
+ 
+@@ -315,7 +315,7 @@ static void nvmet_execute_admin_connect(struct nvmet_req *req)
+ 		goto out;
+ 	}
+ 
+-	args.result = cpu_to_le32(nvmet_connect_result(ctrl));
++	args.result = cpu_to_le32(nvmet_connect_result(ctrl, req));
+ out:
+ 	kfree(d);
+ complete:
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index 845af16561ab..3dcc01da1abe 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -594,7 +594,8 @@ struct nvmet_alloc_ctrl_args {
+ 	u16			status;
+ };
+ 
+-struct nvmet_ctrl *nvmet_alloc_ctrl(struct nvmet_alloc_ctrl_args *args);
++struct nvmet_ctrl *nvmet_alloc_ctrl(struct nvmet_alloc_ctrl_args *args,
++				    struct nvmet_req *req);
+ struct nvmet_ctrl *nvmet_ctrl_find_get(const char *subsysnqn,
+ 				       const char *hostnqn, u16 cntlid,
+ 				       struct nvmet_req *req);
+@@ -888,6 +889,9 @@ int nvmet_auth_ctrl_hash(struct nvmet_req *req, u8 *response,
+ 			 unsigned int hash_len);
+ static inline bool nvmet_has_auth(struct nvmet_ctrl *ctrl, struct nvmet_req *req)
+ {
++	if (!req)
++		return false;
++
+ 	return ctrl->host_key != NULL && !nvmet_queue_tls_keyid(req->sq);
+ }
+ int nvmet_auth_ctrl_exponential(struct nvmet_req *req,
+diff --git a/drivers/nvme/target/pci-epf.c b/drivers/nvme/target/pci-epf.c
+index ac30b42cc622..fe7053809308 100644
+--- a/drivers/nvme/target/pci-epf.c
++++ b/drivers/nvme/target/pci-epf.c
+@@ -2013,7 +2013,7 @@ static int nvmet_pci_epf_create_ctrl(struct nvmet_pci_epf *nvme_epf,
+ 	args.hostnqn = hostnqn;
+ 	args.ops = &nvmet_pci_epf_fabrics_ops;
+ 
+-	ctrl->tctrl = nvmet_alloc_ctrl(&args);
++	ctrl->tctrl = nvmet_alloc_ctrl(&args, NULL);
+ 	if (!ctrl->tctrl) {
+ 		dev_err(ctrl->dev, "Failed to create target controller\n");
+ 		ret = -ENOMEM;
+-- 
+2.40.0
+

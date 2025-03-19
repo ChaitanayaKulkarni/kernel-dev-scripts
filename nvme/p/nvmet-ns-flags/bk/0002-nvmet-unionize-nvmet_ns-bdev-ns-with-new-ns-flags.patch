@@ -1,0 +1,724 @@
+From 0b7c99538fa992fd3370522933a086c2e99dec40 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Sun, 30 Apr 2023 23:24:58 -0700
+Subject: [PATCH 2/4] nvmet: unionize nvmet_ns bdev/ns with new ns flags
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/target/admin-cmd.c   | 26 ++++++++---------
+ drivers/nvme/target/configfs.c    | 15 +++++-----
+ drivers/nvme/target/core.c        | 16 +++++------
+ drivers/nvme/target/io-cmd-bdev.c | 48 +++++++++++++++----------------
+ drivers/nvme/target/io-cmd-file.c | 36 +++++++++++------------
+ drivers/nvme/target/nvmet.h       | 24 +++++++++++++---
+ drivers/nvme/target/rdma.c        |  2 +-
+ drivers/nvme/target/zns.c         | 42 +++++++++++++--------------
+ 8 files changed, 113 insertions(+), 96 deletions(-)
+
+diff --git a/drivers/nvme/target/admin-cmd.c b/drivers/nvme/target/admin-cmd.c
+index 21129ad15320..bac300c775d5 100644
+--- a/drivers/nvme/target/admin-cmd.c
++++ b/drivers/nvme/target/admin-cmd.c
+@@ -82,15 +82,15 @@ static u16 nvmet_get_smart_log_nsid(struct nvmet_req *req,
+ 		return status;
+ 
+ 	/* we don't have the right data for file backed ns */
+-	if (!req->ns->bdev)
++	if (!test_bit(NVMET_NS_BDEV, &req->ns->flags))
+ 		return NVME_SC_SUCCESS;
+ 
+-	host_reads = part_stat_read(req->ns->bdev, ios[READ]);
++	host_reads = part_stat_read(req->ns->b.bdev, ios[READ]);
+ 	data_units_read =
+-		DIV_ROUND_UP(part_stat_read(req->ns->bdev, sectors[READ]), 1000);
+-	host_writes = part_stat_read(req->ns->bdev, ios[WRITE]);
++		DIV_ROUND_UP(part_stat_read(req->ns->b.bdev, sectors[READ]), 1000);
++	host_writes = part_stat_read(req->ns->b.bdev, ios[WRITE]);
+ 	data_units_written =
+-		DIV_ROUND_UP(part_stat_read(req->ns->bdev, sectors[WRITE]), 1000);
++		DIV_ROUND_UP(part_stat_read(req->ns->b.bdev, sectors[WRITE]), 1000);
+ 
+ 	put_unaligned_le64(host_reads, &slog->host_reads[0]);
+ 	put_unaligned_le64(data_units_read, &slog->data_units_read[0]);
+@@ -112,14 +112,14 @@ static u16 nvmet_get_smart_log_all(struct nvmet_req *req,
+ 	ctrl = req->sq->ctrl;
+ 	xa_for_each(&ctrl->subsys->namespaces, idx, ns) {
+ 		/* we don't have the right data for file backed ns */
+-		if (!ns->bdev)
++		if (!test_bit(NVMET_NS_BDEV, &ns->flags))
+ 			continue;
+-		host_reads += part_stat_read(ns->bdev, ios[READ]);
++		host_reads += part_stat_read(ns->b.bdev, ios[READ]);
+ 		data_units_read += DIV_ROUND_UP(
+-			part_stat_read(ns->bdev, sectors[READ]), 1000);
+-		host_writes += part_stat_read(ns->bdev, ios[WRITE]);
++			part_stat_read(ns->b.bdev, sectors[READ]), 1000);
++		host_writes += part_stat_read(ns->b.bdev, ios[WRITE]);
+ 		data_units_written += DIV_ROUND_UP(
+-			part_stat_read(ns->bdev, sectors[WRITE]), 1000);
++			part_stat_read(ns->b.bdev, sectors[WRITE]), 1000);
+ 	}
+ 
+ 	put_unaligned_le64(host_reads, &slog->host_reads[0]);
+@@ -534,8 +534,8 @@ static void nvmet_execute_identify_ns(struct nvmet_req *req)
+ 		break;
+ 	}
+ 
+-	if (req->ns->bdev)
+-		nvmet_bdev_set_limits(req->ns->bdev, id);
++	if (test_bit(NVMET_NS_BDEV, &req->ns->flags))
++		nvmet_bdev_set_limits(req->ns->b.bdev, id);
+ 
+ 	/*
+ 	 * We just provide a single LBA format that matches what the
+@@ -746,7 +746,7 @@ static u16 nvmet_write_protect_flush_sync(struct nvmet_req *req)
+ {
+ 	u16 status;
+ 
+-	if (req->ns->file)
++	if (req->ns->f.file)
+ 		status = nvmet_file_flush(req);
+ 	else
+ 		status = nvmet_bdev_flush(req);
+diff --git a/drivers/nvme/target/configfs.c b/drivers/nvme/target/configfs.c
+index 463ae31d5d71..d9cc55e179f0 100644
+--- a/drivers/nvme/target/configfs.c
++++ b/drivers/nvme/target/configfs.c
+@@ -348,7 +348,7 @@ static ssize_t nvmet_ns_device_path_store(struct config_item *item,
+ 
+ 	mutex_lock(&subsys->lock);
+ 	ret = -EBUSY;
+-	if (ns->enabled)
++	if (test_bit(NVMET_NS_ENABLED, &ns->flags))
+ 		goto out_unlock;
+ 
+ 	ret = -EINVAL;
+@@ -390,7 +390,7 @@ static ssize_t nvmet_ns_p2pmem_store(struct config_item *item,
+ 	int error;
+ 
+ 	mutex_lock(&ns->subsys->lock);
+-	if (ns->enabled) {
++	if (test_bit(NVMET_NS_ENABLED, &ns->flags)) {
+ 		ret = -EBUSY;
+ 		goto out_unlock;
+ 	}
+@@ -427,7 +427,7 @@ static ssize_t nvmet_ns_device_uuid_store(struct config_item *item,
+ 	int ret = 0;
+ 
+ 	mutex_lock(&subsys->lock);
+-	if (ns->enabled) {
++	if (test_bit(NVMET_NS_ENABLED, &ns->flags)) {
+ 		ret = -EBUSY;
+ 		goto out_unlock;
+ 	}
+@@ -458,7 +458,7 @@ static ssize_t nvmet_ns_device_nguid_store(struct config_item *item,
+ 	int ret = 0;
+ 
+ 	mutex_lock(&subsys->lock);
+-	if (ns->enabled) {
++	if (test_bit(NVMET_NS_ENABLED, &ns->flags)) {
+ 		ret = -EBUSY;
+ 		goto out_unlock;
+ 	}
+@@ -523,7 +523,8 @@ CONFIGFS_ATTR(nvmet_ns_, ana_grpid);
+ 
+ static ssize_t nvmet_ns_enable_show(struct config_item *item, char *page)
+ {
+-	return sprintf(page, "%d\n", to_nvmet_ns(item)->enabled);
++	return sprintf(page, "%d\n",
++		       test_bit(NVMET_NS_ENABLED, &to_nvmet_ns(item)->flags));
+ }
+ 
+ static ssize_t nvmet_ns_enable_store(struct config_item *item,
+@@ -561,7 +562,7 @@ static ssize_t nvmet_ns_buffered_io_store(struct config_item *item,
+ 		return -EINVAL;
+ 
+ 	mutex_lock(&ns->subsys->lock);
+-	if (ns->enabled) {
++	if (test_bit(NVMET_NS_ENABLED, &ns->flags)) {
+ 		pr_err("disable ns before setting buffered_io value.\n");
+ 		mutex_unlock(&ns->subsys->lock);
+ 		return -EINVAL;
+@@ -587,7 +588,7 @@ static ssize_t nvmet_ns_revalidate_size_store(struct config_item *item,
+ 		return -EINVAL;
+ 
+ 	mutex_lock(&ns->subsys->lock);
+-	if (!ns->enabled) {
++	if (!test_bit(NVMET_NS_ENABLED, &ns->flags)) {
+ 		pr_err("enable ns before revalidate.\n");
+ 		mutex_unlock(&ns->subsys->lock);
+ 		return -EINVAL;
+diff --git a/drivers/nvme/target/core.c b/drivers/nvme/target/core.c
+index cc95ba3c2835..b6e359af043a 100644
+--- a/drivers/nvme/target/core.c
++++ b/drivers/nvme/target/core.c
+@@ -462,12 +462,12 @@ static int nvmet_p2pmem_ns_enable(struct nvmet_ns *ns)
+ 	if (!ns->use_p2pmem)
+ 		return 0;
+ 
+-	if (!ns->bdev) {
++	if (!test_bit(NVMET_NS_BDEV, &ns->flags)) {
+ 		pr_err("peer-to-peer DMA is not supported by non-block device namespaces\n");
+ 		return -EINVAL;
+ 	}
+ 
+-	if (!blk_queue_pci_p2pdma(ns->bdev->bd_disk->queue)) {
++	if (!blk_queue_pci_p2pdma(ns->b.bdev->bd_disk->queue)) {
+ 		pr_err("peer-to-peer DMA is not supported by the driver of %s\n",
+ 		       ns->device_path);
+ 		return -EINVAL;
+@@ -541,7 +541,7 @@ bool nvmet_ns_revalidate(struct nvmet_ns *ns)
+ {
+ 	loff_t oldsize = ns->size;
+ 
+-	if (ns->bdev)
++	if (test_bit(NVMET_NS_BDEV, &ns->flags))
+ 		nvmet_bdev_ns_revalidate(ns);
+ 	else
+ 		nvmet_file_ns_revalidate(ns);
+@@ -563,7 +563,7 @@ int nvmet_ns_enable(struct nvmet_ns *ns)
+ 		goto out_unlock;
+ 	}
+ 
+-	if (ns->enabled)
++	if (test_bit(NVMET_NS_ENABLED, &ns->flags))
+ 		goto out_unlock;
+ 
+ 	ret = -EMFILE;
+@@ -598,7 +598,7 @@ int nvmet_ns_enable(struct nvmet_ns *ns)
+ 	subsys->nr_namespaces++;
+ 
+ 	nvmet_ns_changed(subsys, ns->nsid);
+-	ns->enabled = true;
++	set_bit(NVMET_NS_ENABLED, &ns->flags);
+ 	ret = 0;
+ out_unlock:
+ 	mutex_unlock(&subsys->lock);
+@@ -621,10 +621,10 @@ void nvmet_ns_disable(struct nvmet_ns *ns)
+ 	struct nvmet_ctrl *ctrl;
+ 
+ 	mutex_lock(&subsys->lock);
+-	if (!ns->enabled)
++	if (!test_bit(NVMET_NS_ENABLED, &ns->flags))
+ 		goto out_unlock;
+ 
+-	ns->enabled = false;
++	clear_bit(NVMET_NS_ENABLED, &ns->flags);
+ 	xa_erase(&ns->subsys->namespaces, ns->nsid);
+ 	if (ns->nsid == subsys->max_nsid)
+ 		subsys->max_nsid = nvmet_max_nsid(subsys);
+@@ -911,7 +911,7 @@ static u16 nvmet_parse_io_cmd(struct nvmet_req *req)
+ 
+ 	switch (req->ns->csi) {
+ 	case NVME_CSI_NVM:
+-		if (req->ns->file)
++		if (!test_bit(NVMET_NS_BDEV, &req->ns->flags))
+ 			return nvmet_file_parse_io_cmd(req);
+ 		return nvmet_bdev_parse_io_cmd(req);
+ 	case NVME_CSI_ZNS:
+diff --git a/drivers/nvme/target/io-cmd-bdev.c b/drivers/nvme/target/io-cmd-bdev.c
+index c2d6cea0236b..a88d250dc980 100644
+--- a/drivers/nvme/target/io-cmd-bdev.c
++++ b/drivers/nvme/target/io-cmd-bdev.c
+@@ -50,15 +50,15 @@ void nvmet_bdev_set_limits(struct block_device *bdev, struct nvme_id_ns *id)
+ 
+ void nvmet_bdev_ns_disable(struct nvmet_ns *ns)
+ {
+-	if (ns->bdev) {
+-		blkdev_put(ns->bdev, FMODE_WRITE | FMODE_READ);
+-		ns->bdev = NULL;
++	if (test_bit(NVMET_NS_BDEV, &ns->flags)) {
++		blkdev_put(ns->b.bdev, FMODE_WRITE | FMODE_READ);
++		ns->b.bdev = NULL;
+ 	}
+ }
+ 
+ static void nvmet_bdev_ns_enable_integrity(struct nvmet_ns *ns)
+ {
+-	struct blk_integrity *bi = bdev_get_integrity(ns->bdev);
++	struct blk_integrity *bi = bdev_get_integrity(ns->b.bdev);
+ 
+ 	if (bi) {
+ 		ns->metadata_size = bi->tuple_size;
+@@ -84,39 +84,39 @@ int nvmet_bdev_ns_enable(struct nvmet_ns *ns)
+ 	if (ns->buffered_io)
+ 		return -ENOTBLK;
+ 
+-	ns->bdev = blkdev_get_by_path(ns->device_path,
++	ns->b.bdev = blkdev_get_by_path(ns->device_path,
+ 			FMODE_READ | FMODE_WRITE, NULL);
+-	if (IS_ERR(ns->bdev)) {
+-		ret = PTR_ERR(ns->bdev);
++	if (IS_ERR(ns->b.bdev)) {
++		ret = PTR_ERR(ns->b.bdev);
+ 		if (ret != -ENOTBLK) {
+ 			pr_err("failed to open block device %s: (%ld)\n",
+-					ns->device_path, PTR_ERR(ns->bdev));
++					ns->device_path, PTR_ERR(ns->b.bdev));
+ 		}
+-		ns->bdev = NULL;
++		ns->b.bdev = NULL;
+ 		return ret;
+ 	}
+-	ns->size = bdev_nr_bytes(ns->bdev);
+-	ns->blksize_shift = blksize_bits(bdev_logical_block_size(ns->bdev));
++	ns->size = bdev_nr_bytes(ns->b.bdev);
++	ns->blksize_shift = blksize_bits(bdev_logical_block_size(ns->b.bdev));
+ 
+ 	ns->pi_type = 0;
+ 	ns->metadata_size = 0;
+ 	if (IS_ENABLED(CONFIG_BLK_DEV_INTEGRITY_T10))
+ 		nvmet_bdev_ns_enable_integrity(ns);
+ 
+-	if (bdev_is_zoned(ns->bdev)) {
++	if (bdev_is_zoned(ns->b.bdev)) {
+ 		if (!nvmet_bdev_zns_enable(ns)) {
+ 			nvmet_bdev_ns_disable(ns);
+ 			return -EINVAL;
+ 		}
+ 		ns->csi = NVME_CSI_ZNS;
+ 	}
+-
++	set_bit(NVMET_NS_BDEV, &ns->flags);
+ 	return 0;
+ }
+ 
+ void nvmet_bdev_ns_revalidate(struct nvmet_ns *ns)
+ {
+-	ns->size = bdev_nr_bytes(ns->bdev);
++	ns->size = bdev_nr_bytes(ns->b.bdev);
+ }
+ 
+ u16 blk_to_nvme_status(struct nvmet_req *req, blk_status_t blk_sts)
+@@ -193,7 +193,7 @@ static int nvmet_bdev_alloc_bip(struct nvmet_req *req, struct bio *bio,
+ 	int rc;
+ 	size_t resid, len;
+ 
+-	bi = bdev_get_integrity(req->ns->bdev);
++	bi = bdev_get_integrity(req->ns->b.bdev);
+ 	if (unlikely(!bi)) {
+ 		pr_err("Unable to locate bio_integrity\n");
+ 		return -ENODEV;
+@@ -276,10 +276,10 @@ static void nvmet_bdev_execute_rw(struct nvmet_req *req)
+ 
+ 	if (nvmet_use_inline_bvec(req)) {
+ 		bio = &req->b.inline_bio;
+-		bio_init(bio, req->ns->bdev, req->inline_bvec,
++		bio_init(bio, req->ns->b.bdev, req->inline_bvec,
+ 			 ARRAY_SIZE(req->inline_bvec), opf);
+ 	} else {
+-		bio = bio_alloc(req->ns->bdev, bio_max_segs(sg_cnt), opf,
++		bio = bio_alloc(req->ns->b.bdev, bio_max_segs(sg_cnt), opf,
+ 				GFP_KERNEL);
+ 	}
+ 	bio->bi_iter.bi_sector = sector;
+@@ -305,7 +305,7 @@ static void nvmet_bdev_execute_rw(struct nvmet_req *req)
+ 				}
+ 			}
+ 
+-			bio = bio_alloc(req->ns->bdev, bio_max_segs(sg_cnt),
++			bio = bio_alloc(req->ns->b.bdev, bio_max_segs(sg_cnt),
+ 					opf, GFP_KERNEL);
+ 			bio->bi_iter.bi_sector = sector;
+ 
+@@ -333,7 +333,7 @@ static void nvmet_bdev_execute_flush(struct nvmet_req *req)
+ {
+ 	struct bio *bio = &req->b.inline_bio;
+ 
+-	if (!bdev_write_cache(req->ns->bdev)) {
++	if (!bdev_write_cache(req->ns->b.bdev)) {
+ 		nvmet_req_complete(req, NVME_SC_SUCCESS);
+ 		return;
+ 	}
+@@ -341,7 +341,7 @@ static void nvmet_bdev_execute_flush(struct nvmet_req *req)
+ 	if (!nvmet_check_transfer_len(req, 0))
+ 		return;
+ 
+-	bio_init(bio, req->ns->bdev, req->inline_bvec,
++	bio_init(bio, req->ns->b.bdev, req->inline_bvec,
+ 		 ARRAY_SIZE(req->inline_bvec), REQ_OP_WRITE | REQ_PREFLUSH);
+ 	bio->bi_private = req;
+ 	bio->bi_end_io = nvmet_bio_done;
+@@ -351,10 +351,10 @@ static void nvmet_bdev_execute_flush(struct nvmet_req *req)
+ 
+ u16 nvmet_bdev_flush(struct nvmet_req *req)
+ {
+-	if (!bdev_write_cache(req->ns->bdev))
++	if (!bdev_write_cache(req->ns->b.bdev))
+ 		return 0;
+ 
+-	if (blkdev_issue_flush(req->ns->bdev))
++	if (blkdev_issue_flush(req->ns->b.bdev))
+ 		return NVME_SC_INTERNAL | NVME_SC_DNR;
+ 	return 0;
+ }
+@@ -365,7 +365,7 @@ static u16 nvmet_bdev_discard_range(struct nvmet_req *req,
+ 	struct nvmet_ns *ns = req->ns;
+ 	int ret;
+ 
+-	ret = __blkdev_issue_discard(ns->bdev,
++	ret = __blkdev_issue_discard(ns->b.bdev,
+ 			nvmet_lba_to_sect(ns, range->slba),
+ 			le32_to_cpu(range->nlb) << (ns->blksize_shift - 9),
+ 			GFP_KERNEL, bio);
+@@ -439,7 +439,7 @@ static void nvmet_bdev_execute_write_zeroes(struct nvmet_req *req)
+ 	nr_sector = (((sector_t)le16_to_cpu(write_zeroes->length) + 1) <<
+ 		(req->ns->blksize_shift - 9));
+ 
+-	ret = __blkdev_issue_zeroout(req->ns->bdev, sector, nr_sector,
++	ret = __blkdev_issue_zeroout(req->ns->b.bdev, sector, nr_sector,
+ 			GFP_KERNEL, &bio, 0);
+ 	if (bio) {
+ 		bio->bi_private = req;
+diff --git a/drivers/nvme/target/io-cmd-file.c b/drivers/nvme/target/io-cmd-file.c
+index 2d068439b129..b672acb2fcf8 100644
+--- a/drivers/nvme/target/io-cmd-file.c
++++ b/drivers/nvme/target/io-cmd-file.c
+@@ -15,18 +15,18 @@
+ 
+ void nvmet_file_ns_revalidate(struct nvmet_ns *ns)
+ {
+-	ns->size = i_size_read(ns->file->f_mapping->host);
++	ns->size = i_size_read(ns->f.file->f_mapping->host);
+ }
+ 
+ void nvmet_file_ns_disable(struct nvmet_ns *ns)
+ {
+-	if (ns->file) {
++	if (ns->f.file) {
+ 		if (ns->buffered_io)
+ 			flush_workqueue(buffered_io_wq);
+ 		mempool_destroy(ns->bvec_pool);
+ 		ns->bvec_pool = NULL;
+-		fput(ns->file);
+-		ns->file = NULL;
++		fput(ns->f.file);
++		ns->f.file = NULL;
+ 	}
+ }
+ 
+@@ -38,12 +38,12 @@ int nvmet_file_ns_enable(struct nvmet_ns *ns)
+ 	if (!ns->buffered_io)
+ 		flags |= O_DIRECT;
+ 
+-	ns->file = filp_open(ns->device_path, flags, 0);
+-	if (IS_ERR(ns->file)) {
+-		ret = PTR_ERR(ns->file);
++	ns->f.file = filp_open(ns->device_path, flags, 0);
++	if (IS_ERR(ns->f.file)) {
++		ret = PTR_ERR(ns->f.file);
+ 		pr_err("failed to open file %s: (%d)\n",
+ 			ns->device_path, ret);
+-		ns->file = NULL;
++		ns->f.file = NULL;
+ 		return ret;
+ 	}
+ 
+@@ -54,7 +54,7 @@ int nvmet_file_ns_enable(struct nvmet_ns *ns)
+ 	 * so make sure we export a sane namespace lba_shift.
+ 	 */
+ 	ns->blksize_shift = min_t(u8,
+-			file_inode(ns->file)->i_blkbits, 12);
++			file_inode(ns->f.file)->i_blkbits, 12);
+ 
+ 	ns->bvec_pool = mempool_create(NVMET_MIN_MPOOL_OBJ, mempool_alloc_slab,
+ 			mempool_free_slab, nvmet_bvec_cache);
+@@ -66,8 +66,8 @@ int nvmet_file_ns_enable(struct nvmet_ns *ns)
+ 
+ 	return ret;
+ err:
+-	fput(ns->file);
+-	ns->file = NULL;
++	fput(ns->f.file);
++	ns->f.file = NULL;
+ 	ns->size = 0;
+ 	ns->blksize_shift = 0;
+ 	return ret;
+@@ -84,17 +84,17 @@ static ssize_t nvmet_file_submit_bvec(struct nvmet_req *req, loff_t pos,
+ 	if (req->cmd->rw.opcode == nvme_cmd_write) {
+ 		if (req->cmd->rw.control & cpu_to_le16(NVME_RW_FUA))
+ 			ki_flags |= IOCB_DSYNC;
+-		call_iter = req->ns->file->f_op->write_iter;
++		call_iter = req->ns->f.file->f_op->write_iter;
+ 		rw = ITER_SOURCE;
+ 	} else {
+-		call_iter = req->ns->file->f_op->read_iter;
++		call_iter = req->ns->f.file->f_op->read_iter;
+ 		rw = ITER_DEST;
+ 	}
+ 
+ 	iov_iter_bvec(&iter, rw, req->f.bvec, nr_segs, count);
+ 
+ 	iocb->ki_pos = pos;
+-	iocb->ki_filp = req->ns->file;
++	iocb->ki_filp = req->ns->f.file;
+ 	iocb->ki_flags = ki_flags | iocb->ki_filp->f_iocb_flags;
+ 
+ 	return call_iter(iocb, &iter);
+@@ -242,7 +242,7 @@ static void nvmet_file_execute_rw(struct nvmet_req *req)
+ 
+ 	if (req->ns->buffered_io) {
+ 		if (likely(!req->f.mpool_alloc) &&
+-		    (req->ns->file->f_mode & FMODE_NOWAIT) &&
++		    (req->ns->f.file->f_mode & FMODE_NOWAIT) &&
+ 		    nvmet_file_execute_io(req, IOCB_NOWAIT))
+ 			return;
+ 		nvmet_file_submit_buffered_io(req);
+@@ -252,7 +252,7 @@ static void nvmet_file_execute_rw(struct nvmet_req *req)
+ 
+ u16 nvmet_file_flush(struct nvmet_req *req)
+ {
+-	return errno_to_nvme_status(req, vfs_fsync(req->ns->file, 1));
++	return errno_to_nvme_status(req, vfs_fsync(req->ns->f.file, 1));
+ }
+ 
+ static void nvmet_file_flush_work(struct work_struct *w)
+@@ -294,7 +294,7 @@ static void nvmet_file_execute_discard(struct nvmet_req *req)
+ 			break;
+ 		}
+ 
+-		ret = vfs_fallocate(req->ns->file, mode, offset, len);
++		ret = vfs_fallocate(req->ns->f.file, mode, offset, len);
+ 		if (ret && ret != -EOPNOTSUPP) {
+ 			req->error_slba = le64_to_cpu(range.slba);
+ 			status = errno_to_nvme_status(req, ret);
+@@ -348,7 +348,7 @@ static void nvmet_file_write_zeroes_work(struct work_struct *w)
+ 		return;
+ 	}
+ 
+-	ret = vfs_fallocate(req->ns->file, mode, offset, len);
++	ret = vfs_fallocate(req->ns->f.file, mode, offset, len);
+ 	nvmet_req_complete(req, ret < 0 ? errno_to_nvme_status(req, ret) : 0);
+ }
+ 
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index 4c2a20dc9eed..ee8f10fbd083 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -56,10 +56,21 @@
+ #define IPO_IATTR_CONNECT_SQE(x)	\
+ 	(cpu_to_le32(offsetof(struct nvmf_connect_command, x)))
+ 
++enum nvmet_ns_flags_bits {
++	NVMET_NS_BDEV = 0,
++	NVMET_NS_ENABLED = 1,
++};
++
+ struct nvmet_ns {
+ 	struct percpu_ref	ref;
+-	struct block_device	*bdev;
+-	struct file		*file;
++	union {
++		struct {
++			struct block_device	*bdev;
++		} b;
++		struct {
++			struct file		*file;
++		} f;
++	};
+ 	bool			readonly;
+ 	u32			nsid;
+ 	u32			blksize_shift;
+@@ -69,7 +80,6 @@ struct nvmet_ns {
+ 	u32			anagrpid;
+ 
+ 	bool			buffered_io;
+-	bool			enabled;
+ 	struct nvmet_subsys	*subsys;
+ 	const char		*device_path;
+ 
+@@ -84,6 +94,12 @@ struct nvmet_ns {
+ 	int			pi_type;
+ 	int			metadata_size;
+ 	u8			csi;
++	/*
++	 *   Bit           ON            OFF
++	 *    0	          bdev           file
++	 *    1           enabled        disabled
++	 */
++	unsigned long		flags;
+ };
+ 
+ static inline struct nvmet_ns *to_nvmet_ns(struct config_item *item)
+@@ -93,7 +109,7 @@ static inline struct nvmet_ns *to_nvmet_ns(struct config_item *item)
+ 
+ static inline struct device *nvmet_ns_dev(struct nvmet_ns *ns)
+ {
+-	return ns->bdev ? disk_to_dev(ns->bdev->bd_disk) : NULL;
++	return ns->b.bdev ? disk_to_dev(ns->b.bdev->bd_disk) : NULL;
+ }
+ 
+ struct nvmet_cq {
+diff --git a/drivers/nvme/target/rdma.c b/drivers/nvme/target/rdma.c
+index 4597bca43a6d..83755ad063ef 100644
+--- a/drivers/nvme/target/rdma.c
++++ b/drivers/nvme/target/rdma.c
+@@ -600,7 +600,7 @@ static void nvmet_rdma_set_sig_attrs(struct nvmet_req *req,
+ 	u8 pi_type = req->ns->pi_type;
+ 	struct blk_integrity *bi;
+ 
+-	bi = bdev_get_integrity(req->ns->bdev);
++	bi = bdev_get_integrity(req->ns->b.bdev);
+ 
+ 	memset(sig_attrs, 0, sizeof(*sig_attrs));
+ 
+diff --git a/drivers/nvme/target/zns.c b/drivers/nvme/target/zns.c
+index 5b5c1e481722..7eea4afa7979 100644
+--- a/drivers/nvme/target/zns.c
++++ b/drivers/nvme/target/zns.c
+@@ -34,8 +34,8 @@ static int validate_conv_zones_cb(struct blk_zone *z,
+ 
+ bool nvmet_bdev_zns_enable(struct nvmet_ns *ns)
+ {
+-	u8 zasl = nvmet_zasl(bdev_max_zone_append_sectors(ns->bdev));
+-	struct gendisk *bd_disk = ns->bdev->bd_disk;
++	u8 zasl = nvmet_zasl(bdev_max_zone_append_sectors(ns->b.bdev));
++	struct gendisk *bd_disk = ns->b.bdev->bd_disk;
+ 	int ret;
+ 
+ 	if (ns->subsys->zasl) {
+@@ -49,7 +49,7 @@ bool nvmet_bdev_zns_enable(struct nvmet_ns *ns)
+ 	 * not supported by ZNS. Exclude zoned drives that have such smaller
+ 	 * last zone.
+ 	 */
+-	if (get_capacity(bd_disk) & (bdev_zone_sectors(ns->bdev) - 1))
++	if (get_capacity(bd_disk) & (bdev_zone_sectors(ns->b.bdev) - 1))
+ 		return false;
+ 	/*
+ 	 * ZNS does not define a conventional zone type. If the underlying
+@@ -57,15 +57,15 @@ bool nvmet_bdev_zns_enable(struct nvmet_ns *ns)
+ 	 * zones, reject the device. Otherwise, use report zones to detect if
+ 	 * the device has conventional zones.
+ 	 */
+-	if (ns->bdev->bd_disk->conv_zones_bitmap)
++	if (ns->b.bdev->bd_disk->conv_zones_bitmap)
+ 		return false;
+ 
+-	ret = blkdev_report_zones(ns->bdev, 0, bdev_nr_zones(ns->bdev),
++	ret = blkdev_report_zones(ns->b.bdev, 0, bdev_nr_zones(ns->b.bdev),
+ 				  validate_conv_zones_cb, NULL);
+ 	if (ret < 0)
+ 		return false;
+ 
+-	ns->blksize_shift = blksize_bits(bdev_logical_block_size(ns->bdev));
++	ns->blksize_shift = blksize_bits(bdev_logical_block_size(ns->b.bdev));
+ 
+ 	return true;
+ }
+@@ -124,24 +124,24 @@ void nvmet_execute_identify_ns_zns(struct nvmet_req *req)
+ 		mutex_unlock(&req->ns->subsys->lock);
+ 	}
+ 
+-	if (!bdev_is_zoned(req->ns->bdev)) {
++	if (!bdev_is_zoned(req->ns->b.bdev)) {
+ 		status = NVME_SC_INVALID_FIELD | NVME_SC_DNR;
+ 		req->error_loc = offsetof(struct nvme_identify, nsid);
+ 		goto out;
+ 	}
+ 
+-	zsze = (bdev_zone_sectors(req->ns->bdev) << 9) >>
++	zsze = (bdev_zone_sectors(req->ns->b.bdev) << 9) >>
+ 					req->ns->blksize_shift;
+ 	id_zns->lbafe[0].zsze = cpu_to_le64(zsze);
+ 
+-	mor = bdev_max_open_zones(req->ns->bdev);
++	mor = bdev_max_open_zones(req->ns->b.bdev);
+ 	if (!mor)
+ 		mor = U32_MAX;
+ 	else
+ 		mor--;
+ 	id_zns->mor = cpu_to_le32(mor);
+ 
+-	mar = bdev_max_active_zones(req->ns->bdev);
++	mar = bdev_max_active_zones(req->ns->b.bdev);
+ 	if (!mar)
+ 		mar = U32_MAX;
+ 	else
+@@ -160,7 +160,7 @@ static u16 nvmet_bdev_validate_zone_mgmt_recv(struct nvmet_req *req)
+ 	sector_t sect = nvmet_lba_to_sect(req->ns, req->cmd->zmr.slba);
+ 	u32 out_bufsize = (le32_to_cpu(req->cmd->zmr.numd) + 1) << 2;
+ 
+-	if (sect >= get_capacity(req->ns->bdev->bd_disk)) {
++	if (sect >= get_capacity(req->ns->b.bdev->bd_disk)) {
+ 		req->error_loc = offsetof(struct nvme_zone_mgmt_recv_cmd, slba);
+ 		return NVME_SC_LBA_RANGE | NVME_SC_DNR;
+ 	}
+@@ -256,7 +256,7 @@ static unsigned long nvmet_req_nr_zones_from_slba(struct nvmet_req *req)
+ {
+ 	unsigned int sect = nvmet_lba_to_sect(req->ns, req->cmd->zmr.slba);
+ 
+-	return bdev_nr_zones(req->ns->bdev) - bdev_zone_no(req->ns->bdev, sect);
++	return bdev_nr_zones(req->ns->b.bdev) - bdev_zone_no(req->ns->b.bdev, sect);
+ }
+ 
+ static unsigned long get_nr_zones_from_buf(struct nvmet_req *req, u32 bufsize)
+@@ -295,7 +295,7 @@ static void nvmet_bdev_zone_zmgmt_recv_work(struct work_struct *w)
+ 		goto out;
+ 	}
+ 
+-	ret = blkdev_report_zones(req->ns->bdev, start_sect, req_slba_nr_zones,
++	ret = blkdev_report_zones(req->ns->b.bdev, start_sect, req_slba_nr_zones,
+ 				 nvmet_bdev_report_zone_cb, &rz_data);
+ 	if (ret < 0) {
+ 		status = NVME_SC_INTERNAL;
+@@ -399,7 +399,7 @@ static int zmgmt_send_scan_cb(struct blk_zone *z, unsigned i, void *d)
+ 
+ static u16 nvmet_bdev_zone_mgmt_emulate_all(struct nvmet_req *req)
+ {
+-	struct block_device *bdev = req->ns->bdev;
++	struct block_device *bdev = req->ns->b.bdev;
+ 	unsigned int nr_zones = bdev_nr_zones(bdev);
+ 	struct bio *bio = NULL;
+ 	sector_t sector = 0;
+@@ -455,8 +455,8 @@ static u16 nvmet_bdev_execute_zmgmt_send_all(struct nvmet_req *req)
+ 
+ 	switch (zsa_req_op(req->cmd->zms.zsa)) {
+ 	case REQ_OP_ZONE_RESET:
+-		ret = blkdev_zone_mgmt(req->ns->bdev, REQ_OP_ZONE_RESET, 0,
+-				       get_capacity(req->ns->bdev->bd_disk),
++		ret = blkdev_zone_mgmt(req->ns->b.bdev, REQ_OP_ZONE_RESET, 0,
++				       get_capacity(req->ns->b.bdev->bd_disk),
+ 				       GFP_KERNEL);
+ 		if (ret < 0)
+ 			return blkdev_zone_mgmt_errno_to_nvme_status(ret);
+@@ -479,7 +479,7 @@ static void nvmet_bdev_zmgmt_send_work(struct work_struct *w)
+ 	struct nvmet_req *req = container_of(w, struct nvmet_req, z.zmgmt_work);
+ 	sector_t sect = nvmet_lba_to_sect(req->ns, req->cmd->zms.slba);
+ 	enum req_op op = zsa_req_op(req->cmd->zms.zsa);
+-	struct block_device *bdev = req->ns->bdev;
++	struct block_device *bdev = req->ns->b.bdev;
+ 	sector_t zone_sectors = bdev_zone_sectors(bdev);
+ 	u16 status = NVME_SC_SUCCESS;
+ 	int ret;
+@@ -554,13 +554,13 @@ void nvmet_bdev_execute_zone_append(struct nvmet_req *req)
+ 		return;
+ 	}
+ 
+-	if (sect >= get_capacity(req->ns->bdev->bd_disk)) {
++	if (sect >= get_capacity(req->ns->b.bdev->bd_disk)) {
+ 		req->error_loc = offsetof(struct nvme_rw_command, slba);
+ 		status = NVME_SC_LBA_RANGE | NVME_SC_DNR;
+ 		goto out;
+ 	}
+ 
+-	if (sect & (bdev_zone_sectors(req->ns->bdev) - 1)) {
++	if (sect & (bdev_zone_sectors(req->ns->b.bdev) - 1)) {
+ 		req->error_loc = offsetof(struct nvme_rw_command, slba);
+ 		status = NVME_SC_INVALID_FIELD | NVME_SC_DNR;
+ 		goto out;
+@@ -568,10 +568,10 @@ void nvmet_bdev_execute_zone_append(struct nvmet_req *req)
+ 
+ 	if (nvmet_use_inline_bvec(req)) {
+ 		bio = &req->z.inline_bio;
+-		bio_init(bio, req->ns->bdev, req->inline_bvec,
++		bio_init(bio, req->ns->b.bdev, req->inline_bvec,
+ 			 ARRAY_SIZE(req->inline_bvec), opf);
+ 	} else {
+-		bio = bio_alloc(req->ns->bdev, req->sg_cnt, opf, GFP_KERNEL);
++		bio = bio_alloc(req->ns->b.bdev, req->sg_cnt, opf, GFP_KERNEL);
+ 	}
+ 
+ 	bio->bi_end_io = nvmet_bdev_zone_append_bio_done;
+-- 
+2.40.0
+

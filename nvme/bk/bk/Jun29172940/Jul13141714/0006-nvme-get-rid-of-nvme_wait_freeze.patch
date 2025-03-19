@@ -1,0 +1,96 @@
+From 24678a55843d36ea735693a1d27d8702e8e9365f Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Mon, 13 Jul 2020 11:26:39 -0700
+Subject: [PATCH 06/11] nvme: get rid of nvme_wait_freeze()
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/host/core.c | 15 ++++-----------
+ drivers/nvme/host/nvme.h |  2 +-
+ drivers/nvme/host/pci.c  |  4 ++--
+ 3 files changed, 7 insertions(+), 14 deletions(-)
+
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index a101b6cd351d..5502f8eb0b61 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -1418,7 +1418,7 @@ static u32 nvme_passthru_start(struct nvme_ctrl *ctrl, struct nvme_ns *ns,
+ 		nvme_mpath_start_freeze(ctrl->subsys);
+ 		nvme_mpath_wait_freeze(ctrl->subsys);
+ 		nvme_start_freeze(ctrl);
+-		nvme_wait_freeze(ctrl);
++		nvme_queue_act(ctrl, NVME_WAIT_FREEZE_QUEUES);
+ 	}
+ 	return effects;
+ }
+@@ -4475,6 +4475,9 @@ void nvme_queue_act(struct nvme_ctrl *ctrl, enum nvme_queue_act op)
+ 		case NVME_UNFREEZE_QUEUES:
+ 			blk_mq_unfreeze_queue(ns->queue);
+ 			break;
++		case NVME_WAIT_FREEZE_QUEUES:
++			blk_mq_freeze_queue_wait(ns->queue);
++			break;
+ 		default:
+ 			pr_warn("invalid %s op 0x%x\n", __func__, op);
+ 			break;
+@@ -4496,16 +4499,6 @@ void nvme_wait_freeze_timeout(struct nvme_ctrl *ctrl, long timeout)
+ }
+ EXPORT_SYMBOL_GPL(nvme_wait_freeze_timeout);
+ 
+-void nvme_wait_freeze(struct nvme_ctrl *ctrl)
+-{
+-	struct nvme_ns *ns;
+-	unsigned long idx;
+-
+-	xa_for_each(&ctrl->namespaces, idx, ns)
+-		blk_mq_freeze_queue_wait(ns->queue);
+-}
+-EXPORT_SYMBOL_GPL(nvme_wait_freeze);
+-
+ void nvme_start_freeze(struct nvme_ctrl *ctrl)
+ {
+ 	struct nvme_ns *ns;
+diff --git a/drivers/nvme/host/nvme.h b/drivers/nvme/host/nvme.h
+index a1b2364d2bb2..349e7cd6dd65 100644
+--- a/drivers/nvme/host/nvme.h
++++ b/drivers/nvme/host/nvme.h
+@@ -548,13 +548,13 @@ void nvme_complete_async_event(struct nvme_ctrl *ctrl, __le16 status,
+ enum nvme_queue_act {
+ 	NVME_KILL_QUEUES = 1,
+ 	NVME_UNFREEZE_QUEUES,
++	NVME_WAIT_FREEZE_QUEUES,
+ };
+ 
+ void nvme_queue_act(struct nvme_ctrl *ctrl, enum nvme_queue_act op);
+ void nvme_stop_queues(struct nvme_ctrl *ctrl);
+ void nvme_start_queues(struct nvme_ctrl *ctrl);
+ void nvme_sync_queues(struct nvme_ctrl *ctrl);
+-void nvme_wait_freeze(struct nvme_ctrl *ctrl);
+ void nvme_wait_freeze_timeout(struct nvme_ctrl *ctrl, long timeout);
+ void nvme_start_freeze(struct nvme_ctrl *ctrl);
+ 
+diff --git a/drivers/nvme/host/pci.c b/drivers/nvme/host/pci.c
+index b87e2f0dcdf2..71e58d51d1b0 100644
+--- a/drivers/nvme/host/pci.c
++++ b/drivers/nvme/host/pci.c
+@@ -2622,7 +2622,7 @@ static void nvme_reset_work(struct work_struct *work)
+ 		nvme_free_tagset(dev);
+ 	} else {
+ 		nvme_start_queues(&dev->ctrl);
+-		nvme_wait_freeze(&dev->ctrl);
++		nvme_queue_act(&dev->ctrl, NVME_WAIT_FREEZE_QUEUES);
+ 		nvme_dev_add(dev);
+ 		nvme_queue_act(&dev->ctrl, NVME_UNFREEZE_QUEUES);
+ 	}
+@@ -2964,7 +2964,7 @@ static int nvme_suspend(struct device *dev)
+ 		return nvme_disable_prepare_reset(ndev, true);
+ 
+ 	nvme_start_freeze(ctrl);
+-	nvme_wait_freeze(ctrl);
++	nvme_queue_act(ctrl, NVME_WAIT_FREEZE_QUEUES);
+ 	nvme_sync_queues(ctrl);
+ 
+ 	if (ctrl->state != NVME_CTRL_LIVE)
+-- 
+2.26.0
+

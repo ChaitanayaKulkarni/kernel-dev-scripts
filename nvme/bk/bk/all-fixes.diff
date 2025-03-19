@@ -1,0 +1,14 @@
+diff --git a/drivers/nvme/target/loop.c b/drivers/nvme/target/loop.c
+index cb6f86572b24..38fffee6b85e 100644
+--- a/drivers/nvme/target/loop.c
++++ b/drivers/nvme/target/loop.c
+@@ -688,7 +688,8 @@ static struct nvmf_transport_ops nvme_loop_transport = {
+ 	.name		= "loop",
+ 	.module		= THIS_MODULE,
+ 	.create_ctrl	= nvme_loop_create_ctrl,
+-	.allowed_opts	= NVMF_OPT_TRADDR,
++	.allowed_opts   = NVMF_OPT_TRADDR | NVMF_OPT_CTRL_LOSS_TMO,
++
+ };
+ 
+ static int __init nvme_loop_init_module(void)

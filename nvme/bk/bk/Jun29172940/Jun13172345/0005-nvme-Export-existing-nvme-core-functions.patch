@@ -1,0 +1,108 @@
+From 1b01cf785130d184fca00b62640a66fdebfffec4 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Fri, 12 Jun 2020 15:23:37 -0700
+Subject: [PATCH 5/9] nvme: Export existing nvme core functions
+
+Export nvme_put_ns(), nvme_command_effects(), nvme_execute_passthru_rq()
+and nvme_find_get_ns() for use in the nvmet passthru code.
+
+The exports are conditional on CONFIG_NVME_TARGET_PASSTHRU.
+
+Based-on-a-patch-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Signed-off-by: Logan Gunthorpe <logang@deltatee.com>
+Reviewed-by: Max Gurtovoy <maxg@mellanox.com>
+Reviewed-by: Sagi Grimberg <sagi@grimberg.me>
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/host/core.c | 13 ++++++++-----
+ drivers/nvme/host/nvme.h |  5 +++++
+ 2 files changed, 13 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index 3c4278af92e1..f3197e1cd808 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -450,10 +450,11 @@ static void nvme_free_ns(struct kref *kref)
+ 	kfree(ns);
+ }
+ 
+-static void nvme_put_ns(struct nvme_ns *ns)
++void nvme_put_ns(struct nvme_ns *ns)
+ {
+ 	kref_put(&ns->kref, nvme_free_ns);
+ }
++EXPORT_SYMBOL_GPL(nvme_put_ns);
+ 
+ static inline void nvme_clear_nvme_request(struct request *req)
+ {
+@@ -886,7 +887,7 @@ static void *nvme_add_user_metadata(struct bio *bio, void __user *ubuf,
+ 	return ERR_PTR(ret);
+ }
+ 
+-static u32 nvme_command_effects(struct nvme_ctrl *ctrl, struct nvme_ns *ns,
++u32 nvme_command_effects(struct nvme_ctrl *ctrl, struct nvme_ns *ns,
+ 				u8 opcode)
+ {
+ 	u32 effects = 0;
+@@ -918,6 +919,7 @@ static u32 nvme_command_effects(struct nvme_ctrl *ctrl, struct nvme_ns *ns,
+ 
+ 	return effects & ~NVME_CMD_EFFECTS_CSUPP;
+ }
++EXPORT_SYMBOL_GPL(nvme_command_effects);
+ 
+ static u32 nvme_passthru_start(struct nvme_ctrl *ctrl, struct nvme_ns *ns,
+ 			       u8 opcode)
+@@ -972,7 +974,7 @@ static void nvme_passthru_end(struct nvme_ctrl *ctrl, u32 effects)
+ 		nvme_queue_scan(ctrl);
+ }
+ 
+-static void nvme_execute_passthru_rq(struct request *rq)
++void nvme_execute_passthru_rq(struct request *rq)
+ {
+ 	struct nvme_command *cmd = nvme_req(rq)->cmd;
+ 	struct nvme_ctrl *ctrl = nvme_req(rq)->ctrl;
+@@ -984,7 +986,7 @@ static void nvme_execute_passthru_rq(struct request *rq)
+ 	blk_execute_rq(rq->q, disk, rq, 0);
+ 	nvme_passthru_end(ctrl, effects);
+ }
+-
++EXPORT_SYMBOL_GPL(nvme_execute_passthru_rq);
+ 
+ static int nvme_submit_user_cmd(struct request_queue *q,
+ 		struct nvme_command *cmd, void __user *ubuffer,
+@@ -3606,7 +3608,7 @@ static int ns_cmp(void *priv, struct list_head *a, struct list_head *b)
+ 	return nsa->head->ns_id - nsb->head->ns_id;
+ }
+ 
+-static struct nvme_ns *nvme_find_get_ns(struct nvme_ctrl *ctrl, unsigned nsid)
++struct nvme_ns *nvme_find_get_ns(struct nvme_ctrl *ctrl, unsigned nsid)
+ {
+ 	struct nvme_ns *ns, *ret = NULL;
+ 
+@@ -3624,6 +3626,7 @@ static struct nvme_ns *nvme_find_get_ns(struct nvme_ctrl *ctrl, unsigned nsid)
+ 	up_read(&ctrl->namespaces_rwsem);
+ 	return ret;
+ }
++EXPORT_SYMBOL_GPL(nvme_find_get_ns);
+ 
+ static void nvme_alloc_ns(struct nvme_ctrl *ctrl, unsigned nsid)
+ {
+diff --git a/drivers/nvme/host/nvme.h b/drivers/nvme/host/nvme.h
+index 9ce3c47574c0..16b67c5a2ffc 100644
+--- a/drivers/nvme/host/nvme.h
++++ b/drivers/nvme/host/nvme.h
+@@ -717,6 +717,11 @@ static inline void nvme_hwmon_init(struct nvme_ctrl *ctrl) { }
+  * use by the nvmet-passthru and should not be used for
+  * other things.
+  */
++void nvme_put_ns(struct nvme_ns *ns);
++u32 nvme_command_effects(struct nvme_ctrl *ctrl, struct nvme_ns *ns,
++			 u8 opcode);
++void nvme_execute_passthru_rq(struct request *rq);
++struct nvme_ns *nvme_find_get_ns(struct nvme_ctrl *ctrl, unsigned int nsid);
+ struct nvme_ctrl *nvme_ctrl_get_by_path(const char *path);
+ #endif /* CONFIG_NVME_TARGET_PASSTHRU */
+ 
+-- 
+2.27.0
+

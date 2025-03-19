@@ -1,0 +1,127 @@
+From d13616bee8fb1a0a379fde58747ed6cddeea79f5 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Sun, 30 Apr 2023 23:51:01 -0700
+Subject: [PATCH 4/4] nvmet: use ns flags to indicate buffered_io
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/target/configfs.c    | 8 ++++++--
+ drivers/nvme/target/core.c        | 1 -
+ drivers/nvme/target/io-cmd-bdev.c | 2 +-
+ drivers/nvme/target/io-cmd-file.c | 6 +++---
+ drivers/nvme/target/nvmet.h       | 3 ++-
+ 5 files changed, 12 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/nvme/target/configfs.c b/drivers/nvme/target/configfs.c
+index d9cc55e179f0..b6a965b76577 100644
+--- a/drivers/nvme/target/configfs.c
++++ b/drivers/nvme/target/configfs.c
+@@ -549,7 +549,8 @@ CONFIGFS_ATTR(nvmet_ns_, enable);
+ 
+ static ssize_t nvmet_ns_buffered_io_show(struct config_item *item, char *page)
+ {
+-	return sprintf(page, "%d\n", to_nvmet_ns(item)->buffered_io);
++	return sprintf(page, "%d\n",
++		       test_bit(NVMET_NS_BUFFERED_IO, &to_nvmet_ns(item)->flags));
+ }
+ 
+ static ssize_t nvmet_ns_buffered_io_store(struct config_item *item,
+@@ -568,7 +569,10 @@ static ssize_t nvmet_ns_buffered_io_store(struct config_item *item,
+ 		return -EINVAL;
+ 	}
+ 
+-	ns->buffered_io = val;
++	if (val)
++		set_bit(NVMET_NS_BUFFERED_IO, &ns->flags);
++	else
++		clear_bit(NVMET_NS_BUFFERED_IO, &ns->flags);
+ 	mutex_unlock(&ns->subsys->lock);
+ 	return count;
+ }
+diff --git a/drivers/nvme/target/core.c b/drivers/nvme/target/core.c
+index df8d672b5f3c..90067c3118b6 100644
+--- a/drivers/nvme/target/core.c
++++ b/drivers/nvme/target/core.c
+@@ -694,7 +694,6 @@ struct nvmet_ns *nvmet_ns_alloc(struct nvmet_subsys *subsys, u32 nsid)
+ 	up_write(&nvmet_ana_sem);
+ 
+ 	uuid_gen(&ns->uuid);
+-	ns->buffered_io = false;
+ 	ns->csi = NVME_CSI_NVM;
+ 
+ 	return ns;
+diff --git a/drivers/nvme/target/io-cmd-bdev.c b/drivers/nvme/target/io-cmd-bdev.c
+index a88d250dc980..813424cf3c98 100644
+--- a/drivers/nvme/target/io-cmd-bdev.c
++++ b/drivers/nvme/target/io-cmd-bdev.c
+@@ -81,7 +81,7 @@ int nvmet_bdev_ns_enable(struct nvmet_ns *ns)
+ 	 * this block device to be used as a file, so block device can take
+ 	 * an advantage of cache.
+ 	 */
+-	if (ns->buffered_io)
++	if (test_bit(NVMET_NS_BUFFERED_IO, &ns->flags))
+ 		return -ENOTBLK;
+ 
+ 	ns->b.bdev = blkdev_get_by_path(ns->device_path,
+diff --git a/drivers/nvme/target/io-cmd-file.c b/drivers/nvme/target/io-cmd-file.c
+index b672acb2fcf8..100a5edf8d29 100644
+--- a/drivers/nvme/target/io-cmd-file.c
++++ b/drivers/nvme/target/io-cmd-file.c
+@@ -21,7 +21,7 @@ void nvmet_file_ns_revalidate(struct nvmet_ns *ns)
+ void nvmet_file_ns_disable(struct nvmet_ns *ns)
+ {
+ 	if (ns->f.file) {
+-		if (ns->buffered_io)
++		if (test_bit(NVMET_NS_BUFFERED_IO, &ns->flags))
+ 			flush_workqueue(buffered_io_wq);
+ 		mempool_destroy(ns->bvec_pool);
+ 		ns->bvec_pool = NULL;
+@@ -35,7 +35,7 @@ int nvmet_file_ns_enable(struct nvmet_ns *ns)
+ 	int flags = O_RDWR | O_LARGEFILE;
+ 	int ret = 0;
+ 
+-	if (!ns->buffered_io)
++	if (!test_bit(NVMET_NS_BUFFERED_IO, &ns->flags))
+ 		flags |= O_DIRECT;
+ 
+ 	ns->f.file = filp_open(ns->device_path, flags, 0);
+@@ -240,7 +240,7 @@ static void nvmet_file_execute_rw(struct nvmet_req *req)
+ 	} else
+ 		req->f.mpool_alloc = false;
+ 
+-	if (req->ns->buffered_io) {
++	if (test_bit(NVMET_NS_BUFFERED_IO, &req->ns->flags)) {
+ 		if (likely(!req->f.mpool_alloc) &&
+ 		    (req->ns->f.file->f_mode & FMODE_NOWAIT) &&
+ 		    nvmet_file_execute_io(req, IOCB_NOWAIT))
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index 5233b6ade5dd..a942cc3e0426 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -60,6 +60,7 @@ enum nvmet_ns_flags_bits {
+ 	NVMET_NS_BDEV = 0,
+ 	NVMET_NS_ENABLED = 1,
+ 	NVMET_NS_READONLY = 2,
++	NVMET_NS_BUFFERED_IO = 3,
+ };
+ 
+ struct nvmet_ns {
+@@ -79,7 +80,6 @@ struct nvmet_ns {
+ 	uuid_t			uuid;
+ 	u32			anagrpid;
+ 
+-	bool			buffered_io;
+ 	struct nvmet_subsys	*subsys;
+ 	const char		*device_path;
+ 
+@@ -99,6 +99,7 @@ struct nvmet_ns {
+ 	 *    0	          bdev           file
+ 	 *    1           enabled        disabled
+ 	 *    2           readonly       read-write
++	 *    3           buffered_io    direct-io
+ 	 */
+ 	unsigned long		flags;
+ };
+-- 
+2.40.0
+

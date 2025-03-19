@@ -1,0 +1,59 @@
+diff --git a/drivers/nvme/target/io-cmd-bdev.c b/drivers/nvme/target/io-cmd-bdev.c
+index 9a98b18a50d8..7d8a92a2ee78 100644
+--- a/drivers/nvme/target/io-cmd-bdev.c
++++ b/drivers/nvme/target/io-cmd-bdev.c
+@@ -435,6 +435,7 @@ static void nvmet_bdev_execute_write_zeroes(struct nvmet_req *req)
+ 	}
+ }
+ 
++#if 1
+ u16 nvmet_bdev_parse_io_cmd(struct nvmet_req *req)
+ {
+ 	struct nvme_command *cmd = req->cmd;
+@@ -468,3 +469,32 @@ u16 nvmet_bdev_parse_io_cmd(struct nvmet_req *req)
+ 		return nvmet_report_invalid_opcode(req);
+ 	}
+ }
++#else
++
++u16 nvmet_bdev_parse_io_cmd(struct nvmet_req *req)
++{
++	struct nvme_command *cmd = req->cmd;
++
++	if (cmd->common.opcode == nvme_cmd_read ||
++	    cmd->common.opcode == nvme_cmd_write) {
++		req->execute = nvmet_bdev_execute_rw;
++		if (req->sq->ctrl->pi_support && nvmet_ns_has_pi(req->ns))
++			req->metadata_len = nvmet_rw_metadata_len(req);
++	} else if (cmd->common.opcode ==  nvme_cmd_flush) {
++		req->execute = nvmet_bdev_execute_flush;
++	} else if (cmd->common.opcode ==  nvme_cmd_dsm) {
++		req->execute = nvmet_bdev_execute_dsm;
++	} else if (cmd->common.opcode ==  nvme_cmd_write_zeroes) {
++		req->execute = nvmet_bdev_execute_write_zeroes;
++	} else if (cmd->common.opcode ==  nvme_cmd_zone_append) {
++		req->execute = nvmet_bdev_execute_zone_append;
++	} else if (cmd->common.opcode ==  nvme_cmd_zone_mgmt_recv) {
++		req->execute = nvmet_bdev_execute_zone_mgmt_recv;
++	} else if (cmd->common.opcode ==  nvme_cmd_zone_mgmt_send) {
++		req->execute = nvmet_bdev_execute_zone_mgmt_send;
++	} else {
++		return nvmet_report_invalid_opcode(req);
++	}
++	return 0;
++}
++#endif
+diff --git a/drivers/nvme/target/loop.c b/drivers/nvme/target/loop.c
+index cb6f86572b24..38fffee6b85e 100644
+--- a/drivers/nvme/target/loop.c
++++ b/drivers/nvme/target/loop.c
+@@ -688,7 +688,8 @@ static struct nvmf_transport_ops nvme_loop_transport = {
+ 	.name		= "loop",
+ 	.module		= THIS_MODULE,
+ 	.create_ctrl	= nvme_loop_create_ctrl,
+-	.allowed_opts	= NVMF_OPT_TRADDR,
++	.allowed_opts   = NVMF_OPT_TRADDR | NVMF_OPT_CTRL_LOSS_TMO,
++
+ };
+ 
+ static int __init nvme_loop_init_module(void)

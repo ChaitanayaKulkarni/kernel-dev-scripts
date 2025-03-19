@@ -1,0 +1,39 @@
+From 0d77072e26fa074da0c36e423a5802fd18ef976d Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Fri, 8 Apr 2022 16:45:18 -0700
+Subject: [PATCH 3/3] nvme-core: mark internal passthru req REQ_QUIET
+
+Mark internal passthru requests quiet in the submission path with
+RQF_QUIET flag added in the __nvme_submit_sync_cmd(). In the completion
+path, if nvme request is resulted in the error and request is marked
+RQF_QUIET then don't log the error with nvme_error_log().
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/host/core.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index 449378a96a9f..12302be83a6c 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -370,7 +370,7 @@ static inline void nvme_end_req(struct request *req)
+ {
+ 	blk_status_t status = nvme_error_status(nvme_req(req)->status);
+ 
+-	if (unlikely(nvme_req(req)->status != NVME_SC_SUCCESS))
++	if (unlikely(nvme_req(req)->status && !(req->rq_flags & RQF_QUIET)))
+ 		nvme_log_error(req);
+ 	nvme_end_req_zoned(req);
+ 	nvme_trace_bio_complete(req);
+@@ -1100,6 +1100,7 @@ int __nvme_submit_sync_cmd(struct request_queue *q, struct nvme_command *cmd,
+ 			goto out;
+ 	}
+ 
++	req->rq_flags |= RQF_QUIET;
+ 	ret = nvme_execute_rq(req, at_head);
+ 	if (result && ret >= 0)
+ 		*result = nvme_req(req)->result;
+-- 
+2.29.0
+

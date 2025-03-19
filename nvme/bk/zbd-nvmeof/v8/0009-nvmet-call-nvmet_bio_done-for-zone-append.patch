@@ -1,0 +1,90 @@
+From 563b75511f4118879053c39012b9c0ec2ee57f99 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Wed, 16 Dec 2020 21:13:08 -0800
+Subject: [PATCH V8 9/9] nvmet: call nvmet_bio_done() for zone append
+
+The function nvmet_bdev_execute_zone_append() does exactly same thing
+for completion of the bio that is done in the nvmet_bio_done(),
+completing the request & calling nvmet_bio_put()_to put non online bio.
+
+Export the function nvmet_bio_done() and use that in the
+nvmet_bdev_execute_zone_append() for the request completion and bio
+processing. Set the bio->private after the call to submit_bio_wait() to
+nvmet request. The call to nvmet_bio_done() also updates error log page
+via call to blk_to_nvme_status() from nvmet_bio_done().
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/io-cmd-bdev.c |  2 +-
+ drivers/nvme/target/nvmet.h       |  1 +
+ drivers/nvme/target/zns.c         | 10 ++++------
+ 3 files changed, 6 insertions(+), 7 deletions(-)
+
+diff --git a/drivers/nvme/target/io-cmd-bdev.c b/drivers/nvme/target/io-cmd-bdev.c
+index c23a719513b0..72a22351da2a 100644
+--- a/drivers/nvme/target/io-cmd-bdev.c
++++ b/drivers/nvme/target/io-cmd-bdev.c
+@@ -167,7 +167,7 @@ static u16 blk_to_nvme_status(struct nvmet_req *req, blk_status_t blk_sts)
+ 	return status;
+ }
+ 
+-static void nvmet_bio_done(struct bio *bio)
++void nvmet_bio_done(struct bio *bio)
+ {
+ 	struct nvmet_req *req = bio->bi_private;
+ 
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index f4f9d622df0d..ab84ab75b952 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -535,6 +535,7 @@ void nvmet_ns_changed(struct nvmet_subsys *subsys, u32 nsid);
+ void nvmet_bdev_ns_revalidate(struct nvmet_ns *ns);
+ int nvmet_file_ns_revalidate(struct nvmet_ns *ns);
+ void nvmet_ns_revalidate(struct nvmet_ns *ns);
++void nvmet_bio_done(struct bio *bio);
+ 
+ static inline u32 nvmet_rw_data_len(struct nvmet_req *req)
+ {
+diff --git a/drivers/nvme/target/zns.c b/drivers/nvme/target/zns.c
+index 149bc8ce7010..da4be0231428 100644
+--- a/drivers/nvme/target/zns.c
++++ b/drivers/nvme/target/zns.c
+@@ -283,7 +283,6 @@ void nvmet_bdev_execute_zone_append(struct nvmet_req *req)
+ 	struct request_queue *q = req->ns->bdev->bd_disk->queue;
+ 	unsigned int op = REQ_OP_ZONE_APPEND | REQ_SYNC | REQ_IDLE;
+ 	unsigned int max_sects = queue_max_zone_append_sectors(q);
+-	u16 status = NVME_SC_SUCCESS;
+ 	unsigned int total_len = 0;
+ 	struct scatterlist *sg;
+ 	int ret = 0, sg_cnt;
+@@ -306,7 +305,7 @@ void nvmet_bdev_execute_zone_append(struct nvmet_req *req)
+ 
+ 		ret = bio_add_hw_page(q, bio, p, l, o, max_sects, &same_page);
+ 		if (ret != sg->length) {
+-			status = NVME_SC_INTERNAL;
++			bio->bi_status = BLK_STS_IOERR;
+ 			goto out_bio_put;
+ 		}
+ 		if (same_page)
+@@ -316,15 +315,14 @@ void nvmet_bdev_execute_zone_append(struct nvmet_req *req)
+ 	}
+ 
+ 	if (total_len != nvmet_rw_data_len(req)) {
+-		status = NVME_SC_INTERNAL | NVME_SC_DNR;
++		bio->bi_status = BLK_STS_IOERR;
+ 		goto out_bio_put;
+ 	}
+ 
+ 	ret = submit_bio_wait(bio);
+ 	req->cqe->result.u64 = nvmet_sect_to_lba(req->ns,
+ 						 bio->bi_iter.bi_sector);
+-
+ out_bio_put:
+-	nvmet_req_bio_put(req, bio);
+-	nvmet_req_complete(req, ret < 0 ? NVME_SC_INTERNAL : status);
++	bio->bi_private = req;
++	nvmet_bio_done(bio);
+ }
+-- 
+2.22.1
+

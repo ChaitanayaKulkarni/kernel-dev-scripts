@@ -1,0 +1,115 @@
+From acfb0a95b185df84e3787365e7d4e1bb774d4ff0 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Sat, 11 Apr 2020 11:09:17 -0700
+Subject: [PATCH V3 3/6] nvmet: export resize thread start-stop
+
+This patch adds a new configfs attributes so that user can start-stop
+resize monitor thread as and when needed.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/configfs.c | 60 ++++++++++++++++++++++++++++++++++
+ drivers/nvme/target/nvmet.h    | 14 ++++++++
+ 2 files changed, 74 insertions(+)
+
+diff --git a/drivers/nvme/target/configfs.c b/drivers/nvme/target/configfs.c
+index b0e84027b3bc..57c973773180 100644
+--- a/drivers/nvme/target/configfs.c
++++ b/drivers/nvme/target/configfs.c
+@@ -1050,8 +1050,68 @@ static struct configfs_group_operations nvmet_subsystems_group_ops = {
+ 	.make_group		= nvmet_subsys_make,
+ };
+ 
++static ssize_t nvmet_control_group_control_resize_refresh_show(
++		struct config_item *item, char *page)
++{
++	return snprintf(page, PAGE_SIZE, "%u\n",
++			to_nvmet_control(item)->enable);
++}
++
++static ssize_t nvmet_control_group_control_resize_refresh_store(
++		struct config_item *item, const char *page, size_t count)
++{
++	struct nvmet_control_configfs *control = to_nvmet_control(item);
++	bool enable;
++
++	if (kstrtobool(page, &enable))
++		return -EINVAL;
++
++	mutex_lock(&monitor->control_lock);
++	control->enable = enable;
++	if (control->enable)
++		nvmet_enable_ns_resize_monitor();
++	else
++		nvmet_disable_ns_resize_monitor();
++	mutex_unlock(&monitor->control_lock);
++	return count;
++}
++
++CONFIGFS_ATTR(nvmet_control_group_, control_resize_refresh);
++
++static ssize_t nvmet_control_group_control_resize_timeout_show(
++		struct config_item *item, char *page)
++{
++	return snprintf(page, PAGE_SIZE, "%u\n",
++			to_nvmet_control(item)->msec);
++}
++
++static ssize_t nvmet_control_group_control_resize_timeout_store(
++		struct config_item *item, const char *page, size_t count)
++{
++	struct nvmet_control_configfs *control = to_nvmet_control(item);
++	u32 msec;
++
++	if (kstrtou32(page, 10, &msec))
++		return -EINVAL;
++
++	mutex_lock(&monitor->control_lock);
++	control->msec = msec;
++	monitor->msec = msec;
++	mutex_unlock(&monitor->control_lock);
++	return count;
++}
++
++CONFIGFS_ATTR(nvmet_control_group_, control_resize_timeout);
++
++static struct configfs_attribute *nvmet_control_group_attrs[] = {
++	&nvmet_control_group_attr_control_resize_refresh,
++	&nvmet_control_group_attr_control_resize_timeout,
++	NULL,
++};
++
+ static const struct config_item_type nvmet_subsystems_type = {
+ 	.ct_group_ops		= &nvmet_subsystems_group_ops,
++	.ct_attrs		= nvmet_control_group_attrs,
+ 	.ct_owner		= THIS_MODULE,
+ };
+ 
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index 7fe6d705cbf1..7ddc39c83aa5 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -62,6 +62,20 @@ struct nvmet_resize_monitor {
+ 
+ extern struct nvmet_resize_monitor *monitor;
+ 
++struct nvmet_control_configfs {
++	bool                    enable;
++	struct config_group     group;
++	u8			msec;
++};
++
++static inline struct nvmet_control_configfs *to_nvmet_control(
++		struct config_item *item)
++{
++	struct config_group *group = to_config_group(item);
++
++	return container_of(group, struct nvmet_control_configfs, group);
++}
++
+ struct nvmet_ns {
+ 	struct list_head	dev_link;
+ 	struct percpu_ref	ref;
+-- 
+2.22.1
+

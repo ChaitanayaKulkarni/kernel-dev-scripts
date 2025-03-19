@@ -1,0 +1,164 @@
+From 1ead3fd7d8c95e06bf257be20dccfd0000831233 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Sat, 12 Sep 2020 22:18:26 -0700
+Subject: [PATCH V4 7/7] nvme: use consistent macro name for timeout
+
+This is purely a clenaup patch, add prefix NVME to the ADMIN_TIMEOUT
+to make consistent with NVME_IO_TIMEOUT.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/host/core.c       | 3 ++-
+ drivers/nvme/host/fc.c         | 2 +-
+ drivers/nvme/host/nvme.h       | 4 ++--
+ drivers/nvme/host/pci.c        | 8 ++++----
+ drivers/nvme/host/rdma.c       | 2 +-
+ drivers/nvme/host/tcp.c        | 2 +-
+ drivers/nvme/target/loop.c     | 2 +-
+ drivers/nvme/target/passthru.c | 2 +-
+ 8 files changed, 13 insertions(+), 12 deletions(-)
+
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index ba839402e31f..f95110a6d35c 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -2260,7 +2260,8 @@ int nvme_sec_submit(void *data, u16 spsp, u8 secp, void *buffer, size_t len,
+ 	cmd.common.cdw11 = cpu_to_le32(len);
+ 
+ 	return __nvme_submit_sync_cmd(ctrl->admin_q, &cmd, NULL, buffer, len,
+-				      ADMIN_TIMEOUT, NVME_QID_ANY, 1, 0, false);
++				      NVME_ADMIN_TIMEOUT, NVME_QID_ANY, 1, 0,
++				      false);
+ }
+ EXPORT_SYMBOL_GPL(nvme_sec_submit);
+ #endif /* CONFIG_BLK_SED_OPAL */
+diff --git a/drivers/nvme/host/fc.c b/drivers/nvme/host/fc.c
+index e2e09e25c056..8198b062e1eb 100644
+--- a/drivers/nvme/host/fc.c
++++ b/drivers/nvme/host/fc.c
+@@ -3480,7 +3480,7 @@ nvme_fc_init_ctrl(struct device *dev, struct nvmf_ctrl_options *opts,
+ 			    ctrl->lport->ops->fcprqst_priv_sz);
+ 	ctrl->admin_tag_set.driver_data = ctrl;
+ 	ctrl->admin_tag_set.nr_hw_queues = 1;
+-	ctrl->admin_tag_set.timeout = ADMIN_TIMEOUT;
++	ctrl->admin_tag_set.timeout = NVME_ADMIN_TIMEOUT;
+ 	ctrl->admin_tag_set.flags = BLK_MQ_F_NO_SCHED;
+ 
+ 	ret = blk_mq_alloc_tag_set(&ctrl->admin_tag_set);
+diff --git a/drivers/nvme/host/nvme.h b/drivers/nvme/host/nvme.h
+index 955055ece321..d6ac0c0ccfa1 100644
+--- a/drivers/nvme/host/nvme.h
++++ b/drivers/nvme/host/nvme.h
+@@ -24,7 +24,7 @@ extern unsigned int nvme_io_timeout;
+ #define NVME_IO_TIMEOUT	(nvme_io_timeout * HZ)
+ 
+ extern unsigned int admin_timeout;
+-#define ADMIN_TIMEOUT	(admin_timeout * HZ)
++#define NVME_ADMIN_TIMEOUT	(admin_timeout * HZ)
+ 
+ #define NVME_DEFAULT_KATO	5
+ #define NVME_KATO_GRACE		10
+@@ -648,7 +648,7 @@ static inline void nvme_default_timeout(struct request *req,
+ 	 * changes it should reflect here.
+ 	 */
+ 	if (!timeout)
+-		timeout = queuedata ? NVME_IO_TIMEOUT : ADMIN_TIMEOUT;
++		timeout = queuedata ? NVME_IO_TIMEOUT : NVME_ADMIN_TIMEOUT;
+ 
+ 	req->timeout = timeout;
+ }
+diff --git a/drivers/nvme/host/pci.c b/drivers/nvme/host/pci.c
+index e5b02242f3ca..5bb93b687641 100644
+--- a/drivers/nvme/host/pci.c
++++ b/drivers/nvme/host/pci.c
+@@ -1296,7 +1296,7 @@ static enum blk_eh_timer_return nvme_timeout(struct request *req, bool reserved)
+ 		return BLK_EH_RESET_TIMER;
+ 	}
+ 
+-	abort_req->timeout = ADMIN_TIMEOUT;
++	abort_req->timeout = NVME_ADMIN_TIMEOUT;
+ 	abort_req->end_io_data = NULL;
+ 	blk_execute_rq_nowait(abort_req->q, NULL, abort_req, 0, abort_endio);
+ 
+@@ -1592,7 +1592,7 @@ static int nvme_alloc_admin_tags(struct nvme_dev *dev)
+ 		dev->admin_tagset.nr_hw_queues = 1;
+ 
+ 		dev->admin_tagset.queue_depth = NVME_AQ_MQ_TAG_DEPTH;
+-		dev->admin_tagset.timeout = ADMIN_TIMEOUT;
++		dev->admin_tagset.timeout = NVME_ADMIN_TIMEOUT;
+ 		dev->admin_tagset.numa_node = dev->ctrl.numa_node;
+ 		dev->admin_tagset.cmd_size = sizeof(struct nvme_iod);
+ 		dev->admin_tagset.flags = BLK_MQ_F_NO_SCHED;
+@@ -2208,7 +2208,7 @@ static int nvme_delete_queue(struct nvme_queue *nvmeq, u8 opcode)
+ 	if (IS_ERR(req))
+ 		return PTR_ERR(req);
+ 
+-	req->timeout = ADMIN_TIMEOUT;
++	req->timeout = NVME_ADMIN_TIMEOUT;
+ 	req->end_io_data = nvmeq;
+ 
+ 	init_completion(&nvmeq->delete_done);
+@@ -2224,7 +2224,7 @@ static bool __nvme_disable_io_queues(struct nvme_dev *dev, u8 opcode)
+ 	unsigned long timeout;
+ 
+  retry:
+-	timeout = ADMIN_TIMEOUT;
++	timeout = NVME_ADMIN_TIMEOUT;
+ 	while (nr_queues > 0) {
+ 		if (nvme_delete_queue(&dev->queues[nr_queues], opcode))
+ 			break;
+diff --git a/drivers/nvme/host/rdma.c b/drivers/nvme/host/rdma.c
+index 9e378d0a0c01..de36ec783527 100644
+--- a/drivers/nvme/host/rdma.c
++++ b/drivers/nvme/host/rdma.c
+@@ -798,7 +798,7 @@ static struct blk_mq_tag_set *nvme_rdma_alloc_tagset(struct nvme_ctrl *nctrl,
+ 				NVME_RDMA_DATA_SGL_SIZE;
+ 		set->driver_data = ctrl;
+ 		set->nr_hw_queues = 1;
+-		set->timeout = ADMIN_TIMEOUT;
++		set->timeout = NVME_ADMIN_TIMEOUT;
+ 		set->flags = BLK_MQ_F_NO_SCHED;
+ 	} else {
+ 		set = &ctrl->tag_set;
+diff --git a/drivers/nvme/host/tcp.c b/drivers/nvme/host/tcp.c
+index 8f4f29f18b8c..9aae5af37df6 100644
+--- a/drivers/nvme/host/tcp.c
++++ b/drivers/nvme/host/tcp.c
+@@ -1570,7 +1570,7 @@ static struct blk_mq_tag_set *nvme_tcp_alloc_tagset(struct nvme_ctrl *nctrl,
+ 		set->cmd_size = sizeof(struct nvme_tcp_request);
+ 		set->driver_data = ctrl;
+ 		set->nr_hw_queues = 1;
+-		set->timeout = ADMIN_TIMEOUT;
++		set->timeout = NVME_ADMIN_TIMEOUT;
+ 	} else {
+ 		set = &ctrl->tag_set;
+ 		memset(set, 0, sizeof(*set));
+diff --git a/drivers/nvme/target/loop.c b/drivers/nvme/target/loop.c
+index f6d81239be21..76d8c0a9a87d 100644
+--- a/drivers/nvme/target/loop.c
++++ b/drivers/nvme/target/loop.c
+@@ -345,7 +345,7 @@ static int nvme_loop_configure_admin_queue(struct nvme_loop_ctrl *ctrl)
+ 		NVME_INLINE_SG_CNT * sizeof(struct scatterlist);
+ 	ctrl->admin_tag_set.driver_data = ctrl;
+ 	ctrl->admin_tag_set.nr_hw_queues = 1;
+-	ctrl->admin_tag_set.timeout = ADMIN_TIMEOUT;
++	ctrl->admin_tag_set.timeout = NVME_ADMIN_TIMEOUT;
+ 	ctrl->admin_tag_set.flags = BLK_MQ_F_NO_SCHED;
+ 
+ 	ctrl->queues[0].ctrl = ctrl;
+diff --git a/drivers/nvme/target/passthru.c b/drivers/nvme/target/passthru.c
+index 2039ad7cbbab..728d79e5dabc 100644
+--- a/drivers/nvme/target/passthru.c
++++ b/drivers/nvme/target/passthru.c
+@@ -544,7 +544,7 @@ int nvmet_passthru_ctrl_enable(struct nvmet_subsys *subsys)
+ 	}
+ 
+ 	if (!subsys->admin_timeout)
+-		subsys->admin_timeout = ADMIN_TIMEOUT;
++		subsys->admin_timeout = NVME_ADMIN_TIMEOUT;
+ 
+ 	if (!subsys->io_timeout)
+ 		subsys->io_timeout = NVME_IO_TIMEOUT;
+-- 
+2.22.1
+

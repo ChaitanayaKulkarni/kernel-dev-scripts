@@ -1,0 +1,26 @@
+From 1c761235c5384e51f3fff97daf9fe37a79ed05a4 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Mon, 4 Nov 2024 11:58:02 -0800
+Subject: [PATCH 2/2] nvmet: make nvmet-zbd-wq visible in sysfs
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/target/core.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/nvme/target/core.c b/drivers/nvme/target/core.c
+index 7869090c53f9..1e3d3119c29e 100644
+--- a/drivers/nvme/target/core.c
++++ b/drivers/nvme/target/core.c
+@@ -1708,7 +1708,7 @@ static int __init nvmet_init(void)
+ 	if (!nvmet_bvec_cache)
+ 		return -ENOMEM;
+ 
+-	zbd_wq = alloc_workqueue("nvmet-zbd-wq", WQ_MEM_RECLAIM, 0);
++	zbd_wq = alloc_workqueue("nvmet-zbd-wq", wq_flags, 0);
+ 	if (!zbd_wq)
+ 		goto out_destroy_bvec_cache;
+ 
+-- 
+2.40.0
+

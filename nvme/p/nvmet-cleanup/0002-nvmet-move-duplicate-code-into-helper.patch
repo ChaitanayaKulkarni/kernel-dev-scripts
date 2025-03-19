@@ -1,0 +1,125 @@
+From 12ccbceac4730ed202bad5f8fc310d7fe7ccde64 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Wed, 8 Nov 2023 01:08:28 -0800
+Subject: [PATCH 2/2] nvmet: move duplicate code into helper
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/target/fabrics-cmd.c | 67 +++++++++++++++----------------
+ 1 file changed, 32 insertions(+), 35 deletions(-)
+
+diff --git a/drivers/nvme/target/fabrics-cmd.c b/drivers/nvme/target/fabrics-cmd.c
+index cc860713aac9..57e6402fb9b8 100644
+--- a/drivers/nvme/target/fabrics-cmd.c
++++ b/drivers/nvme/target/fabrics-cmd.c
+@@ -204,26 +204,19 @@ static u32 nvmet_connect_result(struct nvmet_ctrl *ctrl)
+ 		(nvmet_has_auth(ctrl) ? NVME_CONNECT_AUTHREQ_ATR : 0);
+ }
+ 
+-static void nvmet_execute_admin_connect(struct nvmet_req *req)
++static u16 nvmet_connect_prep(struct nvmet_req *req,
++			      struct nvmf_connect_data **d)
+ {
+ 	struct nvmf_connect_command *c = &req->cmd->connect;
+-	struct nvmf_connect_data *d;
+-	struct nvmet_ctrl *ctrl = NULL;
+ 	u16 status;
+-	int ret;
+-
+-	if (!nvmet_check_transfer_len(req, sizeof(struct nvmf_connect_data)))
+-		return;
+ 
+-	d = kmalloc(sizeof(*d), GFP_KERNEL);
+-	if (!d) {
+-		status = NVME_SC_INTERNAL;
+-		goto complete;
+-	}
++	*d = kmalloc(sizeof(**d), GFP_KERNEL);
++	if (!*d)
++		return NVME_SC_INTERNAL;
+ 
+-	status = nvmet_copy_from_sgl(req, 0, d, sizeof(*d));
++	status = nvmet_copy_from_sgl(req, 0, *d, sizeof(**d));
+ 	if (status)
+-		goto out;
++		return status;
+ 
+ 	/* zero out initial completion result, assign values as needed */
+ 	req->cqe->result.u32 = 0;
+@@ -232,7 +225,25 @@ static void nvmet_execute_admin_connect(struct nvmet_req *req)
+ 		pr_warn("invalid connect version (%d).\n",
+ 			le16_to_cpu(c->recfmt));
+ 		req->error_loc = offsetof(struct nvmf_connect_command, recfmt);
+-		status = NVME_SC_CONNECT_FORMAT | NVME_SC_DNR;
++		return  NVME_SC_CONNECT_FORMAT | NVME_SC_DNR;
++	}
++	return NVME_SC_SUCCESS;
++}
++
++static void nvmet_execute_admin_connect(struct nvmet_req *req)
++{
++	struct nvmf_connect_data *d;
++	struct nvmet_ctrl *ctrl = NULL;
++	u16 status;
++	int ret;
++
++	if (!nvmet_check_transfer_len(req, sizeof(struct nvmf_connect_data)))
++		return;
++
++	status = nvmet_connect_prep(req, &d);
++	if (status) {
++		if (status == NVME_SC_INTERNAL)
++			goto complete;
+ 		goto out;
+ 	}
+ 
+@@ -245,7 +256,7 @@ static void nvmet_execute_admin_connect(struct nvmet_req *req)
+ 	}
+ 
+ 	status = nvmet_alloc_ctrl(d->subsysnqn, d->hostnqn, req,
+-				  le32_to_cpu(c->kato), &ctrl);
++				  le32_to_cpu(req->cmd->connect.kato), &ctrl);
+ 	if (status)
+ 		goto out;
+ 
+@@ -284,32 +295,18 @@ static void nvmet_execute_admin_connect(struct nvmet_req *req)
+ 
+ static void nvmet_execute_io_connect(struct nvmet_req *req)
+ {
+-	struct nvmf_connect_command *c = &req->cmd->connect;
+ 	struct nvmf_connect_data *d;
+ 	struct nvmet_ctrl *ctrl;
+-	u16 qid = le16_to_cpu(c->qid);
++	u16 qid = le16_to_cpu(req->cmd->connect.qid);
+ 	u16 status;
+ 
+ 	if (!nvmet_check_transfer_len(req, sizeof(struct nvmf_connect_data)))
+ 		return;
+ 
+-	d = kmalloc(sizeof(*d), GFP_KERNEL);
+-	if (!d) {
+-		status = NVME_SC_INTERNAL;
+-		goto complete;
+-	}
+-
+-	status = nvmet_copy_from_sgl(req, 0, d, sizeof(*d));
+-	if (status)
+-		goto out;
+-
+-	/* zero out initial completion result, assign values as needed */
+-	req->cqe->result.u32 = 0;
+-
+-	if (c->recfmt != 0) {
+-		pr_warn("invalid connect version (%d).\n",
+-			le16_to_cpu(c->recfmt));
+-		status = NVME_SC_CONNECT_FORMAT | NVME_SC_DNR;
++	status = nvmet_connect_prep(req, &d);
++	if (status) {
++		if (status == NVME_SC_INTERNAL)
++			goto complete;
+ 		goto out;
+ 	}
+ 
+-- 
+2.40.0
+

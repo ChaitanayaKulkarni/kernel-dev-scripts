@@ -1,0 +1,54 @@
+From e5b834d2708a49d56450618b8d482cc18281c899 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Sun, 9 May 2021 11:20:19 -0700
+Subject: [PATCH 2/5] nvmet: add req cns error complete helper
+
+We report error and complete the request when identify cns value is not
+handled in nvmet_execute_identify(). This error reporting is also needed
+for Zone Block Device backend for NVMeOF target.
+
+Add a helper nvmet_req_cns_error_compplete() to report an error and
+complete the request when idenitfy command cns not handled value.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/admin-cmd.c | 5 +----
+ drivers/nvme/target/nvmet.h     | 8 ++++++++
+ 2 files changed, 9 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/nvme/target/admin-cmd.c b/drivers/nvme/target/admin-cmd.c
+index dcd49a72f2f3..94230803c75a 100644
+--- a/drivers/nvme/target/admin-cmd.c
++++ b/drivers/nvme/target/admin-cmd.c
+@@ -659,10 +659,7 @@ static void nvmet_execute_identify(struct nvmet_req *req)
+ 		return nvmet_execute_identify_desclist(req);
+ 	}
+ 
+-	pr_debug("unhandled identify cns %d on qid %d\n",
+-	       req->cmd->identify.cns, req->sq->qid);
+-	req->error_loc = offsetof(struct nvme_identify, cns);
+-	nvmet_req_complete(req, NVME_SC_INVALID_FIELD | NVME_SC_DNR);
++	nvmet_req_cns_error_complete(req);
+ }
+ 
+ /*
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index d69a409515d6..058b6d3d48fa 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -622,4 +622,12 @@ static inline bool nvmet_use_inline_bvec(struct nvmet_req *req)
+ 	       req->sg_cnt <= NVMET_MAX_INLINE_BIOVEC;
+ }
+ 
++static inline void nvmet_req_cns_error_complete(struct nvmet_req *req)
++{
++	pr_debug("unhandled identify cns %d on qid %d\n",
++	       req->cmd->identify.cns, req->sq->qid);
++	req->error_loc = offsetof(struct nvme_identify, cns);
++	nvmet_req_complete(req, NVME_SC_INVALID_FIELD | NVME_SC_DNR);
++}
++
+ #endif /* _NVMET_H */
+-- 
+2.22.1
+

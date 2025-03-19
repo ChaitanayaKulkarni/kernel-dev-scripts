@@ -1,0 +1,114 @@
+diff --git a/drivers/nvme/target/admin-cmd.c b/drivers/nvme/target/admin-cmd.c
+index 2962794ce881..cdc2924b8490 100644
+--- a/drivers/nvme/target/admin-cmd.c
++++ b/drivers/nvme/target/admin-cmd.c
+@@ -100,10 +100,27 @@ static void nvmet_execute_get_supported_log_pages(struct nvmet_req *req)
+ 	nvmet_req_complete(req, status);
+ }
+ 
++static void nvmet_copy_ns_rw(struct nvmet_req *req, u8 *hrc, u8 *dur,
++		u8 *hwc, u8 *duw)
++{
++	u64 host_reads, host_writes, data_units_read, data_units_written;
++
++	host_reads = part_stat_read(req->ns->bdev, ios[READ]);
++	data_units_read =
++		DIV_ROUND_UP(part_stat_read(req->ns->bdev, sectors[READ]), 1000);
++	host_writes = part_stat_read(req->ns->bdev, ios[WRITE]);
++	data_units_written =
++		DIV_ROUND_UP(part_stat_read(req->ns->bdev, sectors[WRITE]), 1000);
++
++	put_unaligned_le64(host_reads, hrc);
++	put_unaligned_le64(data_units_read, dur);
++	put_unaligned_le64(host_writes, hwc);
++	put_unaligned_le64(data_units_written, duw);
++}
++
+ static u16 nvmet_get_smart_log_nsid(struct nvmet_req *req,
+ 		struct nvme_smart_log *slog)
+ {
+-	u64 host_reads, host_writes, data_units_read, data_units_written;
+ 	u16 status;
+ 
+ 	status = nvmet_req_find_ns(req);
+@@ -114,17 +131,8 @@ static u16 nvmet_get_smart_log_nsid(struct nvmet_req *req,
+ 	if (!req->ns->bdev)
+ 		return NVME_SC_SUCCESS;
+ 
+-	host_reads = part_stat_read(req->ns->bdev, ios[READ]);
+-	data_units_read =
+-		DIV_ROUND_UP(part_stat_read(req->ns->bdev, sectors[READ]), 1000);
+-	host_writes = part_stat_read(req->ns->bdev, ios[WRITE]);
+-	data_units_written =
+-		DIV_ROUND_UP(part_stat_read(req->ns->bdev, sectors[WRITE]), 1000);
+-
+-	put_unaligned_le64(host_reads, &slog->host_reads[0]);
+-	put_unaligned_le64(data_units_read, &slog->data_units_read[0]);
+-	put_unaligned_le64(host_writes, &slog->host_writes[0]);
+-	put_unaligned_le64(data_units_written, &slog->data_units_written[0]);
++	nvmet_copy_ns_rw(req, &slog->host_reads[0], &slog->data_units_read[0],
++			 &slog->host_writes[0], &slog->data_units_written[0]);
+ 
+ 	return NVME_SC_SUCCESS;
+ }
+@@ -346,7 +354,6 @@ static u32 nvmet_format_ana_group(struct nvmet_req *req, u32 grpid,
+ 
+ static void nvmet_execute_get_log_page_endgrp(struct nvmet_req *req)
+ {
+-	u64 host_reads, host_writes, data_units_read, data_units_written;
+ 	struct nvme_endurance_group_log *log;
+ 	u16 status;
+ 
+@@ -369,17 +376,8 @@ static void nvmet_execute_get_log_page_endgrp(struct nvmet_req *req)
+ 	if (!req->ns->bdev)
+ 		goto copy;
+ 
+-	host_reads = part_stat_read(req->ns->bdev, ios[READ]);
+-	data_units_read =
+-		DIV_ROUND_UP(part_stat_read(req->ns->bdev, sectors[READ]), 1000);
+-	host_writes = part_stat_read(req->ns->bdev, ios[WRITE]);
+-	data_units_written =
+-		DIV_ROUND_UP(part_stat_read(req->ns->bdev, sectors[WRITE]), 1000);
+-
+-	put_unaligned_le64(host_reads, &log->hrc[0]);
+-	put_unaligned_le64(data_units_read, &log->dur[0]);
+-	put_unaligned_le64(host_writes, &log->hwc[0]);
+-	put_unaligned_le64(data_units_written, &log->duw[0]);
++	nvmet_copy_ns_rw(req, &log->hrc[0], &log->dur[0], &log->hwc[0],
++			 &log->duw[0]);
+ copy:
+ 	status = nvmet_copy_to_sgl(req, 0, log, sizeof(*log));
+ 	kfree(log);
+diff --git a/drivers/nvme/target/core.c b/drivers/nvme/target/core.c
+index 1f4e9989663b..eede3a7c5594 100644
+--- a/drivers/nvme/target/core.c
++++ b/drivers/nvme/target/core.c
+@@ -5,6 +5,7 @@
+  */
+ #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
+ #include <linux/module.h>
++#include <linux/delay.h>
+ #include <linux/random.h>
+ #include <linux/rculist.h>
+ #include <linux/pci-p2pdma.h>
+@@ -18,6 +19,11 @@
+ #include "nvmet.h"
+ #include "debugfs.h"
+ 
++unsigned int ns_disable_error_inject;
++module_param(ns_disable_error_inject, int, 0644);
++MODULE_PARM_DESC(ns_disable_error_inject,
++		 "delay xa_erase() in ns-disable path in seconds (default 0)");
++
+ struct kmem_cache *nvmet_bvec_cache;
+ struct workqueue_struct *buffered_io_wq;
+ struct workqueue_struct *zbd_wq;
+@@ -649,6 +655,8 @@ void nvmet_ns_disable(struct nvmet_ns *ns)
+ 		goto out_unlock;
+ 
+ 	ns->enabled = false;
++	if (ns_disable_error_inject)
++		msleep(ns_disable_error_inject * 1000);
+ 	xa_erase(&ns->subsys->namespaces, ns->nsid);
+ 	if (ns->nsid == subsys->max_nsid)
+ 		subsys->max_nsid = nvmet_max_nsid(subsys);

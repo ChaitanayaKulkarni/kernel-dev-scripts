@@ -1,0 +1,87 @@
+From e2b5e0bc63d6544feda4354c92c6c9fab11a3649 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Wed, 3 Jun 2020 01:31:26 -0700
+Subject: [PATCH] nvmet: free outstanding host AEN req
+
+In function nvmet_async_event_process() we only process AENs iff
+there is an open slot on the ctrl->async_event_cmds[] && aen
+event list posted by the target is not empty. This keeps host
+posted AEN outstanding if target generated AEN list is empty.
+We do cleanup the target generated entries from the aen list in
+nvmet_ctrl_free()-> nvmet_async_events_free() but we don't
+process AEN posted by the host. This leads to following problem :-
+
+admin sq at the time of nvmet_sq_destroy() holds an extra percpu
+reference(atomic value = 1), so in the following code path after
+switching to atomic rcu, release function (nvmet_sq_free()) is not
+getting called which blocks the sq->free_done in nvmet_sq_destroy() :-
+
+nvmet_sq_destroy()
+ percpu_ref_kill_and_confirm()
+ - __percpu_ref_switch_mode()
+ --  __percpu_ref_switch_to_atomic()
+ ---   call_rcu() -> percpu_ref_switch_to_atomic_rcu()
+ ----     /* calls switch callback */
+ - percpu_ref_put()
+ -- percpu_ref_put_many(ref, 1)
+ --- else if (unlikely(atomic_long_sub_and_test(nr, &ref->count)))
+ ----	ref->release(ref); <---- Not called.
+
+This results in indefinite hang:-
+
+ 780 void nvmet_sq_destroy(struct nvmet_sq *sq)
+...
+ 789         if (ctrl && ctrl->sqs && ctrl->sqs[0] == sq) {
+ 790                 nvmet_async_events_process(ctrl, status);
+ 791                 percpu_ref_put(&sq->ref);
+ 792         }
+ 793         percpu_ref_kill_and_confirm(&sq->ref, nvmet_confirm_sq);
+ 794         wait_for_completion(&sq->confirm_done);
+ 795         wait_for_completion(&sq->free_done); <-- Hang here
+
+Which breaks the further disconnect sequence. This problem seems to be
+introduced after commit 64f5e9cdd711b ("nvmet: fix memory leak when removing
+namespaces and controllers concurrently").
+
+This patch processes the ctrl->async_event_cmd[] until there are no cmds
+available in array irrespective of aen list if empty or not and uses aen
+list entry if available.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/core.c | 16 ++++++++++------
+ 1 file changed, 10 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/nvme/target/core.c b/drivers/nvme/target/core.c
+index 6392bcd30bd7..40d80b785ecf 100644
+--- a/drivers/nvme/target/core.c
++++ b/drivers/nvme/target/core.c
+@@ -135,15 +135,19 @@ static void nvmet_async_events_process(struct nvmet_ctrl *ctrl, u16 status)
+ 	struct nvmet_req *req;
+ 
+ 	mutex_lock(&ctrl->lock);
+-	while (ctrl->nr_async_event_cmds && !list_empty(&ctrl->async_events)) {
+-		aen = list_first_entry(&ctrl->async_events,
+-				       struct nvmet_async_event, entry);
++	while (ctrl->nr_async_event_cmds) {
+ 		req = ctrl->async_event_cmds[--ctrl->nr_async_event_cmds];
+-		if (status == 0)
++		aen = NULL;
++		if (!list_empty(&ctrl->async_events))
++			aen = list_first_entry(&ctrl->async_events,
++				       struct nvmet_async_event, entry);
++		if (status == 0 && aen)
+ 			nvmet_set_result(req, nvmet_async_event_result(aen));
+ 
+-		list_del(&aen->entry);
+-		kfree(aen);
++		if (aen) {
++			list_del(&aen->entry);
++			kfree(aen);
++		}
+ 
+ 		mutex_unlock(&ctrl->lock);
+ 		trace_nvmet_async_event(ctrl, req->cqe->result.u32);
+-- 
+2.22.1
+

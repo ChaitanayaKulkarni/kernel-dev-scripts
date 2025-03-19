@@ -1,0 +1,30 @@
+From 04c76ddf82521abe1d1068e5950735651065b68f Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Fri, 8 Apr 2022 15:50:10 -0700
+Subject: [PATCH 2/2] nvme-core: don't check non-mdts for disc ctrl
+
+Don't check the non mdts limits for the discovery controller.
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/host/core.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index f204c6f78b5b..449378a96a9f 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -2876,6 +2876,10 @@ static int nvme_init_non_mdts_limits(struct nvme_ctrl *ctrl)
+ 	struct nvme_id_ctrl_nvm *id;
+ 	int ret;
+ 
++	/* Discovery controller doesn't support non mdts limits */
++	if (nvme_discovery_ctrl(ctrl))
++		return 0;
++
+ 	if (ctrl->oncs & NVME_CTRL_ONCS_DSM) {
+ 		ctrl->max_discard_sectors = UINT_MAX;
+ 		ctrl->max_discard_segments = NVME_DSM_MAX_RANGES;
+-- 
+2.29.0
+

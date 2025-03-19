@@ -1,0 +1,120 @@
+From 50ef243c26b3ed04b6b48b4784b6582a80c6f323 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Mon, 7 Oct 2019 19:53:11 -0700
+Subject: [PATCH 6/6] nvmet: add configfs interface to toggle polling
+
+This patch adds a new configfs ns attribute so that user can optionally
+enable/disable polling for the bdev and file-backed namespace.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/configfs.c    | 30 ++++++++++++++++++++++++++++++
+ drivers/nvme/target/io-cmd-bdev.c |  2 +-
+ drivers/nvme/target/io-cmd-file.c | 10 ++++++----
+ drivers/nvme/target/nvmet.h       |  1 +
+ 4 files changed, 38 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/nvme/target/configfs.c b/drivers/nvme/target/configfs.c
+index 98613a45bd3b..1f338cd12229 100644
+--- a/drivers/nvme/target/configfs.c
++++ b/drivers/nvme/target/configfs.c
+@@ -517,6 +517,35 @@ static ssize_t nvmet_ns_enable_store(struct config_item *item,
+ 
+ CONFIGFS_ATTR(nvmet_ns_, enable);
+ 
++static ssize_t nvmet_ns_poll_show(struct config_item *item, char *page)
++{
++	return sprintf(page, "%d\n", to_nvmet_ns(item)->poll);
++}
++
++static ssize_t nvmet_ns_poll_store(struct config_item *item,
++		const char *page, size_t count)
++{
++	struct nvmet_ns *ns = to_nvmet_ns(item);
++	struct nvmet_subsys *subsys = ns->subsys;
++	bool is_poll;
++	int ret = 0;
++
++	if (strtobool(page, &is_poll))
++		return -EINVAL;
++
++	mutex_lock(&subsys->lock);
++	if (ns->enabled || ns->poll == is_poll) {
++		ret = -EINVAL;
++		goto out;
++	}
++	ns->poll = is_poll;
++out:
++	mutex_unlock(&subsys->lock);
++	return ret ? ret : count;
++}
++
++CONFIGFS_ATTR(nvmet_ns_, poll);
++
+ static ssize_t nvmet_ns_buffered_io_show(struct config_item *item, char *page)
+ {
+ 	return sprintf(page, "%d\n", to_nvmet_ns(item)->buffered_io);
+@@ -551,6 +580,7 @@ static struct configfs_attribute *nvmet_ns_attrs[] = {
+ 	&nvmet_ns_attr_device_uuid,
+ 	&nvmet_ns_attr_ana_grpid,
+ 	&nvmet_ns_attr_enable,
++	&nvmet_ns_attr_poll,
+ 	&nvmet_ns_attr_buffered_io,
+ #ifdef CONFIG_PCI_P2PDMA
+ 	&nvmet_ns_attr_p2pmem,
+diff --git a/drivers/nvme/target/io-cmd-bdev.c b/drivers/nvme/target/io-cmd-bdev.c
+index 86183a6a438c..58158a5f76bc 100644
+--- a/drivers/nvme/target/io-cmd-bdev.c
++++ b/drivers/nvme/target/io-cmd-bdev.c
+@@ -218,7 +218,7 @@ static void nvmet_bdev_execute_rw(struct nvmet_req *req)
+ 	}
+ 
+ 	/* don't even try to poll if q doen't support polling */
+-	if (test_bit(QUEUE_FLAG_POLL, &q->queue_flags)) {
++	if (req->ns->poll && test_bit(QUEUE_FLAG_POLL, &q->queue_flags)) {
+ 		init_completion(&req->b.waiting);
+ 		INIT_WORK(&req->b.work, nvmet_bdev_io_poll_work);
+ 	} else {
+diff --git a/drivers/nvme/target/io-cmd-file.c b/drivers/nvme/target/io-cmd-file.c
+index ab4d5e406d4d..650634166d68 100644
+--- a/drivers/nvme/target/io-cmd-file.c
++++ b/drivers/nvme/target/io-cmd-file.c
+@@ -206,9 +206,11 @@ static bool nvmet_file_execute_io(struct nvmet_req *req, int ki_flags)
+ 	 */
+ 	if (!(ki_flags & IOCB_NOWAIT)) {
+ 		iocb->ki_complete = nvmet_file_io_done;
+-		req->f.polled = true;
+-		init_completion(&req->f.waiting);
+-		INIT_WORK(&req->f.work, nvmet_file_io_poll_work);
++		if (req->ns->poll && iocb->ki_filp->f_op->iopoll) {
++			req->f.polled = true;
++			init_completion(&req->f.waiting);
++			INIT_WORK(&req->f.work, nvmet_file_io_poll_work);
++		}
+ 	}
+ 
+ 	ret = nvmet_file_submit_bvec(req, pos, bv_cnt, total_len, ki_flags);
+@@ -216,7 +218,7 @@ static bool nvmet_file_execute_io(struct nvmet_req *req, int ki_flags)
+ 	switch (ret) {
+ 	case -EIOCBQUEUED:
+ 		/* don't even try to poll if fs doesn't support polling */
+-		if (iocb->ki_complete && iocb->ki_filp->f_op->iopoll)
++		if (req->f.polled)
+ 			queue_work(io_poll_wq, &req->f.work);
+ 		return true;
+ 	case -EAGAIN:
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index ccda1f40b29b..32c33260d644 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -76,6 +76,7 @@ struct nvmet_ns {
+ 
+ 	int			use_p2pmem;
+ 	struct pci_dev		*p2p_dev;
++	bool			poll;
+ };
+ 
+ static inline struct nvmet_ns *to_nvmet_ns(struct config_item *item)
+-- 
+2.22.1
+

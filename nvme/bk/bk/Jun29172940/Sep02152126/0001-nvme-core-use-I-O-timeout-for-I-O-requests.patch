@@ -1,0 +1,41 @@
+From 4fff4955cdaee1474a44c271f465402078c35d81 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Wed, 2 Sep 2020 15:08:41 -0700
+Subject: [PATCH V2 1/2] nvme-core: use I/O timeout in __nvme_submit_sync_cmd
+
+In the function __nvme_submit_sync_cmd() it uses ADMIN_TIMEOUT when
+caller doesn't specify value for the timeout variable. This function is
+also called from the I/O queue contexts where NVME_IO_TIMEOUT can be
+used instead of admin timeout.
+
+For now we don't set the request queue's queuedata for admin command.
+
+When timeout is not specified based on the request queue's queuedata
+set Admin timeout or I/O timeout respectively.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/host/core.c | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index f4b1df32078e..3240559149fb 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -886,8 +886,12 @@ int __nvme_submit_sync_cmd(struct request_queue *q, struct nvme_command *cmd,
+ 		return PTR_ERR(req);
+ 
+ 	req->timeout = timeout;
++	/*
++	 * For now admin request queue's queue data == NULL, if that assumption
++	 * changes it should reflect here.
++	 */
+ 	if (!req->timeout)
+-		req->timeout = qid > 0 ? NVME_IO_TIMEOUT : ADMIN_TIMEOUT;
++		req->timeout = q->queuedata ? NVME_IO_TIMEOUT : ADMIN_TIMEOUT;
+ 
+ 	if (buffer && bufflen) {
+ 		ret = blk_rq_map_kern(q, req, buffer, bufflen, GFP_KERNEL);
+-- 
+2.22.1
+

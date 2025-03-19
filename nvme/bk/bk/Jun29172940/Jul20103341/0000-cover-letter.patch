@@ -1,0 +1,115 @@
+From c0b8f605c89ca145d4047e31a99a8a162c8a2d81 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Sun, 19 Jul 2020 19:31:47 -0700
+Subject: [PATCH V4 0/2] nvme: use xarray for ns tracking
+
+Hi,
+
+This patch-series uses ctrl->namespaces with an xarray for host-core and
+target-core. We can see following performance improvement when running
+fio with 32 parallel jobs where first 16 namespaces and last 16
+namespaces are used for I/O using NVMeOF (nvme-loop) backed by nulli blk
+devices mapped 1:1 on target namespaces.
+
+For host even though nvme_find_get_ns() doesn't fall into the fast path
+yet it does for NVMeOF passthru. This prepares us to improve performance
+for future NVMeOF passthru backend which is under review which uses the
+similar data structure as target.
+
+Following are the performance numbers with NVMeOF (nvme-loop) backed by
+null_blk devices mapped 1:1 on NVMeOF target backend :-
+
+IOPS/Bandwidth ~16.4198% increase with XArray (higher the better) :-
+-----------------------------------------------------------------------
+
+default-1.fio.log:  read:  IOPS=820k,  BW=3204MiB/s  (3360MB/s)(188GiB/60002msec)
+default-2.fio.log:  read:  IOPS=835k,  BW=3260MiB/s  (3418MB/s)(191GiB/60002msec)
+default-3.fio.log:  read:  IOPS=834k,  BW=3257MiB/s  (3415MB/s)(191GiB/60001msec)
+xarray-1.fio.log:   read:  IOPS=966k,  BW=3772MiB/s  (3955MB/s)(221GiB/60003msec)
+xarray-2.fio.log:   read:  IOPS=966k,  BW=3775MiB/s  (3958MB/s)(221GiB/60002msec)
+xarray-3.fio.log:   read:  IOPS=965k,  BW=3769MiB/s  (3952MB/s)(221GiB/60002msec)
+
+Latency (submission) ~25% decrease with XArray (lower the better) :-
+-----------------------------------------------------------------------
+
+default-1.fio.log:  slat  (usec):  min=8,  max=26066,  avg=25.18,  stdev=47.72
+default-2.fio.log:  slat  (usec):  min=8,  max=907,    avg=20.24,  stdev=7.36
+default-3.fio.log:  slat  (usec):  min=8,  max=723,    avg=20.21,  stdev=7.16
+xarray-1.fio.log:   slat  (usec):  min=8,  max=639,    avg=14.84,  stdev=1.50
+xarray-2.fio.log:   slat  (usec):  min=8,  max=840,    avg=14.84,  stdev=1.51
+xarray-3.fio.log:   slat  (usec):  min=8,  max=2161,   avg=15.08,  stdev=9.56
+
+CPU usage (system) ~12.2807% decrease with XArray (lower the better) :-
+-----------------------------------------------------------------------
+
+default-1.fio.log:  cpu  :  usr=3.92%,  sys=57.25%,  ctx=2159595,  majf=0,  minf=2807
+default-2.fio.log:  cpu  :  usr=3.98%,  sys=57.99%,  ctx=1565139,  majf=0,  minf=2425
+default-3.fio.log:  cpu  :  usr=3.99%,  sys=57.85%,  ctx=1563792,  majf=0,  minf=2977
+xarray-1.fio.log:   cpu  :  usr=4.47%,  sys=50.88%,  ctx=1810927,  majf=0,  minf=2478
+xarray-2.fio.log:   cpu  :  usr=4.47%,  sys=50.88%,  ctx=1812184,  majf=0,  minf=2176
+xarray-3.fio.log:   cpu  :  usr=4.49%,  sys=50.86%,  ctx=1816963,  majf=0,  minf=2736
+
+For XArray helpers maybe we can do a separate series ?
+
+Regards,
+Chaitanya
+
+* Changes from V3:-
+-------------------
+
+1. Get rid of the centralize helper for ctrl queue mgmt. 
+2. Re-order patches and make nvmet patch first.
+3. In the error patch for xa_insert() for nvmet patch restore subsystem
+   max nsid and call percpu_ref_exit(). 
+5. Ger rid of the rcu read_lock() and rcu_read_unlock() in
+   nvmet_find_namespaces().
+4. Remove an extra local varable and use ctrl->namespaces directly in
+   host ns remove path.
+5. Call nvme_nvm_unregister() when xa_insert() fails in nvme_alloc_ns().
+6. Move xa_erase() call in nvme_ns_remove() before existing call to
+   synchronize_rcu().
+
+* Changes from V2:-
+-------------------
+
+1.  Add Xarray __xa_load() API as a preparation patch.
+2.  Remove the id_ctrl call in nvme_dev_user_cmd().
+3.  Remove the switch error check for xa_insert().
+4.  Don't change the ns->kref code. when calling xa_erase().
+5.  Keep XArray for deletion in the nvme_remove_invalid_namespaces()
+    see [1].
+6.  Keep XArray for deletion in the nvme_remove_namespaces() see [1].
+7.  Remove randomly changed the lines to alingn the coding style in
+    nvmet patch.
+8.  Remove remaining #include nvme.h from the nvmet patch.
+9.  Remove the xa_empty() from nvmet_max_nsid().
+10. Centralize the blk-mq queue wrapper. The blk-mq queue related
+    wrapper functions nvme_kill_queues(), nvme_unfreeze(),
+    nvme_wait_freeze(), nvme_start_freeze(), nvme_stop_queues(),
+    nvme_start_queues(), nvme_start_queues(), and nvme_sync_queues()
+    differ in only one line i.e. blk_mq_queue_xxx() call. For the one
+    line we have 7 functions and 7 exported symbols. Using a 
+    centralize ctrl-queue action function and well defined enums
+    represnting names of the helpers we can minimize the code and
+    exported symbol and still maintain the redability.
+
+* Change from V1:-
+------------------
+
+1. Use xarray instead of rcu locks.
+
+Chaitanya Kulkarni (2):
+  nvmet: use xarray for ctrl ns storing
+  nvme-core: use xarray for ctrl ns tracking
+
+ drivers/nvme/host/core.c        | 184 +++++++++++++++-----------------
+ drivers/nvme/host/multipath.c   |  15 ++-
+ drivers/nvme/host/nvme.h        |   5 +-
+ drivers/nvme/target/admin-cmd.c |  17 ++-
+ drivers/nvme/target/core.c      |  64 ++++-------
+ drivers/nvme/target/nvmet.h     |   3 +-
+ 6 files changed, 123 insertions(+), 165 deletions(-)
+
+-- 
+2.26.0
+

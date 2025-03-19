@@ -1,0 +1,243 @@
+From 99b0e43692369cefc0cf2139abf12022bf0ce0b6 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Wed, 10 Mar 2021 12:45:18 -0800
+Subject: [PATCH V14 3/4] nvmet: add Command Set Identifier support
+
+NVMe TP 4056 allows controllers to support different command sets.
+NVMeoF target currently only supports namespaces that contain
+traditional logical blocks that may be randomly read and written. In
+some applications there is a value in exposing namespaces that contain
+logical blocks that have special access rules (e.g. sequentially write
+required namespace such as Zoned Namespace (ZNS)).
+
+In order to support the Zoned Block Devices (ZBD) backend, controllers
+need to have support for ZNS Command Set Identifier (CSI).
+
+In this preparation patch, we adjust the code such that it can now
+support the default command set identifier. We update the namespace data
+structure to store the CSI value which defaults to NVME_CSI_NVM
+that represents traditional logical blocks namespace type.
+
+The CSI support is required to implement the ZBD backend for NVMeOF
+with host side NVMe ZNS interface, since ZNS commands belong to
+the different command set than the default one.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/admin-cmd.c | 76 +++++++++++++++++++++++++++------
+ drivers/nvme/target/core.c      | 23 +++++++++-
+ drivers/nvme/target/nvmet.h     |  1 +
+ include/linux/nvme.h            |  1 +
+ 4 files changed, 87 insertions(+), 14 deletions(-)
+
+diff --git a/drivers/nvme/target/admin-cmd.c b/drivers/nvme/target/admin-cmd.c
+index 260c22d95493..782f457bf4fe 100644
+--- a/drivers/nvme/target/admin-cmd.c
++++ b/drivers/nvme/target/admin-cmd.c
+@@ -162,15 +162,8 @@ static void nvmet_execute_get_log_page_smart(struct nvmet_req *req)
+ 	nvmet_req_complete(req, status);
+ }
+ 
+-static void nvmet_execute_get_log_cmd_effects_ns(struct nvmet_req *req)
++static void nvmet_get_cmd_effects_nvm(struct nvme_effects_log *log)
+ {
+-	u16 status = NVME_SC_INTERNAL;
+-	struct nvme_effects_log *log;
+-
+-	log = kzalloc(sizeof(*log), GFP_KERNEL);
+-	if (!log)
+-		goto out;
+-
+ 	log->acs[nvme_admin_get_log_page]	= cpu_to_le32(1 << 0);
+ 	log->acs[nvme_admin_identify]		= cpu_to_le32(1 << 0);
+ 	log->acs[nvme_admin_abort_cmd]		= cpu_to_le32(1 << 0);
+@@ -184,9 +177,31 @@ static void nvmet_execute_get_log_cmd_effects_ns(struct nvmet_req *req)
+ 	log->iocs[nvme_cmd_flush]		= cpu_to_le32(1 << 0);
+ 	log->iocs[nvme_cmd_dsm]			= cpu_to_le32(1 << 0);
+ 	log->iocs[nvme_cmd_write_zeroes]	= cpu_to_le32(1 << 0);
++}
++
++static void nvmet_execute_get_log_cmd_effects_ns(struct nvmet_req *req)
++{
++	struct nvme_effects_log *log;
++	u16 status = NVME_SC_SUCCESS;
++
++	log = kzalloc(sizeof(*log), GFP_KERNEL);
++	if (!log) {
++		status = NVME_SC_INTERNAL;
++		goto out;
++	}
++
++	switch (req->cmd->get_log_page.csi) {
++	case NVME_CSI_NVM:
++		nvmet_get_cmd_effects_nvm(log);
++		break;
++	default:
++		status = NVME_SC_INVALID_LOG_PAGE;
++		goto free;
++	}
+ 
+ 	status = nvmet_copy_to_sgl(req, 0, log, sizeof(*log));
+ 
++free:
+ 	kfree(log);
+ out:
+ 	nvmet_req_complete(req, status);
+@@ -635,6 +650,12 @@ static void nvmet_execute_identify_desclist(struct nvmet_req *req)
+ 			goto out;
+ 	}
+ 
++	status = nvmet_copy_ns_identifier(req, NVME_NIDT_CSI,
++					  NVME_NIDT_CSI_LEN,
++					  &req->ns->csi, &off);
++	if (status)
++		goto out;
++
+ 	if (sg_zero_buffer(req->sg, req->sg_cnt, NVME_IDENTIFY_DATA_SIZE - off,
+ 			off) != NVME_IDENTIFY_DATA_SIZE - off)
+ 		status = NVME_SC_INTERNAL | NVME_SC_DNR;
+@@ -643,6 +664,17 @@ static void nvmet_execute_identify_desclist(struct nvmet_req *req)
+ 	nvmet_req_complete(req, status);
+ }
+ 
++static bool nvmet_handle_identify_desclist(struct nvmet_req *req)
++{
++	switch (req->cmd->identify.csi) {
++	case NVME_CSI_NVM:
++		nvmet_execute_identify_desclist(req);
++		return true;
++	default:
++		return false;
++	}
++}
++
+ static void nvmet_execute_identify(struct nvmet_req *req)
+ {
+ 	if (!nvmet_check_transfer_len(req, NVME_IDENTIFY_DATA_SIZE))
+@@ -650,13 +682,33 @@ static void nvmet_execute_identify(struct nvmet_req *req)
+ 
+ 	switch (req->cmd->identify.cns) {
+ 	case NVME_ID_CNS_NS:
+-		return nvmet_execute_identify_ns(req);
++		switch (req->cmd->identify.csi) {
++		case NVME_CSI_NVM:
++			return nvmet_execute_identify_ns(req);
++		default:
++			break;
++		}
++		break;
+ 	case NVME_ID_CNS_CTRL:
+-		return nvmet_execute_identify_ctrl(req);
++		switch (req->cmd->identify.csi) {
++		case NVME_CSI_NVM:
++			return nvmet_execute_identify_ctrl(req);
++		}
++		break;
+ 	case NVME_ID_CNS_NS_ACTIVE_LIST:
+-		return nvmet_execute_identify_nslist(req);
++		switch (req->cmd->identify.csi) {
++		case NVME_CSI_NVM:
++			return nvmet_execute_identify_nslist(req);
++		default:
++			break;
++		}
++		break;
+ 	case NVME_ID_CNS_NS_DESC_LIST:
+-		return nvmet_execute_identify_desclist(req);
++		if (nvmet_handle_identify_desclist(req) == true)
++			return;
++		break;
++	default:
++		break;
+ 	}
+ 
+ 	nvmet_req_cns_error_compplete(req);
+diff --git a/drivers/nvme/target/core.c b/drivers/nvme/target/core.c
+index adbede9ab7f3..291966b75578 100644
+--- a/drivers/nvme/target/core.c
++++ b/drivers/nvme/target/core.c
+@@ -693,6 +693,7 @@ struct nvmet_ns *nvmet_ns_alloc(struct nvmet_subsys *subsys, u32 nsid)
+ 
+ 	uuid_gen(&ns->uuid);
+ 	ns->buffered_io = false;
++	ns->csi = NVME_CSI_NVM;
+ 
+ 	return ns;
+ }
+@@ -891,7 +892,12 @@ static u16 nvmet_parse_io_cmd(struct nvmet_req *req)
+ 	if (req->ns->file)
+ 		return nvmet_file_parse_io_cmd(req);
+ 
+-	return nvmet_bdev_parse_io_cmd(req);
++	switch (req->ns->csi) {
++	case NVME_CSI_NVM:
++		return nvmet_bdev_parse_io_cmd(req);
++	default:
++		return NVME_SC_INVALID_IO_CMD_SET;
++	}
+ }
+ 
+ bool nvmet_req_init(struct nvmet_req *req, struct nvmet_cq *cq,
+@@ -1113,6 +1119,17 @@ static inline u8 nvmet_cc_iocqes(u32 cc)
+ 	return (cc >> NVME_CC_IOCQES_SHIFT) & 0xf;
+ }
+ 
++static inline bool nvmet_css_supported(u8 cc_css)
++{
++	switch (cc_css <<= NVME_CC_CSS_SHIFT) {
++	case NVME_CC_CSS_NVM:
++	case NVME_CC_CSS_CSI:
++		return true;
++	default:
++		return false;
++	}
++}
++
+ static void nvmet_start_ctrl(struct nvmet_ctrl *ctrl)
+ {
+ 	lockdep_assert_held(&ctrl->lock);
+@@ -1121,7 +1138,7 @@ static void nvmet_start_ctrl(struct nvmet_ctrl *ctrl)
+ 	    nvmet_cc_iocqes(ctrl->cc) != NVME_NVM_IOCQES ||
+ 	    nvmet_cc_mps(ctrl->cc) != 0 ||
+ 	    nvmet_cc_ams(ctrl->cc) != 0 ||
+-	    nvmet_cc_css(ctrl->cc) != 0) {
++	    !nvmet_css_supported(nvmet_cc_css(ctrl->cc))) {
+ 		ctrl->csts = NVME_CSTS_CFS;
+ 		return;
+ 	}
+@@ -1172,6 +1189,8 @@ static void nvmet_init_cap(struct nvmet_ctrl *ctrl)
+ {
+ 	/* command sets supported: NVMe command set: */
+ 	ctrl->cap = (1ULL << 37);
++	/* Controller supports one or more I/O Command Sets */
++	ctrl->cap |= (1ULL << 43);
+ 	/* CC.EN timeout in 500msec units: */
+ 	ctrl->cap |= (15ULL << 24);
+ 	/* maximum queue entries supported: */
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index 3c0400ffdc96..e07f15dd9a7b 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -82,6 +82,7 @@ struct nvmet_ns {
+ 	struct pci_dev		*p2p_dev;
+ 	int			pi_type;
+ 	int			metadata_size;
++	u8			csi;
+ };
+ 
+ static inline struct nvmet_ns *to_nvmet_ns(struct config_item *item)
+diff --git a/include/linux/nvme.h b/include/linux/nvme.h
+index edcbd60b88b9..c7ba83144d52 100644
+--- a/include/linux/nvme.h
++++ b/include/linux/nvme.h
+@@ -1504,6 +1504,7 @@ enum {
+ 	NVME_SC_NS_WRITE_PROTECTED	= 0x20,
+ 	NVME_SC_CMD_INTERRUPTED		= 0x21,
+ 	NVME_SC_TRANSIENT_TR_ERR	= 0x22,
++	NVME_SC_INVALID_IO_CMD_SET	= 0x2C,
+ 
+ 	NVME_SC_LBA_RANGE		= 0x80,
+ 	NVME_SC_CAP_EXCEEDED		= 0x81,
+-- 
+2.22.1
+

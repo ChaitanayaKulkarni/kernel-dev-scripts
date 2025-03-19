@@ -1,0 +1,30 @@
+From ab643df02c96cf5faa48a6f52f3994b2d846ace2 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Thu, 6 Aug 2020 22:52:08 -0700
+Subject: [PATCH 04/10] nvmet: for pt I/O cmds annotate req->sg_cnt likely
+
+I/O Commands (nvme_cmd_read, nvme_cmd_write) are most command commands
+when accessing passthru controller. For I/O commands data is represented
+in SG list. Annotate req->sg_cnt with likely.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/passthru.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/nvme/target/passthru.c b/drivers/nvme/target/passthru.c
+index 68701754b036..fd1f754de5b4 100644
+--- a/drivers/nvme/target/passthru.c
++++ b/drivers/nvme/target/passthru.c
+@@ -242,7 +242,7 @@ static void nvmet_passthru_execute_cmd(struct nvmet_req *req)
+ 		goto out_put_ns;
+ 	}
+ 
+-	if (req->sg_cnt) {
++	if (likely(req->sg_cnt)) {
+ 		ret = nvmet_passthru_map_sg(req, rq);
+ 		if (unlikely(ret)) {
+ 			status = NVME_SC_INTERNAL;
+-- 
+2.22.1
+

@@ -1,0 +1,65 @@
+From 5ccd6cfb2ebeb514fc4794a55c51028c0a3ccac8 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Mon, 6 Jul 2020 10:45:10 -0700
+Subject: [PATCH] nvme-tcp: remove dead code in map data
+
+The function nvme_tcp_map_data() only returns value 0. The caller
+nvme_tcp_setup_cmd_pdu() checks for the non-zero return value.
+Get rid of the error checking done for non-zero return value
+and adjust the code.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+Hi Sagi,
+
+I've not tested this patch, if you are okay I'll send a tested version.
+
+Regards,
+Chaitanya
+---
+ drivers/nvme/host/tcp.c | 15 +++------------
+ 1 file changed, 3 insertions(+), 12 deletions(-)
+
+diff --git a/drivers/nvme/host/tcp.c b/drivers/nvme/host/tcp.c
+index 860d7ddc2eee..7d8385e10768 100644
+--- a/drivers/nvme/host/tcp.c
++++ b/drivers/nvme/host/tcp.c
+@@ -2172,7 +2172,7 @@ nvme_tcp_timeout(struct request *rq, bool reserved)
+ 	return BLK_EH_RESET_TIMER;
+ }
+ 
+-static blk_status_t nvme_tcp_map_data(struct nvme_tcp_queue *queue,
++static void nvme_tcp_map_data(struct nvme_tcp_queue *queue,
+ 			struct request *rq)
+ {
+ 	struct nvme_tcp_request *req = blk_mq_rq_to_pdu(rq);
+@@ -2188,8 +2188,6 @@ static blk_status_t nvme_tcp_map_data(struct nvme_tcp_queue *queue,
+ 		nvme_tcp_set_sg_inline(queue, c, req->data_len);
+ 	else
+ 		nvme_tcp_set_sg_host_data(c, req->data_len);
+-
+-	return 0;
+ }
+ 
+ static blk_status_t nvme_tcp_setup_cmd_pdu(struct nvme_ns *ns,
+@@ -2233,15 +2231,8 @@ static blk_status_t nvme_tcp_setup_cmd_pdu(struct nvme_ns *ns,
+ 	pdu->hdr.plen =
+ 		cpu_to_le32(pdu->hdr.hlen + hdgst + req->pdu_len + ddgst);
+ 
+-	ret = nvme_tcp_map_data(queue, rq);
+-	if (unlikely(ret)) {
+-		nvme_cleanup_cmd(rq);
+-		dev_err(queue->ctrl->ctrl.device,
+-			"Failed to map data (%d)\n", ret);
+-		return ret;
+-	}
+-
+-	return 0;
++	nvme_tcp_map_data(queue, rq);
++	return BLK_STS_OK;
+ }
+ 
+ static void nvme_tcp_commit_rqs(struct blk_mq_hw_ctx *hctx)
+-- 
+2.26.0
+

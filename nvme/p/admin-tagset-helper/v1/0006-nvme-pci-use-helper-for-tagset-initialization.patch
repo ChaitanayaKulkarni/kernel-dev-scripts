@@ -1,0 +1,39 @@
+From e36b31adf593bd19ad56a7aedb377d70b00b4e66 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Sun, 23 Jan 2022 16:19:14 -0800
+Subject: [PATCH 6/9] nvme-pci: use helper for tagset initialization
+
+Use helper to remove duplicate code for admin tag initialization
+for all transports.
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/host/pci.c | 11 +++--------
+ 1 file changed, 3 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/nvme/host/pci.c b/drivers/nvme/host/pci.c
+index 6a99ed680915..87bdccd85eff 100644
+--- a/drivers/nvme/host/pci.c
++++ b/drivers/nvme/host/pci.c
+@@ -1755,15 +1755,10 @@ static void nvme_dev_remove_admin(struct nvme_dev *dev)
+ static int nvme_alloc_admin_tags(struct nvme_dev *dev)
+ {
+ 	if (!dev->ctrl.admin_q) {
+-		dev->admin_tagset.ops = &nvme_mq_admin_ops;
+-		dev->admin_tagset.nr_hw_queues = 1;
+-
+-		dev->admin_tagset.queue_depth = NVME_AQ_MQ_TAG_DEPTH;
+-		dev->admin_tagset.timeout = NVME_ADMIN_TIMEOUT;
+-		dev->admin_tagset.numa_node = dev->ctrl.numa_node;
++		nvme_init_admin_tagset(&(dev->admin_tagset), dev,
++				       dev->ctrl.numa_node, &nvme_mq_admin_ops,
++				       BLK_MQ_F_NO_SCHED, 0);
+ 		dev->admin_tagset.cmd_size = sizeof(struct nvme_iod);
+-		dev->admin_tagset.flags = BLK_MQ_F_NO_SCHED;
+-		dev->admin_tagset.driver_data = dev;
+ 
+ 		if (blk_mq_alloc_tag_set(&dev->admin_tagset))
+ 			return -ENOMEM;
+-- 
+2.29.0
+

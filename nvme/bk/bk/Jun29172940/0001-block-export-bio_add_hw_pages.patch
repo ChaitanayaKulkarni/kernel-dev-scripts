@@ -1,0 +1,53 @@
+From 6abb1297993feed259a661025535b6d2ab0c7844 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Mon, 7 Dec 2020 18:35:45 -0800
+Subject: [PATCH 1/4] block: export bio_add_hw_pages()
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ block/bio.c            | 1 +
+ block/blk.h            | 4 ----
+ include/linux/blkdev.h | 4 ++++
+ 3 files changed, 5 insertions(+), 4 deletions(-)
+
+diff --git a/block/bio.c b/block/bio.c
+index fa01bef35bb1..eafd97c6c7fd 100644
+--- a/block/bio.c
++++ b/block/bio.c
+@@ -826,6 +826,7 @@ int bio_add_hw_page(struct request_queue *q, struct bio *bio,
+ 	bio->bi_iter.bi_size += len;
+ 	return len;
+ }
++EXPORT_SYMBOL(bio_add_hw_page);
+ 
+ /**
+  * bio_add_pc_page	- attempt to add page to passthrough bio
+diff --git a/block/blk.h b/block/blk.h
+index e05507a8d1e3..1fdb8d5d8590 100644
+--- a/block/blk.h
++++ b/block/blk.h
+@@ -428,8 +428,4 @@ static inline void part_nr_sects_write(struct hd_struct *part, sector_t size)
+ #endif
+ }
+ 
+-int bio_add_hw_page(struct request_queue *q, struct bio *bio,
+-		struct page *page, unsigned int len, unsigned int offset,
+-		unsigned int max_sectors, bool *same_page);
+-
+ #endif /* BLK_INTERNAL_H */
+diff --git a/include/linux/blkdev.h b/include/linux/blkdev.h
+index 05b346a68c2e..2bdaa7cacfa3 100644
+--- a/include/linux/blkdev.h
++++ b/include/linux/blkdev.h
+@@ -2023,4 +2023,8 @@ int fsync_bdev(struct block_device *bdev);
+ struct super_block *freeze_bdev(struct block_device *bdev);
+ int thaw_bdev(struct block_device *bdev, struct super_block *sb);
+ 
++int bio_add_hw_page(struct request_queue *q, struct bio *bio,
++		struct page *page, unsigned int len, unsigned int offset,
++		unsigned int max_sectors, bool *same_page);
++
+ #endif /* _LINUX_BLKDEV_H */
+-- 
+2.22.1
+

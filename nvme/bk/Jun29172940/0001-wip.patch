@@ -1,0 +1,166 @@
+From 2d018571a0ad0f3d08018409e78ba7d4bfab3ded Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Mon, 30 Nov 2020 17:06:27 -0800
+Subject: [PATCH] wip
+
+---
+ drivers/nvme/target/zns.c | 74 ++++++++++-----------------------------
+ 1 file changed, 18 insertions(+), 56 deletions(-)
+
+diff --git a/drivers/nvme/target/zns.c b/drivers/nvme/target/zns.c
+index 40dedfd51fd6..58c370e83da9 100644
+--- a/drivers/nvme/target/zns.c
++++ b/drivers/nvme/target/zns.c
+@@ -44,12 +44,6 @@ static inline struct block_device *nvmet_bdev(struct nvmet_req *req)
+ 	return req->ns->bdev;
+ }
+ 
+-static inline  u64 nvmet_zones_to_desc_size(unsigned int nr_zones)
+-{
+-	return sizeof(struct nvme_zone_report) +
+-		(sizeof(struct nvme_zone_descriptor) * nr_zones);
+-}
+-
+ static inline u64 nvmet_sect_to_lba(struct nvmet_ns *ns, sector_t sect)
+ {
+ 	return sect >> (ns->blksize_shift - SECTOR_SHIFT);
+@@ -82,47 +76,24 @@ void nvmet_zns_add_cmd_effects(struct nvme_effects_log *log)
+ 	log->iocs[nvme_cmd_zone_mgmt_recv]	= cpu_to_le32(1 << 0);
+ }
+ 
+-static int nvmet_bdev_validate_zns_zones_cb(struct blk_zone *z,
+-					    unsigned int idx, void *data)
+-{
+-	struct blk_zone *zone = data;
+-
+-	memcpy(zone, z, sizeof(struct blk_zone));
+-
+-	return 0;
+-}
+-
+ static inline bool nvmet_bdev_validate_zns_zones(struct nvmet_ns *ns)
+ {
+-	sector_t last_sect = get_capacity(ns->bdev->bd_disk) - 1;
+-	struct blk_zone last_zone, first_zone;
+-	int reported_zones;
+-
+-	reported_zones = blkdev_report_zones(ns->bdev, 0, 1,
+-					     nvmet_bdev_validate_zns_zones_cb,
+-					     &first_zone);
+-	if (reported_zones != 1)
+-		return false;
+-
+-	reported_zones = blkdev_report_zones(ns->bdev, last_sect, 1,
+-					     nvmet_bdev_validate_zns_zones_cb,
+-					     &last_zone);
+-	if (reported_zones != 1)
++	if (ns->bdev->bd_disk->queue->conv_zones_bitmap) {
++		pr_err("block devices with conventional zones are not supported.");
+ 		return false;
++	}
+ 
+-	return first_zone.capacity == last_zone.capacity ? true : false;
++	return !(get_capacity(ns->bdev->bd_disk) &
++			(bdev_zone_sectors(ns->bdev) - 1));
+ }
+ 
+ static inline u8 nvmet_zasl(unsigned int zone_append_sects)
+ {
+-	unsigned int npages = (zone_append_sects << 9) >> NVMET_MPSMIN_SHIFT;
+-	u8 zasl = ilog2(npages);
+-
+ 	/*
+ 	 * Zone Append Size Limit is the value experessed in the units
+ 	 * of minimum memory page size (i.e. 12) and is reported power of 2.
+ 	 */
+-	return zasl;
++	return ilog2((zone_append_sects << 9) >> NVMET_MPSMIN_SHIFT);
+ }
+ 
+ static inline void nvmet_zns_update_zasl(struct nvmet_ns *ns)
+@@ -156,11 +127,6 @@ static inline void nvmet_zns_update_zasl(struct nvmet_ns *ns)
+ 
+ bool nvmet_bdev_zns_enable(struct nvmet_ns *ns)
+ {
+-	if (ns->bdev->bd_disk->queue->conv_zones_bitmap) {
+-		pr_err("block devices with conventional zones are not supported.");
+-		return false;
+-	}
+-
+ 	if (!nvmet_bdev_validate_zns_zones(ns))
+ 		return false;
+ 
+@@ -181,10 +147,10 @@ bool nvmet_bdev_zns_enable(struct nvmet_ns *ns)
+  */
+ void nvmet_execute_identify_cns_cs_ctrl(struct nvmet_req *req)
+ {
++	u8 zasl = req->sq->ctrl->subsys->id_ctrl_zns.zasl;
+ 	struct nvmet_ctrl *ctrl = req->sq->ctrl;
+ 	struct nvme_id_ctrl_zns *id;
+-	u16 status = 0;
+-	u8 mdts;
++	u16 status;
+ 
+ 	id = kzalloc(sizeof(*id), GFP_KERNEL);
+ 	if (!id) {
+@@ -192,16 +158,10 @@ void nvmet_execute_identify_cns_cs_ctrl(struct nvmet_req *req)
+ 		goto out;
+ 	}
+ 
+-	/*
+-	 * Even though this function sets Zone Append Size Limit to 0,
+-	 * the 0 value here indicates that the maximum data transfer size for
+-	 * the Zone Append command is indicated by the ctrl
+-	 * Maximum Data Transfer Size (MDTS).
+-	 */
+-
+-	mdts = ctrl->ops->get_mdts ? ctrl->ops->get_mdts(ctrl) : 0;
+-
+-	id->zasl = min_t(u8, mdts, req->sq->ctrl->subsys->id_ctrl_zns.zasl);
++	if (ctrl->ops->get_mdts)
++		id->zasl = min_t(u8, ctrl->ops->get_mdts(ctrl), zasl);
++	else
++		id->zasl = zasl;
+ 
+ 	status = nvmet_copy_to_sgl(req, 0, id, sizeof(*id));
+ 
+@@ -278,14 +238,17 @@ static int nvmet_bdev_report_zone_cb(struct blk_zone *z, unsigned int idx,
+ 
+ void nvmet_bdev_execute_zone_mgmt_recv(struct nvmet_req *req)
+ {
+-	u32 bufsize = (le32_to_cpu(req->cmd->zmr.numd) + 1) << 2;
++	u64 bufsize = (le32_to_cpu(req->cmd->zmr.numd) + 1) << 2;
+ 	struct nvmet_report_zone_data data = { .ns = req->ns };
+ 	struct nvme_zone_mgmt_recv_cmd *zmr = &req->cmd->zmr;
+ 	sector_t sect = nvmet_lba_to_sect(req->ns, le64_to_cpu(zmr->slba));
+-	unsigned int nr_zones = bufsize / nvmet_zones_to_desc_size(1);
++	unsigned int nr_zones;
+ 	int reported_zones;
+ 	u16 status;
+ 
++	nr_zones = (bufsize - sizeof(struct nvme_zone_report)) /
++			sizeof(struct nvme_zone_descriptor);
++
+ 	status = nvmet_bdev_zns_checks(req);
+ 	if (status)
+ 		goto out;
+@@ -356,7 +319,6 @@ void nvmet_bdev_execute_zone_mgmt_send(struct nvmet_req *req)
+ void nvmet_bdev_execute_zone_append(struct nvmet_req *req)
+ {
+ 	unsigned long bv_cnt = req->sg_cnt;
+-	int op = REQ_OP_ZONE_APPEND | REQ_SYNC | REQ_IDLE;
+ 	u64 slba = le64_to_cpu(req->cmd->rw.slba);
+ 	sector_t sect = nvmet_lba_to_sect(req->ns, slba);
+ 	u16 status = NVME_SC_SUCCESS;
+@@ -410,7 +372,7 @@ void nvmet_bdev_execute_zone_append(struct nvmet_req *req)
+ 	bio = bio_alloc(GFP_KERNEL, bv_cnt);
+ 	bio_set_dev(bio, nvmet_bdev(req));
+ 	bio->bi_iter.bi_sector = sect;
+-	bio->bi_opf = op;
++	bio->bi_opf = REQ_OP_ZONE_APPEND | REQ_SYNC | REQ_IDLE;
+ 
+ 	ret =  __bio_iov_append_get_pages(bio, &from);
+ 	if (unlikely(ret)) {
+-- 
+2.22.1
+

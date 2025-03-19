@@ -1,0 +1,42 @@
+From f69d19b589d09b8f03c09269b48c414da95b80ad Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Fri, 12 Aug 2022 10:55:03 -0700
+Subject: [PATCH 1/2] nvme-fc: fix coding style
+
+Add spaces before and after the binary operators and remove the extra
+braces in fc_appid_store().
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/host/fc.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/nvme/host/fc.c b/drivers/nvme/host/fc.c
+index 127abaf9ba5d..a557432b795e 100644
+--- a/drivers/nvme/host/fc.c
++++ b/drivers/nvme/host/fc.c
+@@ -3887,10 +3887,10 @@ static ssize_t fc_appid_store(struct device *dev,
+ 	char app_id[FC_APPID_LEN];
+ 	int ret = 0;
+ 
+-	if (buf[count-1] == '\n')
++	if (buf[count - 1] == '\n')
+ 		count--;
+ 
+-	if ((count > (16+1+FC_APPID_LEN)) || (!strchr(buf, ':')))
++	if ((count > (16 + 1 + FC_APPID_LEN)) || !strchr(buf, ':'))
+ 		return -EINVAL;
+ 
+ 	cgrpid_len = fc_parse_cgrpid(buf, &cgrp_id);
+@@ -3901,7 +3901,7 @@ static ssize_t fc_appid_store(struct device *dev,
+ 		return -EINVAL;
+ 
+ 	memset(app_id, 0x0, sizeof(app_id));
+-	memcpy(app_id, &buf[cgrpid_len+1], appid_len);
++	memcpy(app_id, &buf[cgrpid_len + 1], appid_len);
+ 	ret = blkcg_set_fc_appid(app_id, cgrp_id, sizeof(app_id));
+ 	if (ret < 0)
+ 		return ret;
+-- 
+2.29.0
+

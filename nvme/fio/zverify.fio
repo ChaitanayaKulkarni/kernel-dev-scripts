@@ -1,0 +1,12 @@
+[write-and-verify]
+rw=randwrite
+zonemode=zbd
+bs=4k
+direct=1
+ioengine=libaio
+iodepth=4
+norandommap
+randrepeat=1
+verify=crc32c
+size=800m
+group_reporting

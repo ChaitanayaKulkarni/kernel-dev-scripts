@@ -1,0 +1,1673 @@
+host/auth.c:	return ctrl->opts->nr_io_queues + ctrl->opts->nr_write_queues +
+host/auth.c:			ctrl->opts->nr_poll_queues + 1;
+host/auth.c:		dev_warn(ctrl->device,
+host/auth.c:		dev_err(ctrl->device,
+host/auth.c:	dev_dbg(ctrl->device, "%s: qid %d auth_type %d auth_id %x\n",
+host/auth.c:		dev_warn(ctrl->device,
+host/auth.c:		dev_warn(ctrl->device,
+host/auth.c:		dev_warn(ctrl->device,
+host/auth.c:		dev_dbg(ctrl->device,
+host/auth.c:		dev_warn(ctrl->device,
+host/auth.c:		dev_warn(ctrl->device,
+host/auth.c:	dev_dbg(ctrl->device, "qid %d: selected hash %s\n",
+host/auth.c:		dev_warn(ctrl->device,
+host/auth.c:		dev_dbg(ctrl->device,
+host/auth.c:			dev_warn(ctrl->device,
+host/auth.c:			dev_warn(ctrl->device,
+host/auth.c:		dev_dbg(ctrl->device, "qid %d: selected DH group %s\n",
+host/auth.c:		dev_warn(ctrl->device,
+host/auth.c:		dev_dbg(ctrl->device, "ctrl public key %*ph\n",
+host/auth.c:	if (ctrl->ctrl_key) {
+host/auth.c:		dev_dbg(ctrl->device, "%s: qid %d ctrl challenge %*ph\n",
+host/auth.c:		dev_dbg(ctrl->device, "%s: qid %d host public key %*ph\n",
+host/auth.c:		dev_warn(ctrl->device,
+host/auth.c:		dev_info(ctrl->device,
+host/auth.c:		dev_dbg(ctrl->device, "%s: qid %d ctrl response %*ph\n",
+host/auth.c:		dev_dbg(ctrl->device, "%s: qid %d host response %*ph\n",
+host/auth.c:		dev_warn(ctrl->device,
+host/auth.c:		dev_info(ctrl->device,
+host/auth.c:	dev_dbg(ctrl->device, "%s: qid %d host response seq %u transaction %d\n",
+host/auth.c:		chap->transformed_key = nvme_auth_transform_key(ctrl->host_key,
+host/auth.c:						ctrl->opts->host->nqn);
+host/auth.c:		dev_dbg(ctrl->device, "%s: qid %d re-using host response\n",
+host/auth.c:		dev_warn(ctrl->device, "qid %d: failed to set key, error %d\n",
+host/auth.c:	ret = crypto_shash_update(shash, ctrl->opts->host->nqn,
+host/auth.c:				  strlen(ctrl->opts->host->nqn));
+host/auth.c:	ret = crypto_shash_update(shash, ctrl->opts->subsysnqn,
+host/auth.c:			    strlen(ctrl->opts->subsysnqn));
+host/auth.c:	transformed_key = nvme_auth_transform_key(ctrl->ctrl_key,
+host/auth.c:				ctrl->opts->subsysnqn);
+host/auth.c:		dev_warn(ctrl->device, "qid %d: failed to set key, error %d\n",
+host/auth.c:	dev_dbg(ctrl->device, "%s: qid %d ctrl response seq %u transaction %d\n",
+host/auth.c:	dev_dbg(ctrl->device, "%s: qid %d challenge %*ph\n",
+host/auth.c:	dev_dbg(ctrl->device, "%s: qid %d subsysnqn %s\n",
+host/auth.c:		__func__, chap->qid, ctrl->opts->subsysnqn);
+host/auth.c:	dev_dbg(ctrl->device, "%s: qid %d hostnqn %s\n",
+host/auth.c:		__func__, chap->qid, ctrl->opts->host->nqn);
+host/auth.c:	ret = crypto_shash_update(shash, ctrl->opts->subsysnqn,
+host/auth.c:				  strlen(ctrl->opts->subsysnqn));
+host/auth.c:	ret = crypto_shash_update(shash, ctrl->opts->host->nqn,
+host/auth.c:				  strlen(ctrl->opts->host->nqn));
+host/auth.c:		dev_dbg(ctrl->device,
+host/auth.c:		dev_dbg(ctrl->device,
+host/auth.c:		dev_dbg(ctrl->device,
+host/auth.c:	dev_dbg(ctrl->device, "shared secret %*ph\n",
+host/auth.c:	chap->transaction = ctrl->transaction++;
+host/auth.c:	dev_dbg(ctrl->device, "%s: qid %d send negotiate\n",
+host/auth.c:	dev_dbg(ctrl->device, "%s: qid %d receive challenge\n",
+host/auth.c:		dev_warn(ctrl->device,
+host/auth.c:		dev_dbg(ctrl->device,
+host/auth.c:	dev_dbg(ctrl->device, "%s: qid %d host response\n",
+host/auth.c:	mutex_lock(&ctrl->dhchap_auth_mutex);
+host/auth.c:	mutex_unlock(&ctrl->dhchap_auth_mutex);
+host/auth.c:	dev_dbg(ctrl->device, "%s: qid %d send reply\n",
+host/auth.c:	dev_dbg(ctrl->device, "%s: qid %d receive success1\n",
+host/auth.c:		dev_warn(ctrl->device,
+host/auth.c:	mutex_lock(&ctrl->dhchap_auth_mutex);
+host/auth.c:	if (ctrl->ctrl_key) {
+host/auth.c:		dev_dbg(ctrl->device,
+host/auth.c:			mutex_unlock(&ctrl->dhchap_auth_mutex);
+host/auth.c:	mutex_unlock(&ctrl->dhchap_auth_mutex);
+host/auth.c:		dev_dbg(ctrl->device, "%s: qid %d send success2\n",
+host/auth.c:	dev_dbg(ctrl->device, "%s: qid %d send failure2, status %x\n",
+host/auth.c:	if (!ctrl->host_key) {
+host/auth.c:		dev_warn(ctrl->device, "qid %d: no key\n", qid);
+host/auth.c:	if (ctrl->opts->dhchap_ctrl_secret && !ctrl->ctrl_key) {
+host/auth.c:		dev_warn(ctrl->device, "qid %d: invalid ctrl key\n", qid);
+host/auth.c:	chap = &ctrl->dhchap_ctxs[qid];
+host/auth.c:	chap = &ctrl->dhchap_ctxs[qid];
+host/auth.c:	if (ctrl->state != NVME_CTRL_LIVE)
+host/auth.c:		dev_warn(ctrl->device,
+host/auth.c:		dev_warn(ctrl->device,
+host/auth.c:	for (q = 1; q < ctrl->queue_count; q++) {
+host/auth.c:			dev_warn(ctrl->device,
+host/auth.c:	for (q = 1; q < ctrl->queue_count; q++) {
+host/auth.c:			dev_warn(ctrl->device,
+host/auth.c:	mutex_init(&ctrl->dhchap_auth_mutex);
+host/auth.c:	INIT_WORK(&ctrl->dhchap_auth_work, nvme_ctrl_auth_work);
+host/auth.c:	if (!ctrl->opts)
+host/auth.c:	ret = nvme_auth_generate_key(ctrl->opts->dhchap_secret,
+host/auth.c:			&ctrl->host_key);
+host/auth.c:	ret = nvme_auth_generate_key(ctrl->opts->dhchap_ctrl_secret,
+host/auth.c:			&ctrl->ctrl_key);
+host/auth.c:	if (!ctrl->opts->dhchap_secret && !ctrl->opts->dhchap_ctrl_secret)
+host/auth.c:	ctrl->dhchap_ctxs = kvcalloc(ctrl_max_dhchaps(ctrl),
+host/auth.c:	if (!ctrl->dhchap_ctxs) {
+host/auth.c:		chap = &ctrl->dhchap_ctxs[i];
+host/auth.c:	nvme_auth_free_key(ctrl->ctrl_key);
+host/auth.c:	ctrl->ctrl_key = NULL;
+host/auth.c:	nvme_auth_free_key(ctrl->host_key);
+host/auth.c:	ctrl->host_key = NULL;
+host/auth.c:	cancel_work_sync(&ctrl->dhchap_auth_work);
+host/auth.c:	if (ctrl->dhchap_ctxs) {
+host/auth.c:			nvme_auth_free_dhchap(&ctrl->dhchap_ctxs[i]);
+host/auth.c:		kfree(ctrl->dhchap_ctxs);
+host/auth.c:	if (ctrl->host_key) {
+host/auth.c:		nvme_auth_free_key(ctrl->host_key);
+host/auth.c:		ctrl->host_key = NULL;
+host/auth.c:	if (ctrl->ctrl_key) {
+host/auth.c:		nvme_auth_free_key(ctrl->ctrl_key);
+host/auth.c:		ctrl->ctrl_key = NULL;
+host/core.c:	if (nvme_ctrl_state(ctrl) == NVME_CTRL_LIVE && ctrl->tagset)
+host/core.c:		queue_work(nvme_wq, &ctrl->scan_work);
+host/core.c:	if (!queue_work(nvme_reset_wq, &ctrl->reset_work))
+host/core.c:	set_bit(NVME_CTRL_FAILFAST_EXPIRED, &ctrl->flags);
+host/core.c:	dev_info(ctrl->device, "failfast expired\n");
+host/core.c:	if (!ctrl->opts || ctrl->opts->fast_io_fail_tmo == -1)
+host/core.c:	schedule_delayed_work(&ctrl->failfast_work,
+host/core.c:			      ctrl->opts->fast_io_fail_tmo * HZ);
+host/core.c:	if (!ctrl->opts)
+host/core.c:	cancel_delayed_work_sync(&ctrl->failfast_work);
+host/core.c:	clear_bit(NVME_CTRL_FAILFAST_EXPIRED, &ctrl->flags);
+host/core.c:	if (!queue_work(nvme_reset_wq, &ctrl->reset_work))
+host/core.c:		flush_work(&ctrl->reset_work);
+host/core.c:	dev_info(ctrl->device,
+host/core.c:	flush_work(&ctrl->reset_work);
+host/core.c:	ctrl->ops->delete_ctrl(ctrl);
+host/core.c:	if (!queue_work(nvme_delete_wq, &ctrl->delete_work))
+host/core.c:		delay = nvme_req(req)->ctrl->crdt[crd - 1] * 100;
+host/core.c:			   dev_name(nr->ctrl->device),
+host/core.c:	if (ctrl->kas &&
+host/core.c:	    req->deadline - req->timeout >= ctrl->ka_last_check_time)
+host/core.c:		ctrl->comp_seen = true;
+host/core.c:		queue_work(nvme_wq, &ctrl->dhchap_auth_work);
+host/core.c:	if (ctrl->tagset) {
+host/core.c:		blk_mq_tagset_busy_iter(ctrl->tagset,
+host/core.c:		blk_mq_tagset_wait_completed_request(ctrl->tagset);
+host/core.c:	if (ctrl->admin_tagset) {
+host/core.c:		blk_mq_tagset_busy_iter(ctrl->admin_tagset,
+host/core.c:		blk_mq_tagset_wait_completed_request(ctrl->admin_tagset);
+host/core.c:	spin_lock_irqsave(&ctrl->lock, flags);
+host/core.c:		WRITE_ONCE(ctrl->state, new_state);
+host/core.c:		wake_up_all(&ctrl->state_wq);
+host/core.c:	spin_unlock_irqrestore(&ctrl->lock, flags);
+host/core.c:		WARN_ONCE(1, "Unhandled ctrl state:%d", ctrl->state);
+host/core.c:	wait_event(ctrl->state_wq,
+host/core.c:	    !test_bit(NVME_CTRL_FAILFAST_EXPIRED, &ctrl->flags) &&
+host/core.c:	if (rq->q == ctrl->admin_q && (req->flags & NVME_REQ_USERCMD))
+host/core.c:	if (ctrl->ops->flags & NVME_F_FABRICS) {
+host/core.c:		if (test_and_set_bit_lock(0, &ns->ctrl->discard_page_busy))
+host/core.c:		range = page_address(ns->ctrl->discard_page);
+host/core.c:		if (virt_to_page(range) == ns->ctrl->discard_page)
+host/core.c:			clear_bit_unlock(0, &ns->ctrl->discard_page_busy);
+host/core.c:	if (ns->ctrl->quirks & NVME_QUIRK_DEALLOCATE_ZEROES)
+host/core.c:		if (req->special_vec.bv_page == ctrl->discard_page)
+host/core.c:			clear_bit_unlock(0, &ctrl->discard_page_busy);
+host/core.c:			dev_warn_once(ctrl->device,
+host/core.c:		effects = le32_to_cpu(ctrl->effects->acs[opcode]);
+host/core.c:		mutex_lock(&ctrl->scan_lock);
+host/core.c:		mutex_lock(&ctrl->subsys->lock);
+host/core.c:		nvme_mpath_start_freeze(ctrl->subsys);
+host/core.c:		nvme_mpath_wait_freeze(ctrl->subsys);
+host/core.c:		nvme_mpath_unfreeze(ctrl->subsys);
+host/core.c:		mutex_unlock(&ctrl->subsys->lock);
+host/core.c:		mutex_unlock(&ctrl->scan_lock);
+host/core.c:				      &ctrl->flags)) {
+host/core.c:			dev_info(ctrl->device,
+host/core.c:		flush_work(&ctrl->scan_work);
+host/core.c:	unsigned long delay = ctrl->kato * HZ / 2;
+host/core.c:	if (ctrl->ctratt & NVME_CTRL_ATTR_TBKAS)
+host/core.c:	unsigned long ka_next_check_tm = ctrl->ka_last_check_time + delay;
+host/core.c:	queue_delayed_work(nvme_wq, &ctrl->ka_work, delay);
+host/core.c:		dev_warn(ctrl->device, "long keepalive RTT (%u ms)\n",
+host/core.c:		dev_err(ctrl->device,
+host/core.c:	ctrl->ka_last_check_time = jiffies;
+host/core.c:	ctrl->comp_seen = false;
+host/core.c:	spin_lock_irqsave(&ctrl->lock, flags);
+host/core.c:	if (ctrl->state == NVME_CTRL_LIVE ||
+host/core.c:	    ctrl->state == NVME_CTRL_CONNECTING)
+host/core.c:	spin_unlock_irqrestore(&ctrl->lock, flags);
+host/core.c:		queue_delayed_work(nvme_wq, &ctrl->ka_work, delay);
+host/core.c:	bool comp_seen = ctrl->comp_seen;
+host/core.c:	ctrl->ka_last_check_time = jiffies;
+host/core.c:	if ((ctrl->ctratt & NVME_CTRL_ATTR_TBKAS) && comp_seen) {
+host/core.c:		dev_dbg(ctrl->device,
+host/core.c:		ctrl->comp_seen = false;
+host/core.c:	rq = blk_mq_alloc_request(ctrl->admin_q, nvme_req_op(&ctrl->ka_cmd),
+host/core.c:		dev_err(ctrl->device, "keep-alive failed: %ld\n", PTR_ERR(rq));
+host/core.c:	nvme_init_request(rq, &ctrl->ka_cmd);
+host/core.c:	rq->timeout = ctrl->kato * HZ;
+host/core.c:	if (unlikely(ctrl->kato == 0))
+host/core.c:	if (unlikely(ctrl->kato == 0))
+host/core.c:	cancel_delayed_work_sync(&ctrl->ka_work);
+host/core.c:	dev_info(ctrl->device,
+host/core.c:		 ctrl->kato * 1000 / 2, new_kato * 1000 / 2);
+host/core.c:	ctrl->kato = new_kato;
+host/core.c:	if (ctrl->quirks & NVME_QUIRK_IDENTIFY_CNS)
+host/core.c:		return ctrl->vs < NVME_VS(1, 2, 0);
+host/core.c:	return ctrl->vs < NVME_VS(1, 1, 0);
+host/core.c:			dev_warn(ctrl->device, "%s %d for NVME_NIDT_EUI64\n",
+host/core.c:		if (ctrl->quirks & NVME_QUIRK_BOGUS_NID)
+host/core.c:			dev_warn(ctrl->device, "%s %d for NVME_NIDT_NGUID\n",
+host/core.c:		if (ctrl->quirks & NVME_QUIRK_BOGUS_NID)
+host/core.c:			dev_warn(ctrl->device, "%s %d for NVME_NIDT_UUID\n",
+host/core.c:		if (ctrl->quirks & NVME_QUIRK_BOGUS_NID)
+host/core.c:			dev_warn(ctrl->device, "%s %d for NVME_NIDT_CSI\n",
+host/core.c:	if (ctrl->vs < NVME_VS(1, 3, 0) && !nvme_multi_css(ctrl))
+host/core.c:	if (ctrl->quirks & NVME_QUIRK_NO_NS_DESC_LIST)
+host/core.c:	status = nvme_submit_sync_cmd(ctrl->admin_q, &c, data,
+host/core.c:		dev_warn(ctrl->device,
+host/core.c:		dev_warn(ctrl->device, "Command set not reported for nsid:%d\n",
+host/core.c:	error = nvme_submit_sync_cmd(ctrl->admin_q, &c, *id, sizeof(**id));
+host/core.c:		dev_warn(ctrl->device, "Identify namespace failed (%d)\n", error);
+host/core.c:	if (ctrl->quirks & NVME_QUIRK_BOGUS_NID) {
+host/core.c:		dev_info(ctrl->device,
+host/core.c:		if (ctrl->vs >= NVME_VS(1, 1, 0) &&
+host/core.c:		if (ctrl->vs >= NVME_VS(1, 2, 0) &&
+host/core.c:	ret = nvme_submit_sync_cmd(ctrl->admin_q, &c, id, sizeof(*id));
+host/core.c:		dev_err(ctrl->device, "Could not set queue count (%d)\n", status);
+host/core.c:	u32 result, supported_aens = ctrl->oaes & NVME_AEN_SUPPORTED;
+host/core.c:		dev_warn(ctrl->device, "Failed to configure AEN (cfg %x)\n",
+host/core.c:	queue_work(nvme_wq, &ctrl->async_event_work);
+host/core.c:	if (!try_module_get(ns->ctrl->ops->module))
+host/core.c:	module_put(ns->ctrl->ops->module);
+host/core.c:	if (ctrl->dmrsl && ctrl->dmrsl <= nvme_sect_to_lba(head, UINT_MAX)) {
+host/core.c:		max_discard_sectors = nvme_lba_to_sect(head, ctrl->dmrsl);
+host/core.c:	} else if (ctrl->oncs & NVME_CTRL_ONCS_DSM) {
+host/core.c:	if (ctrl->dmrl)
+host/core.c:		blk_queue_max_discard_segments(queue, ctrl->dmrl);
+host/core.c:	if (ctrl->quirks & NVME_QUIRK_DEALLOCATE_ZEROES)
+host/core.c:	if (!(ctrl->ctratt & NVME_CTRL_ATTR_ELBAS)) {
+host/core.c:	ret = nvme_submit_sync_cmd(ctrl->admin_q, &c, nvm, sizeof(*nvm));
+host/core.c:	if (!head->ms || !(ctrl->ops->flags & NVME_F_METADATA_SUPPORTED))
+host/core.c:	if (ctrl->ops->flags & NVME_F_FABRICS) {
+host/core.c:		if (ctrl->max_integrity_segments && nvme_ns_has_pi(head))
+host/core.c:	bool vwc = ctrl->vwc & NVME_CTRL_VWC_PRESENT;
+host/core.c:	if (ctrl->max_hw_sectors) {
+host/core.c:			(ctrl->max_hw_sectors / (NVME_CTRL_PAGE_SIZE >> 9)) + 1;
+host/core.c:		max_segments = min_not_zero(max_segments, ctrl->max_segments);
+host/core.c:		blk_queue_max_hw_sectors(q, ctrl->max_hw_sectors);
+host/core.c:			atomic_bs = (1 + ctrl->subsys->awupf) * bs;
+host/core.c:					    ctrl->max_integrity_segments);
+host/core.c:					   ctrl->max_zeroes_sectors);
+host/core.c:	if ((ctrl->quirks & NVME_QUIRK_STRIPE_SIZE) &&
+host/core.c:	    is_power_of_2(ctrl->max_hw_sectors))
+host/core.c:		iob = ctrl->max_hw_sectors;
+host/core.c:			dev_info(ns->ctrl->device,
+host/core.c:		dev_info(ns->ctrl->device,
+host/core.c:	return __nvme_submit_sync_cmd(ctrl->admin_q, &cmd, NULL, buffer, len,
+host/core.c:	if (ctrl->oacs & NVME_CTRL_OACS_SEC_SUPP) {
+host/core.c:		if (!ctrl->opal_dev)
+host/core.c:			ctrl->opal_dev = init_opal_dev(ctrl, &nvme_sec_submit);
+host/core.c:			opal_unlock_from_suspend(ctrl->opal_dev);
+host/core.c:		free_opal_dev(ctrl->opal_dev);
+host/core.c:		ctrl->opal_dev = NULL;
+host/core.c:	while ((ret = ctrl->ops->reg_read32(ctrl, NVME_REG_CSTS, &csts)) == 0) {
+host/core.c:			dev_err(ctrl->device,
+host/core.c:	ctrl->ctrl_config &= ~NVME_CC_SHN_MASK;
+host/core.c:		ctrl->ctrl_config |= NVME_CC_SHN_NORMAL;
+host/core.c:		ctrl->ctrl_config &= ~NVME_CC_ENABLE;
+host/core.c:	ret = ctrl->ops->reg_write32(ctrl, NVME_REG_CC, ctrl->ctrl_config);
+host/core.c:				       ctrl->shutdown_timeout, "shutdown");
+host/core.c:	if (ctrl->quirks & NVME_QUIRK_DELAY_BEFORE_CHK_RDY)
+host/core.c:			       (NVME_CAP_TIMEOUT(ctrl->cap) + 1) / 2, "reset");
+host/core.c:	ret = ctrl->ops->reg_read64(ctrl, NVME_REG_CAP, &ctrl->cap);
+host/core.c:		dev_err(ctrl->device, "Reading CAP failed (%d)\n", ret);
+host/core.c:	dev_page_min = NVME_CAP_MPSMIN(ctrl->cap) + 12;
+host/core.c:		dev_err(ctrl->device,
+host/core.c:	if (NVME_CAP_CSS(ctrl->cap) & NVME_CAP_CSS_CSI)
+host/core.c:		ctrl->ctrl_config = NVME_CC_CSS_CSI;
+host/core.c:		ctrl->ctrl_config = NVME_CC_CSS_NVM;
+host/core.c:	if (ctrl->cap & NVME_CAP_CRMS_CRWMS && ctrl->cap & NVME_CAP_CRMS_CRIMS)
+host/core.c:		ctrl->ctrl_config |= NVME_CC_CRIME;
+host/core.c:	ctrl->ctrl_config |= (NVME_CTRL_PAGE_SHIFT - 12) << NVME_CC_MPS_SHIFT;
+host/core.c:	ctrl->ctrl_config |= NVME_CC_AMS_RR | NVME_CC_SHN_NONE;
+host/core.c:	ctrl->ctrl_config |= NVME_CC_IOSQES | NVME_CC_IOCQES;
+host/core.c:	ret = ctrl->ops->reg_write32(ctrl, NVME_REG_CC, ctrl->ctrl_config);
+host/core.c:	ret = ctrl->ops->reg_read32(ctrl, NVME_REG_CC, &ctrl->ctrl_config);
+host/core.c:	ret = ctrl->ops->reg_read64(ctrl, NVME_REG_CAP, &ctrl->cap);
+host/core.c:	timeout = NVME_CAP_TIMEOUT(ctrl->cap);
+host/core.c:	if (ctrl->cap & NVME_CAP_CRMS_CRWMS) {
+host/core.c:		ret = ctrl->ops->reg_read32(ctrl, NVME_REG_CRTO, &crto);
+host/core.c:			dev_err(ctrl->device, "Reading CRTO failed (%d)\n",
+host/core.c:		if (ctrl->ctrl_config & NVME_CC_CRIME)
+host/core.c:			dev_warn_once(ctrl->device, "bad crto:%x cap:%llx\n",
+host/core.c:				      crto, ctrl->cap);
+host/core.c:	ctrl->ctrl_config |= NVME_CC_ENABLE;
+host/core.c:	ret = ctrl->ops->reg_write32(ctrl, NVME_REG_CC, ctrl->ctrl_config);
+host/core.c:	if (!(ctrl->oncs & NVME_CTRL_ONCS_TIMESTAMP))
+host/core.c:		dev_warn_once(ctrl->device,
+host/core.c:	if (ctrl->crdt[0])
+host/core.c:	if (ctrl->ctratt & NVME_CTRL_ATTR_ELBAS)
+host/core.c:	if (!ctrl->apsta)
+host/core.c:	if (ctrl->npss > 31) {
+host/core.c:		dev_warn(ctrl->device, "NPSS is invalid; not using APST\n");
+host/core.c:	if (!ctrl->apst_enabled || ctrl->ps_max_latency_us == 0) {
+host/core.c:		dev_dbg(ctrl->device, "APST disabled\n");
+host/core.c:	for (state = (int)ctrl->npss; state >= 0; state--) {
+host/core.c:		if (state == ctrl->npss &&
+host/core.c:		    (ctrl->quirks & NVME_QUIRK_NO_DEEPEST_PS))
+host/core.c:		if (!(ctrl->psd[state].flags & NVME_PS_FLAGS_NON_OP_STATE))
+host/core.c:		exit_latency_us = (u64)le32_to_cpu(ctrl->psd[state].exit_lat);
+host/core.c:		if (exit_latency_us > ctrl->ps_max_latency_us)
+host/core.c:			le32_to_cpu(ctrl->psd[state].entry_lat);
+host/core.c:		dev_dbg(ctrl->device, "APST enabled but no non-operational states are available\n");
+host/core.c:		dev_dbg(ctrl->device, "APST enabled: max PS = %d, max round-trip latency = %lluus, table = %*phN\n",
+host/core.c:		dev_err(ctrl->device, "failed to set APST feature (%d)\n", ret);
+host/core.c:	if (ctrl->ps_max_latency_us != latency) {
+host/core.c:		ctrl->ps_max_latency_us = latency;
+host/core.c:	if(!(ctrl->quirks & NVME_QUIRK_IGNORE_DEV_SUBNQN)) {
+host/core.c:		if (ctrl->vs >= NVME_VS(1, 2, 1))
+host/core.c:			dev_warn(ctrl->device, "missing or invalid SUBNQN field.\n");
+host/core.c:	return ctrl->opts && ctrl->opts->discovery_nqn;
+host/core.c:		if (tmp->cntlid == ctrl->cntlid) {
+host/core.c:			dev_err(ctrl->device,
+host/core.c:				ctrl->cntlid, dev_name(tmp->device),
+host/core.c:		dev_err(ctrl->device,
+host/core.c:		dev_err(ctrl->device,
+host/core.c:	dev_set_name(&subsys->dev, "nvme-subsys%d", ctrl->instance);
+host/core.c:			dev_err(ctrl->device,
+host/core.c:	ret = sysfs_create_link(&subsys->dev.kobj, &ctrl->device->kobj,
+host/core.c:				dev_name(ctrl->device));
+host/core.c:		dev_err(ctrl->device,
+host/core.c:		subsys->instance = ctrl->instance;
+host/core.c:	ctrl->subsys = subsys;
+host/core.c:	list_add_tail(&ctrl->subsys_entry, &subsys->ctrls);
+host/core.c:	return nvme_submit_sync_cmd(ctrl->admin_q, &c, log, size);
+host/core.c:	struct nvme_effects_log	*cel = xa_load(&ctrl->cels, csi);
+host/core.c:	xa_store(&ctrl->cels, csi, cel, GFP_KERNEL);
+host/core.c:	u32 page_shift = NVME_CAP_MPSMIN(ctrl->cap) + 12, val;
+host/core.c:	if ((ctrl->oncs & NVME_CTRL_ONCS_WRITE_ZEROES) &&
+host/core.c:	    !(ctrl->quirks & NVME_QUIRK_DISABLE_WRITE_ZEROES))
+host/core.c:		ctrl->max_zeroes_sectors = ctrl->max_hw_sectors;
+host/core.c:		ctrl->max_zeroes_sectors = 0;
+host/core.c:	if (ctrl->subsys->subtype != NVME_NQN_NVME ||
+host/core.c:	    test_bit(NVME_CTRL_SKIP_ID_CNS_CS, &ctrl->flags))
+host/core.c:	ret = nvme_submit_sync_cmd(ctrl->admin_q, &c, id, sizeof(*id));
+host/core.c:	ctrl->dmrl = id->dmrl;
+host/core.c:	ctrl->dmrsl = le32_to_cpu(id->dmrsl);
+host/core.c:		ctrl->max_zeroes_sectors = nvme_mps_to_sectors(ctrl, id->wzsl);
+host/core.c:		set_bit(NVME_CTRL_SKIP_ID_CNS_CS, &ctrl->flags);
+host/core.c:	struct nvme_effects_log	*log = ctrl->effects;
+host/core.c:	if (ctrl->effects)
+host/core.c:		ret = nvme_get_effects_log(ctrl, NVME_CSI_NVM, &ctrl->effects);
+host/core.c:	if (!ctrl->effects) {
+host/core.c:		ctrl->effects = kzalloc(sizeof(*ctrl->effects), GFP_KERNEL);
+host/core.c:		if (!ctrl->effects)
+host/core.c:		xa_store(&ctrl->cels, NVME_CSI_NVM, ctrl->effects, GFP_KERNEL);
+host/core.c:	if (ctrl->cntlid != le16_to_cpu(id->cntlid)) {
+host/core.c:		dev_err(ctrl->device,
+host/core.c:			ctrl->cntlid, le16_to_cpu(id->cntlid));
+host/core.c:	if (!nvme_discovery_ctrl(ctrl) && !ctrl->kas) {
+host/core.c:		dev_err(ctrl->device,
+host/core.c:	if (!nvme_discovery_ctrl(ctrl) && ctrl->ioccsz < 4) {
+host/core.c:		dev_err(ctrl->device,
+host/core.c:			ctrl->ioccsz);
+host/core.c:	if (!nvme_discovery_ctrl(ctrl) && ctrl->iorcsz < 1) {
+host/core.c:		dev_err(ctrl->device,
+host/core.c:			ctrl->iorcsz);
+host/core.c:		dev_err(ctrl->device, "Identify Controller failed (%d)\n", ret);
+host/core.c:	if (!(ctrl->ops->flags & NVME_F_FABRICS))
+host/core.c:		ctrl->cntlid = le16_to_cpu(id->cntlid);
+host/core.c:	if (!ctrl->identified) {
+host/core.c:				ctrl->quirks |= core_quirks[i].quirks;
+host/core.c:	memcpy(ctrl->subsys->firmware_rev, id->fr,
+host/core.c:	       sizeof(ctrl->subsys->firmware_rev));
+host/core.c:	if (force_apst && (ctrl->quirks & NVME_QUIRK_NO_DEEPEST_PS)) {
+host/core.c:		dev_warn(ctrl->device, "forcibly allowing all power states due to nvme_core.force_apst -- use at your own risk\n");
+host/core.c:		ctrl->quirks &= ~NVME_QUIRK_NO_DEEPEST_PS;
+host/core.c:	ctrl->crdt[0] = le16_to_cpu(id->crdt1);
+host/core.c:	ctrl->crdt[1] = le16_to_cpu(id->crdt2);
+host/core.c:	ctrl->crdt[2] = le16_to_cpu(id->crdt3);
+host/core.c:	ctrl->oacs = le16_to_cpu(id->oacs);
+host/core.c:	ctrl->oncs = le16_to_cpu(id->oncs);
+host/core.c:	ctrl->mtfa = le16_to_cpu(id->mtfa);
+host/core.c:	ctrl->oaes = le32_to_cpu(id->oaes);
+host/core.c:	ctrl->wctemp = le16_to_cpu(id->wctemp);
+host/core.c:	ctrl->cctemp = le16_to_cpu(id->cctemp);
+host/core.c:	atomic_set(&ctrl->abort_limit, id->acl + 1);
+host/core.c:	ctrl->vwc = id->vwc;
+host/core.c:	ctrl->max_hw_sectors =
+host/core.c:		min_not_zero(ctrl->max_hw_sectors, max_hw_sectors);
+host/core.c:	nvme_set_queue_limits(ctrl, ctrl->admin_q);
+host/core.c:	ctrl->sgls = le32_to_cpu(id->sgls);
+host/core.c:	ctrl->kas = le16_to_cpu(id->kas);
+host/core.c:	ctrl->max_namespaces = le32_to_cpu(id->mnan);
+host/core.c:	ctrl->ctratt = le32_to_cpu(id->ctratt);
+host/core.c:	ctrl->cntrltype = id->cntrltype;
+host/core.c:	ctrl->dctype = id->dctype;
+host/core.c:		ctrl->shutdown_timeout = clamp_t(unsigned int, transition_time,
+host/core.c:		if (ctrl->shutdown_timeout != shutdown_timeout)
+host/core.c:			dev_info(ctrl->device,
+host/core.c:				 ctrl->shutdown_timeout);
+host/core.c:		ctrl->shutdown_timeout = shutdown_timeout;
+host/core.c:	ctrl->npss = id->npss;
+host/core.c:	ctrl->apsta = id->apsta;
+host/core.c:	prev_apst_enabled = ctrl->apst_enabled;
+host/core.c:	if (ctrl->quirks & NVME_QUIRK_NO_APST) {
+host/core.c:			dev_warn(ctrl->device, "forcibly allowing APST due to nvme_core.force_apst -- use at your own risk\n");
+host/core.c:			ctrl->apst_enabled = true;
+host/core.c:			ctrl->apst_enabled = false;
+host/core.c:		ctrl->apst_enabled = id->apsta;
+host/core.c:	memcpy(ctrl->psd, id->psd, sizeof(ctrl->psd));
+host/core.c:	if (ctrl->ops->flags & NVME_F_FABRICS) {
+host/core.c:		ctrl->icdoff = le16_to_cpu(id->icdoff);
+host/core.c:		ctrl->ioccsz = le32_to_cpu(id->ioccsz);
+host/core.c:		ctrl->iorcsz = le32_to_cpu(id->iorcsz);
+host/core.c:		ctrl->maxcmd = le16_to_cpu(id->maxcmd);
+host/core.c:		ctrl->hmpre = le32_to_cpu(id->hmpre);
+host/core.c:		ctrl->hmmin = le32_to_cpu(id->hmmin);
+host/core.c:		ctrl->hmminds = le32_to_cpu(id->hmminds);
+host/core.c:		ctrl->hmmaxd = le16_to_cpu(id->hmmaxd);
+host/core.c:	if (ctrl->apst_enabled && !prev_apst_enabled)
+host/core.c:		dev_pm_qos_expose_latency_tolerance(ctrl->device);
+host/core.c:	else if (!ctrl->apst_enabled && prev_apst_enabled)
+host/core.c:		dev_pm_qos_hide_latency_tolerance(ctrl->device);
+host/core.c:	ret = ctrl->ops->reg_read32(ctrl, NVME_REG_VS, &ctrl->vs);
+host/core.c:		dev_err(ctrl->device, "Reading VS failed (%d)\n", ret);
+host/core.c:	ctrl->sqsize = min_t(u16, NVME_CAP_MQES(ctrl->cap), ctrl->sqsize);
+host/core.c:	if (ctrl->vs >= NVME_VS(1, 1, 0))
+host/core.c:		ctrl->subsystem = NVME_CAP_NSSRC(ctrl->cap);
+host/core.c:	if (!ctrl->identified && !nvme_discovery_ctrl(ctrl)) {
+host/core.c:	clear_bit(NVME_CTRL_DIRTY_CAPABILITY, &ctrl->flags);
+host/core.c:	ctrl->identified = true;
+host/core.c:	if (!try_module_get(ctrl->ops->module)) {
+host/core.c:	module_put(ctrl->ops->module);
+host/core.c:	lockdep_assert_held(&ctrl->subsys->lock);
+host/core.c:	list_for_each_entry(h, &ctrl->subsys->nsheads, entry) {
+host/core.c:	ns->cdev_device.parent = ns->ctrl->device;
+host/core.c:			   ns->ctrl->instance, ns->head->instance);
+host/core.c:			     ns->ctrl->ops->module);
+host/core.c:	ret = ida_alloc_min(&ctrl->subsys->ns_ida, 1, GFP_KERNEL);
+host/core.c:	head->subsys = ctrl->subsys;
+host/core.c:		head->effects = ctrl->effects;
+host/core.c:	list_add_tail(&head->entry, &ctrl->subsys->nsheads);
+host/core.c:	kref_get(&ctrl->subsys->ref);
+host/core.c:	ida_free(&ctrl->subsys->ns_ida, head->instance);
+host/core.c:	ret = nvme_global_check_duplicate_ids(ctrl->subsys, &info->ids);
+host/core.c:		if ((ns->ctrl->ops->flags & NVME_F_FABRICS) || /* !PCIe */
+host/core.c:		    ((ns->ctrl->subsys->cmic & NVME_CTRL_CMIC_MULTI_CTRL) &&
+host/core.c:			dev_err(ctrl->device,
+host/core.c:		dev_err(ctrl->device,
+host/core.c:		dev_err(ctrl->device,
+host/core.c:		ctrl->quirks |= NVME_QUIRK_BOGUS_NID;
+host/core.c:	mutex_lock(&ctrl->subsys->lock);
+host/core.c:		ret = nvme_subsys_check_duplicate_ids(ctrl->subsys, &info->ids);
+host/core.c:			dev_err(ctrl->device,
+host/core.c:			dev_err(ctrl->device,
+host/core.c:			dev_err(ctrl->device,
+host/core.c:			dev_warn(ctrl->device,
+host/core.c:			dev_warn_once(ctrl->device,
+host/core.c:	mutex_unlock(&ctrl->subsys->lock);
+host/core.c:	mutex_unlock(&ctrl->subsys->lock);
+host/core.c:	down_read(&ctrl->namespaces_rwsem);
+host/core.c:	list_for_each_entry(ns, &ctrl->namespaces, list) {
+host/core.c:	up_read(&ctrl->namespaces_rwsem);
+host/core.c:	list_for_each_entry_reverse(tmp, &ns->ctrl->namespaces, list) {
+host/core.c:	list_add(&ns->list, &ns->ctrl->namespaces);
+host/core.c:	int node = ctrl->numa_node;
+host/core.c:	disk = blk_mq_alloc_disk(ctrl->tagset, ns);
+host/core.c:	if (ctrl->opts && ctrl->opts->data_digest)
+host/core.c:	if (ctrl->ops->supports_pci_p2pdma &&
+host/core.c:	    ctrl->ops->supports_pci_p2pdma(ctrl))
+host/core.c:		sprintf(disk->disk_name, "nvme%dc%dn%d", ctrl->subsys->instance,
+host/core.c:			ctrl->instance, ns->head->instance);
+host/core.c:		sprintf(disk->disk_name, "nvme%dn%d", ctrl->subsys->instance,
+host/core.c:		sprintf(disk->disk_name, "nvme%dn%d", ctrl->instance,
+host/core.c:	down_write(&ctrl->namespaces_rwsem);
+host/core.c:	if (test_bit(NVME_CTRL_FROZEN, &ctrl->flags)) {
+host/core.c:		up_write(&ctrl->namespaces_rwsem);
+host/core.c:	up_write(&ctrl->namespaces_rwsem);
+host/core.c:	if (device_add_disk(ctrl->device, ns->disk, nvme_ns_attr_groups))
+host/core.c:	down_write(&ctrl->namespaces_rwsem);
+host/core.c:	up_write(&ctrl->namespaces_rwsem);
+host/core.c:	mutex_lock(&ctrl->subsys->lock);
+host/core.c:	mutex_unlock(&ctrl->subsys->lock);
+host/core.c:	mutex_lock(&ns->ctrl->subsys->lock);
+host/core.c:	mutex_unlock(&ns->ctrl->subsys->lock);
+host/core.c:	down_write(&ns->ctrl->namespaces_rwsem);
+host/core.c:	up_write(&ns->ctrl->namespaces_rwsem);
+host/core.c:		dev_err(ns->ctrl->device,
+host/core.c:		dev_warn(ctrl->device,
+host/core.c:	if ((ctrl->cap & NVME_CAP_CRMS_CRIMS) ||
+host/core.c:	down_write(&ctrl->namespaces_rwsem);
+host/core.c:	list_for_each_entry_safe(ns, next, &ctrl->namespaces, list) {
+host/core.c:	up_write(&ctrl->namespaces_rwsem);
+host/core.c:		ret = nvme_submit_sync_cmd(ctrl->admin_q, &cmd, ns_list,
+host/core.c:			dev_warn(ctrl->device,
+host/core.c:		dev_warn(ctrl->device,
+host/core.c:	if (nvme_ctrl_state(ctrl) != NVME_CTRL_LIVE || !ctrl->tagset)
+host/core.c:		dev_warn(ctrl->device,
+host/core.c:	if (test_and_clear_bit(NVME_AER_NOTICE_NS_CHANGED, &ctrl->events)) {
+host/core.c:		dev_info(ctrl->device, "rescanning namespaces.\n");
+host/core.c:	mutex_lock(&ctrl->scan_lock);
+host/core.c:	mutex_unlock(&ctrl->scan_lock);
+host/core.c:	flush_work(&ctrl->scan_work);
+host/core.c:	down_write(&ctrl->namespaces_rwsem);
+host/core.c:	list_splice_init(&ctrl->namespaces, &ns_list);
+host/core.c:	up_write(&ctrl->namespaces_rwsem);
+host/core.c:	struct nvmf_ctrl_options *opts = ctrl->opts;
+host/core.c:	ret = add_uevent_var(env, "NVME_TRTYPE=%s", ctrl->ops->name);
+host/core.c:	kobject_uevent_env(&ctrl->device->kobj, KOBJ_CHANGE, envp);
+host/core.c:	u32 aen_result = ctrl->aen_result;
+host/core.c:	ctrl->aen_result = 0;
+host/core.c:	kobject_uevent_env(&ctrl->device->kobj, KOBJ_CHANGE, envp);
+host/core.c:		ctrl->ops->submit_async_event(ctrl);
+host/core.c:	if (ctrl->ops->reg_read32(ctrl, NVME_REG_CSTS, &csts))
+host/core.c:	return ((ctrl->ctrl_config & NVME_CC_ENABLE) && (csts & NVME_CSTS_PP));
+host/core.c:		dev_warn(ctrl->device, "Get FW SLOT INFO log error\n");
+host/core.c:		dev_info(ctrl->device,
+host/core.c:	memcpy(ctrl->subsys->firmware_rev, &log->frs[(log->afi & 0x7) - 1],
+host/core.c:		sizeof(ctrl->subsys->firmware_rev));
+host/core.c:	if (ctrl->mtfa)
+host/core.c:				msecs_to_jiffies(ctrl->mtfa * 100);
+host/core.c:			dev_warn(ctrl->device,
+host/core.c:	queue_work(nvme_wq, &ctrl->async_event_work);
+host/core.c:		set_bit(NVME_AER_NOTICE_NS_CHANGED, &ctrl->events);
+host/core.c:			queue_work(nvme_wq, &ctrl->fw_act_work);
+host/core.c:		if (!ctrl->ana_log_buf)
+host/core.c:		queue_work(nvme_wq, &ctrl->ana_work);
+host/core.c:		ctrl->aen_result = result;
+host/core.c:		dev_warn(ctrl->device, "async event result %08x\n", result);
+host/core.c:	dev_warn(ctrl->device, "resetting controller due to AER\n");
+host/core.c:		ctrl->aen_result = result;
+host/core.c:		queue_work(nvme_wq, &ctrl->async_event_work);
+host/core.c:	if (ctrl->ops->flags & NVME_F_FABRICS)
+host/core.c:	set->numa_node = ctrl->numa_node;
+host/core.c:	if (ctrl->ops->flags & NVME_F_BLOCKING)
+host/core.c:	ctrl->admin_q = blk_mq_init_queue(set);
+host/core.c:	if (IS_ERR(ctrl->admin_q)) {
+host/core.c:		ret = PTR_ERR(ctrl->admin_q);
+host/core.c:	if (ctrl->ops->flags & NVME_F_FABRICS) {
+host/core.c:		ctrl->fabrics_q = blk_mq_init_queue(set);
+host/core.c:		if (IS_ERR(ctrl->fabrics_q)) {
+host/core.c:			ret = PTR_ERR(ctrl->fabrics_q);
+host/core.c:	ctrl->admin_tagset = set;
+host/core.c:	blk_mq_destroy_queue(ctrl->admin_q);
+host/core.c:	blk_put_queue(ctrl->admin_q);
+host/core.c:	ctrl->admin_q = NULL;
+host/core.c:	ctrl->fabrics_q = NULL;
+host/core.c:	blk_mq_destroy_queue(ctrl->admin_q);
+host/core.c:	blk_put_queue(ctrl->admin_q);
+host/core.c:	if (ctrl->ops->flags & NVME_F_FABRICS) {
+host/core.c:		blk_mq_destroy_queue(ctrl->fabrics_q);
+host/core.c:		blk_put_queue(ctrl->fabrics_q);
+host/core.c:	blk_mq_free_tag_set(ctrl->admin_tagset);
+host/core.c:	set->queue_depth = min_t(unsigned, ctrl->sqsize, BLK_MQ_MAX_DEPTH - 1);
+host/core.c:	if (ctrl->quirks & NVME_QUIRK_SHARED_TAGS)
+host/core.c:	else if (ctrl->ops->flags & NVME_F_FABRICS)
+host/core.c:	set->numa_node = ctrl->numa_node;
+host/core.c:	if (ctrl->ops->flags & NVME_F_BLOCKING)
+host/core.c:	set->nr_hw_queues = ctrl->queue_count - 1;
+host/core.c:	if (ctrl->ops->flags & NVME_F_FABRICS) {
+host/core.c:		ctrl->connect_q = blk_mq_init_queue(set);
+host/core.c:        	if (IS_ERR(ctrl->connect_q)) {
+host/core.c:			ret = PTR_ERR(ctrl->connect_q);
+host/core.c:				   ctrl->connect_q);
+host/core.c:	ctrl->tagset = set;
+host/core.c:	ctrl->connect_q = NULL;
+host/core.c:	if (ctrl->ops->flags & NVME_F_FABRICS) {
+host/core.c:		blk_mq_destroy_queue(ctrl->connect_q);
+host/core.c:		blk_put_queue(ctrl->connect_q);
+host/core.c:	blk_mq_free_tag_set(ctrl->tagset);
+host/core.c:	flush_work(&ctrl->async_event_work);
+host/core.c:	cancel_work_sync(&ctrl->fw_act_work);
+host/core.c:	if (ctrl->ops->stop_ctrl)
+host/core.c:		ctrl->ops->stop_ctrl(ctrl);
+host/core.c:	if (test_bit(NVME_CTRL_STARTED_ONCE, &ctrl->flags) &&
+host/core.c:	if (ctrl->queue_count > 1) {
+host/core.c:	set_bit(NVME_CTRL_STARTED_ONCE, &ctrl->flags);
+host/core.c:	nvme_fault_inject_fini(&ctrl->fault_inject);
+host/core.c:	dev_pm_qos_hide_latency_tolerance(ctrl->device);
+host/core.c:	cdev_device_del(&ctrl->cdev, ctrl->device);
+host/core.c:	xa_for_each(&ctrl->cels, i, cel) {
+host/core.c:		xa_erase(&ctrl->cels, i);
+host/core.c:	xa_destroy(&ctrl->cels);
+host/core.c:	struct nvme_subsystem *subsys = ctrl->subsys;
+host/core.c:	if (!subsys || ctrl->instance != subsys->instance)
+host/core.c:		ida_free(&nvme_instance_ida, ctrl->instance);
+host/core.c:	key_put(ctrl->tls_key);
+host/core.c:	__free_page(ctrl->discard_page);
+host/core.c:	free_opal_dev(ctrl->opal_dev);
+host/core.c:		list_del(&ctrl->subsys_entry);
+host/core.c:		sysfs_remove_link(&subsys->dev.kobj, dev_name(ctrl->device));
+host/core.c:	ctrl->ops->free_ctrl(ctrl);
+host/core.c:	WRITE_ONCE(ctrl->state, NVME_CTRL_NEW);
+host/core.c:	clear_bit(NVME_CTRL_FAILFAST_EXPIRED, &ctrl->flags);
+host/core.c:	spin_lock_init(&ctrl->lock);
+host/core.c:	mutex_init(&ctrl->scan_lock);
+host/core.c:	INIT_LIST_HEAD(&ctrl->namespaces);
+host/core.c:	xa_init(&ctrl->cels);
+host/core.c:	init_rwsem(&ctrl->namespaces_rwsem);
+host/core.c:	ctrl->dev = dev;
+host/core.c:	ctrl->ops = ops;
+host/core.c:	ctrl->quirks = quirks;
+host/core.c:	ctrl->numa_node = NUMA_NO_NODE;
+host/core.c:	INIT_WORK(&ctrl->scan_work, nvme_scan_work);
+host/core.c:	INIT_WORK(&ctrl->async_event_work, nvme_async_event_work);
+host/core.c:	INIT_WORK(&ctrl->fw_act_work, nvme_fw_act_work);
+host/core.c:	INIT_WORK(&ctrl->delete_work, nvme_delete_ctrl_work);
+host/core.c:	init_waitqueue_head(&ctrl->state_wq);
+host/core.c:	INIT_DELAYED_WORK(&ctrl->ka_work, nvme_keep_alive_work);
+host/core.c:	INIT_DELAYED_WORK(&ctrl->failfast_work, nvme_failfast_work);
+host/core.c:	memset(&ctrl->ka_cmd, 0, sizeof(ctrl->ka_cmd));
+host/core.c:	ctrl->ka_cmd.common.opcode = nvme_admin_keep_alive;
+host/core.c:	ctrl->ka_last_check_time = jiffies;
+host/core.c:	ctrl->discard_page = alloc_page(GFP_KERNEL);
+host/core.c:	if (!ctrl->discard_page) {
+host/core.c:	ctrl->instance = ret;
+host/core.c:	device_initialize(&ctrl->ctrl_device);
+host/core.c:	ctrl->device = &ctrl->ctrl_device;
+host/core.c:	ctrl->device->devt = MKDEV(MAJOR(nvme_ctrl_base_chr_devt),
+host/core.c:			ctrl->instance);
+host/core.c:	ctrl->device->class = nvme_class;
+host/core.c:	ctrl->device->parent = ctrl->dev;
+host/core.c:		ctrl->device->groups = ops->dev_attr_groups;
+host/core.c:		ctrl->device->groups = nvme_dev_attr_groups;
+host/core.c:	ctrl->device->release = nvme_free_ctrl;
+host/core.c:	dev_set_drvdata(ctrl->device, ctrl);
+host/core.c:	ret = dev_set_name(ctrl->device, "nvme%d", ctrl->instance);
+host/core.c:	cdev_init(&ctrl->cdev, &nvme_dev_fops);
+host/core.c:	ctrl->cdev.owner = ops->module;
+host/core.c:	ret = cdev_device_add(&ctrl->cdev, ctrl->device);
+host/core.c:	ctrl->device->power.set_latency_tolerance = nvme_set_latency_tolerance;
+host/core.c:	dev_pm_qos_update_user_latency_tolerance(ctrl->device,
+host/core.c:	nvme_fault_inject_init(&ctrl->fault_inject, dev_name(ctrl->device));
+host/core.c:	nvme_fault_inject_fini(&ctrl->fault_inject);
+host/core.c:	dev_pm_qos_hide_latency_tolerance(ctrl->device);
+host/core.c:	cdev_device_del(&ctrl->cdev, ctrl->device);
+host/core.c:	kfree_const(ctrl->device->kobj.name);
+host/core.c:	ida_free(&nvme_instance_ida, ctrl->instance);
+host/core.c:	if (ctrl->discard_page)
+host/core.c:		__free_page(ctrl->discard_page);
+host/core.c:	down_read(&ctrl->namespaces_rwsem);
+host/core.c:	list_for_each_entry(ns, &ctrl->namespaces, list)
+host/core.c:	up_read(&ctrl->namespaces_rwsem);
+host/core.c:	down_read(&ctrl->namespaces_rwsem);
+host/core.c:	list_for_each_entry(ns, &ctrl->namespaces, list)
+host/core.c:	up_read(&ctrl->namespaces_rwsem);
+host/core.c:	clear_bit(NVME_CTRL_FROZEN, &ctrl->flags);
+host/core.c:	down_read(&ctrl->namespaces_rwsem);
+host/core.c:	list_for_each_entry(ns, &ctrl->namespaces, list) {
+host/core.c:	up_read(&ctrl->namespaces_rwsem);
+host/core.c:	down_read(&ctrl->namespaces_rwsem);
+host/core.c:	list_for_each_entry(ns, &ctrl->namespaces, list)
+host/core.c:	up_read(&ctrl->namespaces_rwsem);
+host/core.c:	set_bit(NVME_CTRL_FROZEN, &ctrl->flags);
+host/core.c:	down_read(&ctrl->namespaces_rwsem);
+host/core.c:	list_for_each_entry(ns, &ctrl->namespaces, list)
+host/core.c:	up_read(&ctrl->namespaces_rwsem);
+host/core.c:	if (!ctrl->tagset)
+host/core.c:	if (!test_and_set_bit(NVME_CTRL_STOPPED, &ctrl->flags))
+host/core.c:		blk_mq_quiesce_tagset(ctrl->tagset);
+host/core.c:		blk_mq_wait_quiesce_done(ctrl->tagset);
+host/core.c:	if (!ctrl->tagset)
+host/core.c:	if (test_and_clear_bit(NVME_CTRL_STOPPED, &ctrl->flags))
+host/core.c:		blk_mq_unquiesce_tagset(ctrl->tagset);
+host/core.c:	if (!test_and_set_bit(NVME_CTRL_ADMIN_Q_STOPPED, &ctrl->flags))
+host/core.c:		blk_mq_quiesce_queue(ctrl->admin_q);
+host/core.c:		blk_mq_wait_quiesce_done(ctrl->admin_q->tag_set);
+host/core.c:	if (test_and_clear_bit(NVME_CTRL_ADMIN_Q_STOPPED, &ctrl->flags))
+host/core.c:		blk_mq_unquiesce_queue(ctrl->admin_q);
+host/core.c:	down_read(&ctrl->namespaces_rwsem);
+host/core.c:	list_for_each_entry(ns, &ctrl->namespaces, list)
+host/core.c:	up_read(&ctrl->namespaces_rwsem);
+host/core.c:	if (ctrl->admin_q)
+host/core.c:		blk_sync_queue(ctrl->admin_q);
+host/fabrics.c:	if (ctrl->opts->mask & NVMF_OPT_TRADDR)
+host/fabrics.c:		len += scnprintf(buf, size, "traddr=%s", ctrl->opts->traddr);
+host/fabrics.c:	if (ctrl->opts->mask & NVMF_OPT_TRSVCID)
+host/fabrics.c:				(len) ? "," : "", ctrl->opts->trsvcid);
+host/fabrics.c:	if (ctrl->opts->mask & NVMF_OPT_HOST_TRADDR)
+host/fabrics.c:				(len) ? "," : "", ctrl->opts->host_traddr);
+host/fabrics.c:	if (ctrl->opts->mask & NVMF_OPT_HOST_IFACE)
+host/fabrics.c:				(len) ? "," : "", ctrl->opts->host_iface);
+host/fabrics.c:	ret = __nvme_submit_sync_cmd(ctrl->fabrics_q, &cmd, &res, NULL, 0,
+host/fabrics.c:		dev_err(ctrl->device,
+host/fabrics.c:	ret = __nvme_submit_sync_cmd(ctrl->fabrics_q, &cmd, &res, NULL, 0,
+host/fabrics.c:		dev_err(ctrl->device,
+host/fabrics.c:	ret = __nvme_submit_sync_cmd(ctrl->fabrics_q, &cmd, NULL, NULL, 0,
+host/fabrics.c:		dev_err(ctrl->device,
+host/fabrics.c:		dev_err(ctrl->device,
+host/fabrics.c:				dev_err(ctrl->device,
+host/fabrics.c:				dev_err(ctrl->device,
+host/fabrics.c:				dev_err(ctrl->device,
+host/fabrics.c:				dev_err(ctrl->device,
+host/fabrics.c:				dev_err(ctrl->device,
+host/fabrics.c:				dev_err(ctrl->device,
+host/fabrics.c:		dev_err(ctrl->device,
+host/fabrics.c:		dev_err(ctrl->device,
+host/fabrics.c:		dev_err(ctrl->device,
+host/fabrics.c:		dev_err(ctrl->device,
+host/fabrics.c:		dev_err(ctrl->device,
+host/fabrics.c:		dev_err(ctrl->device,
+host/fabrics.c:	uuid_copy(&data->hostid, &ctrl->opts->host->id);
+host/fabrics.c:	strscpy(data->subsysnqn, ctrl->opts->subsysnqn, NVMF_NQN_SIZE);
+host/fabrics.c:	strscpy(data->hostnqn, ctrl->opts->host->nqn, NVMF_NQN_SIZE);
+host/fabrics.c:		cmd->connect.sqsize = cpu_to_le16(ctrl->sqsize);
+host/fabrics.c:		cmd->connect.kato = cpu_to_le32(ctrl->kato * 1000);
+host/fabrics.c:	if (ctrl->opts->disable_sqflow)
+host/fabrics.c:	ret = __nvme_submit_sync_cmd(ctrl->fabrics_q, &cmd, &res,
+host/fabrics.c:	ctrl->cntlid = result & 0xFFFF;
+host/fabrics.c:			dev_warn(ctrl->device,
+host/fabrics.c:			dev_warn(ctrl->device,
+host/fabrics.c:			dev_warn(ctrl->device,
+host/fabrics.c:			dev_info(ctrl->device,
+host/fabrics.c:	data = nvmf_connect_data_prep(ctrl, ctrl->cntlid);
+host/fabrics.c:	ret = __nvme_submit_sync_cmd(ctrl->connect_q, &cmd, &res,
+host/fabrics.c:			dev_warn(ctrl->device,
+host/fabrics.c:			dev_warn(ctrl->device,
+host/fabrics.c:				dev_warn(ctrl->device,
+host/fabrics.c:	if (ctrl->opts->max_reconnects == -1 ||
+host/fabrics.c:	    ctrl->nr_reconnects < ctrl->opts->max_reconnects)
+host/fabrics.c:	struct nvmf_ctrl_options *opts = ctrl->opts;
+host/fabrics.c:	dev_info(ctrl->device,
+host/fabrics.c:	    strcmp(opts->traddr, ctrl->opts->traddr) ||
+host/fabrics.c:	    strcmp(opts->trsvcid, ctrl->opts->trsvcid))
+host/fabrics.c:	    (ctrl->opts->mask & NVMF_OPT_HOST_TRADDR)) {
+host/fabrics.c:		if (strcmp(opts->host_traddr, ctrl->opts->host_traddr))
+host/fabrics.c:		   (ctrl->opts->mask & NVMF_OPT_HOST_TRADDR)) {
+host/fabrics.c:	    (ctrl->opts->mask & NVMF_OPT_HOST_IFACE)) {
+host/fabrics.c:		if (strcmp(opts->host_iface, ctrl->opts->host_iface))
+host/fabrics.c:		   (ctrl->opts->mask & NVMF_OPT_HOST_IFACE)) {
+host/fabrics.c:			ctrl->instance, ctrl->cntlid);
+host/fabrics.h:	if (ctrl->state == NVME_CTRL_DELETING ||
+host/fabrics.h:	    ctrl->state == NVME_CTRL_DELETING_NOIO ||
+host/fabrics.h:	    ctrl->state == NVME_CTRL_DEAD ||
+host/fabrics.h:	    strcmp(opts->subsysnqn, ctrl->opts->subsysnqn) ||
+host/fabrics.h:	    strcmp(opts->host->nqn, ctrl->opts->host->nqn) ||
+host/fabrics.h:	    !uuid_equal(&opts->host->id, &ctrl->opts->host->id))
+host/fabrics.h:	if (!ctrl->subsys ||
+host/fabrics.h:	    !strcmp(ctrl->opts->subsysnqn, NVME_DISC_SUBSYS_NAME))
+host/fabrics.h:		return ctrl->opts->subsysnqn;
+host/fabrics.h:	return ctrl->subsys->subnqn;
+host/fault_inject.c:		fault_inject = &nvme_req(req)->ctrl->fault_inject;
+host/fc.c:	switch (nvme_ctrl_state(&ctrl->ctrl)) {
+host/fc.c:		dev_info(ctrl->ctrl.device,
+host/fc.c:			"Attempting reconnect\n", ctrl->cnum);
+host/fc.c:		queue_delayed_work(nvme_wq, &ctrl->connect_work, 0);
+host/fc.c:	dev_info(ctrl->ctrl.device,
+host/fc.c:		"Reconnect", ctrl->cnum);
+host/fc.c:	switch (nvme_ctrl_state(&ctrl->ctrl)) {
+host/fc.c:		if (nvme_reset_ctrl(&ctrl->ctrl)) {
+host/fc.c:			dev_warn(ctrl->ctrl.device,
+host/fc.c:				ctrl->cnum);
+host/fc.c:			nvme_delete_ctrl(&ctrl->ctrl);
+host/fc.c:			dev_warn(ctrl->ctrl.device,
+host/fc.c:				ctrl->cnum);
+host/fc.c:			nvme_delete_ctrl(&ctrl->ctrl);
+host/fc.c:			 ctrl->lport->ops->lsrqst_priv_sz), GFP_KERNEL);
+host/fc.c:		dev_info(ctrl->ctrl.device,
+host/fc.c:			ctrl->cnum);
+host/fc.c:	if (ctrl->lport->ops->lsrqst_priv_sz)
+host/fc.c:	uuid_copy(&assoc_rqst->assoc_cmd.hostid, &ctrl->ctrl.opts->host->id);
+host/fc.c:	strscpy(assoc_rqst->assoc_cmd.hostnqn, ctrl->ctrl.opts->host->nqn,
+host/fc.c:	strscpy(assoc_rqst->assoc_cmd.subnqn, ctrl->ctrl.opts->subsysnqn,
+host/fc.c:	ret = nvme_fc_send_ls_req(ctrl->rport, lsop);
+host/fc.c:		dev_err(ctrl->dev,
+host/fc.c:		spin_lock_irqsave(&ctrl->lock, flags);
+host/fc.c:		ctrl->association_id =
+host/fc.c:		spin_unlock_irqrestore(&ctrl->lock, flags);
+host/fc.c:		dev_err(ctrl->dev,
+host/fc.c:			 ctrl->lport->ops->lsrqst_priv_sz), GFP_KERNEL);
+host/fc.c:		dev_info(ctrl->ctrl.device,
+host/fc.c:			ctrl->cnum);
+host/fc.c:	if (ctrl->lport->ops->lsrqst_priv_sz)
+host/fc.c:	conn_rqst->associd.association_id = cpu_to_be64(ctrl->association_id);
+host/fc.c:	ret = nvme_fc_send_ls_req(ctrl->rport, lsop);
+host/fc.c:		dev_err(ctrl->dev,
+host/fc.c:		dev_err(ctrl->dev,
+host/fc.c:			ctrl->lport->ops->lsrqst_priv_sz), GFP_KERNEL);
+host/fc.c:		dev_info(ctrl->ctrl.device,
+host/fc.c:			ctrl->cnum);
+host/fc.c:	if (ctrl->lport->ops->lsrqst_priv_sz)
+host/fc.c:				ctrl->association_id);
+host/fc.c:	ret = nvme_fc_send_ls_req_async(ctrl->rport, lsop,
+host/fc.c:		spin_lock(&ctrl->lock);
+host/fc.c:		if (association_id == ctrl->association_id) {
+host/fc.c:			oldls = ctrl->rcv_disconn;
+host/fc.c:			ctrl->rcv_disconn = lsop;
+host/fc.c:		spin_unlock(&ctrl->lock);
+host/fc.c:			"LS's received\n", ctrl->cnum);
+host/fc.c:	fc_dma_unmap_single(ctrl->lport->dev, op->fcp_req.rspdma,
+host/fc.c:	fc_dma_unmap_single(ctrl->lport->dev, op->fcp_req.cmddma,
+host/fc.c:	spin_lock_irqsave(&ctrl->lock, flags);
+host/fc.c:	else if (test_bit(FCCTRL_TERMIO, &ctrl->flags)) {
+host/fc.c:		ctrl->iocnt++;
+host/fc.c:	spin_unlock_irqrestore(&ctrl->lock, flags);
+host/fc.c:	ctrl->lport->ops->fcp_abort(&ctrl->lport->localport,
+host/fc.c:					&ctrl->rport->remoteport,
+host/fc.c:	struct nvme_fc_fcp_op *aen_op = ctrl->aen_ops;
+host/fc.c:		spin_lock_irqsave(&ctrl->lock, flags);
+host/fc.c:		if (test_bit(FCCTRL_TERMIO, &ctrl->flags) &&
+host/fc.c:			if (!--ctrl->iocnt)
+host/fc.c:				wake_up(&ctrl->ioabort_wait);
+host/fc.c:		spin_unlock_irqrestore(&ctrl->lock, flags);
+host/fc.c:	fc_dma_sync_single_for_cpu(ctrl->lport->dev, op->fcp_req.rspdma,
+host/fc.c:		dev_info(ctrl->ctrl.device,
+host/fc.c:			ctrl->cnum, freq->status);
+host/fc.c:			dev_info(ctrl->ctrl.device,
+host/fc.c:				ctrl->cnum, freq->transferred_length,
+host/fc.c:			dev_info(ctrl->ctrl.device,
+host/fc.c:				ctrl->cnum, be16_to_cpu(op->rsp_iu.iu_len),
+host/fc.c:		dev_info(ctrl->ctrl.device,
+host/fc.c:			ctrl->cnum, freq->rcv_rsplen);
+host/fc.c:		nvme_complete_async_event(&queue->ctrl->ctrl, status, &result);
+host/fc.c:	if (terminate_assoc && ctrl->ctrl.state != NVME_CTRL_RESETTING)
+host/fc.c:		queue_work(nvme_reset_wq, &ctrl->ioerr_work);
+host/fc.c:	op->fcp_req.cmddma = fc_dma_map_single(ctrl->lport->dev,
+host/fc.c:	if (fc_dma_mapping_error(ctrl->lport->dev, op->fcp_req.cmddma)) {
+host/fc.c:		dev_err(ctrl->dev,
+host/fc.c:	op->fcp_req.rspdma = fc_dma_map_single(ctrl->lport->dev,
+host/fc.c:	if (fc_dma_mapping_error(ctrl->lport->dev, op->fcp_req.rspdma)) {
+host/fc.c:		dev_err(ctrl->dev,
+host/fc.c:	int queue_idx = (set == &ctrl->tag_set) ? hctx_idx + 1 : 0;
+host/fc.c:	struct nvme_fc_queue *queue = &ctrl->queues[queue_idx];
+host/fc.c:	nvme_req(rq)->ctrl = &ctrl->ctrl;
+host/fc.c:	aen_op = ctrl->aen_ops;
+host/fc.c:		if (ctrl->lport->ops->fcprqst_priv_sz) {
+host/fc.c:			private = kzalloc(ctrl->lport->ops->fcprqst_priv_sz,
+host/fc.c:		ret = __nvme_fc_init_request(ctrl, &ctrl->queues[0],
+host/fc.c:	cancel_work_sync(&ctrl->ctrl.async_event_work);
+host/fc.c:	aen_op = ctrl->aen_ops;
+host/fc.c:	struct nvme_fc_queue *queue = &ctrl->queues[qidx];
+host/fc.c:	queue = &ctrl->queues[idx];
+host/fc.c:	queue->dev = ctrl->dev;
+host/fc.c:		queue->cmnd_capsule_len = ctrl->ctrl.ioccsz * 16;
+host/fc.c:	if (ctrl->lport->ops->delete_queue)
+host/fc.c:		ctrl->lport->ops->delete_queue(&ctrl->lport->localport, qidx,
+host/fc.c:	for (i = 1; i < ctrl->ctrl.queue_count; i++)
+host/fc.c:		nvme_fc_free_queue(&ctrl->queues[i]);
+host/fc.c:	if (ctrl->lport->ops->create_queue)
+host/fc.c:		ret = ctrl->lport->ops->create_queue(&ctrl->lport->localport,
+host/fc.c:	struct nvme_fc_queue *queue = &ctrl->queues[ctrl->ctrl.queue_count - 1];
+host/fc.c:	for (i = ctrl->ctrl.queue_count - 1; i >= 1; i--, queue--)
+host/fc.c:	struct nvme_fc_queue *queue = &ctrl->queues[1];
+host/fc.c:	for (i = 1; i < ctrl->ctrl.queue_count; i++, queue++) {
+host/fc.c:		__nvme_fc_delete_hw_queue(ctrl, &ctrl->queues[i], i);
+host/fc.c:	for (i = 1; i < ctrl->ctrl.queue_count; i++) {
+host/fc.c:		ret = nvme_fc_connect_queue(ctrl, &ctrl->queues[i], qsize,
+host/fc.c:		ret = nvmf_connect_io_queue(&ctrl->ctrl, i);
+host/fc.c:		set_bit(NVME_FC_Q_LIVE, &ctrl->queues[i].flags);
+host/fc.c:	for (i = 1; i < ctrl->ctrl.queue_count; i++)
+host/fc.c:	if (ctrl->ctrl.tagset)
+host/fc.c:		nvme_remove_io_tag_set(&ctrl->ctrl);
+host/fc.c:	spin_lock_irqsave(&ctrl->rport->lock, flags);
+host/fc.c:	list_del(&ctrl->ctrl_list);
+host/fc.c:	spin_unlock_irqrestore(&ctrl->rport->lock, flags);
+host/fc.c:	nvme_unquiesce_admin_queue(&ctrl->ctrl);
+host/fc.c:	nvme_remove_admin_tag_set(&ctrl->ctrl);
+host/fc.c:	kfree(ctrl->queues);
+host/fc.c:	put_device(ctrl->dev);
+host/fc.c:	nvme_fc_rport_put(ctrl->rport);
+host/fc.c:	ida_free(&nvme_fc_ctrl_cnt, ctrl->cnum);
+host/fc.c:	if (ctrl->ctrl.opts)
+host/fc.c:		nvmf_free_options(ctrl->ctrl.opts);
+host/fc.c:	kref_put(&ctrl->ref, nvme_fc_ctrl_free);
+host/fc.c:	return kref_get_unless_zero(&ctrl->ref);
+host/fc.c:	WARN_ON(nctrl != &ctrl->ctrl);
+host/fc.c:	if (ctrl->ctrl.queue_count > 1) {
+host/fc.c:		for (q = 1; q < ctrl->ctrl.queue_count; q++)
+host/fc.c:			clear_bit(NVME_FC_Q_LIVE, &ctrl->queues[q].flags);
+host/fc.c:	clear_bit(NVME_FC_Q_LIVE, &ctrl->queues[0].flags);
+host/fc.c:	if (ctrl->ctrl.queue_count > 1) {
+host/fc.c:		nvme_quiesce_io_queues(&ctrl->ctrl);
+host/fc.c:		nvme_sync_io_queues(&ctrl->ctrl);
+host/fc.c:		blk_mq_tagset_busy_iter(&ctrl->tag_set,
+host/fc.c:				nvme_fc_terminate_exchange, &ctrl->ctrl);
+host/fc.c:		blk_mq_tagset_wait_completed_request(&ctrl->tag_set);
+host/fc.c:			nvme_unquiesce_io_queues(&ctrl->ctrl);
+host/fc.c:	nvme_quiesce_admin_queue(&ctrl->ctrl);
+host/fc.c:	blk_sync_queue(ctrl->ctrl.admin_q);
+host/fc.c:	blk_mq_tagset_busy_iter(&ctrl->admin_tag_set,
+host/fc.c:				nvme_fc_terminate_exchange, &ctrl->ctrl);
+host/fc.c:	blk_mq_tagset_wait_completed_request(&ctrl->admin_tag_set);
+host/fc.c:		nvme_unquiesce_admin_queue(&ctrl->ctrl);
+host/fc.c:	if (ctrl->ctrl.state == NVME_CTRL_CONNECTING) {
+host/fc.c:		set_bit(ASSOC_FAILED, &ctrl->flags);
+host/fc.c:		dev_warn(ctrl->ctrl.device,
+host/fc.c:			ctrl->cnum);
+host/fc.c:	if (ctrl->ctrl.state != NVME_CTRL_LIVE)
+host/fc.c:	dev_warn(ctrl->ctrl.device,
+host/fc.c:		ctrl->cnum, errmsg);
+host/fc.c:	dev_warn(ctrl->ctrl.device,
+host/fc.c:		"NVME-FC{%d}: resetting controller\n", ctrl->cnum);
+host/fc.c:	nvme_reset_ctrl(&ctrl->ctrl);
+host/fc.c:	dev_info(ctrl->ctrl.device,
+host/fc.c:		ctrl->cnum, op->queue->qnum, sqe->common.opcode,
+host/fc.c:	freq->sg_cnt = fc_dma_map_sg(ctrl->lport->dev, freq->sg_table.sgl,
+host/fc.c:	fc_dma_unmap_sg(ctrl->lport->dev, freq->sg_table.sgl, op->nents,
+host/fc.c:	if (ctrl->rport->remoteport.port_state != FC_OBJSTATE_ONLINE)
+host/fc.c:	fc_dma_sync_single_for_device(ctrl->lport->dev, op->fcp_req.cmddma,
+host/fc.c:	ret = ctrl->lport->ops->fcp_io(&ctrl->lport->localport,
+host/fc.c:					&ctrl->rport->remoteport,
+host/fc.c:		if (ctrl->rport->remoteport.port_state == FC_OBJSTATE_ONLINE &&
+host/fc.c:	if (ctrl->rport->remoteport.port_state != FC_OBJSTATE_ONLINE ||
+host/fc.c:	    !nvme_check_ready(&queue->ctrl->ctrl, rq, queue_ready))
+host/fc.c:		return nvme_fail_nonready_command(&queue->ctrl->ctrl, rq);
+host/fc.c:	if (test_bit(FCCTRL_TERMIO, &ctrl->flags))
+host/fc.c:	aen_op = &ctrl->aen_ops[0];
+host/fc.c:		dev_err(ctrl->ctrl.device,
+host/fc.c:		if (ctrl->lport->ops->map_queues)
+host/fc.c:			ctrl->lport->ops->map_queues(&ctrl->lport->localport,
+host/fc.c:	struct nvmf_ctrl_options *opts = ctrl->ctrl.opts;
+host/fc.c:				ctrl->lport->ops->max_hw_queues);
+host/fc.c:	ret = nvme_set_queue_count(&ctrl->ctrl, &nr_io_queues);
+host/fc.c:		dev_info(ctrl->ctrl.device,
+host/fc.c:	ctrl->ctrl.queue_count = nr_io_queues + 1;
+host/fc.c:	ret = nvme_alloc_io_tag_set(&ctrl->ctrl, &ctrl->tag_set,
+host/fc.c:				      ctrl->lport->ops->fcprqst_priv_sz));
+host/fc.c:	ret = nvme_fc_create_hw_io_queues(ctrl, ctrl->ctrl.sqsize + 1);
+host/fc.c:	ret = nvme_fc_connect_io_queues(ctrl, ctrl->ctrl.sqsize + 1);
+host/fc.c:	ctrl->ioq_live = true;
+host/fc.c:	nvme_remove_io_tag_set(&ctrl->ctrl);
+host/fc.c:	ctrl->ctrl.tagset = NULL;
+host/fc.c:	struct nvmf_ctrl_options *opts = ctrl->ctrl.opts;
+host/fc.c:	u32 prior_ioq_cnt = ctrl->ctrl.queue_count - 1;
+host/fc.c:				ctrl->lport->ops->max_hw_queues);
+host/fc.c:	ret = nvme_set_queue_count(&ctrl->ctrl, &nr_io_queues);
+host/fc.c:		dev_info(ctrl->ctrl.device,
+host/fc.c:		dev_info(ctrl->ctrl.device,
+host/fc.c:	ctrl->ctrl.queue_count = nr_io_queues + 1;
+host/fc.c:	if (ctrl->ctrl.queue_count == 1)
+host/fc.c:		dev_info(ctrl->ctrl.device,
+host/fc.c:		blk_mq_update_nr_hw_queues(&ctrl->tag_set, nr_io_queues);
+host/fc.c:	ret = nvme_fc_create_hw_io_queues(ctrl, ctrl->ctrl.sqsize + 1);
+host/fc.c:	ret = nvme_fc_connect_io_queues(ctrl, ctrl->ctrl.sqsize + 1);
+host/fc.c:	struct nvme_fc_rport *rport = ctrl->rport;
+host/fc.c:	if (test_and_set_bit(ASSOC_ACTIVE, &ctrl->flags))
+host/fc.c:	struct nvme_fc_rport *rport = ctrl->rport;
+host/fc.c:	/* clearing of ctrl->flags ASSOC_ACTIVE bit is in association delete */
+host/fc.c:	struct nvmf_ctrl_options *opts = ctrl->ctrl.opts;
+host/fc.c:	++ctrl->ctrl.nr_reconnects;
+host/fc.c:	if (ctrl->rport->remoteport.port_state != FC_OBJSTATE_ONLINE)
+host/fc.c:	dev_info(ctrl->ctrl.device,
+host/fc.c:		ctrl->cnum, ctrl->lport->localport.port_name,
+host/fc.c:		ctrl->rport->remoteport.port_name, ctrl->ctrl.opts->subsysnqn);
+host/fc.c:	clear_bit(ASSOC_FAILED, &ctrl->flags);
+host/fc.c:	ret = __nvme_fc_create_hw_queue(ctrl, &ctrl->queues[0], 0,
+host/fc.c:	ret = nvme_fc_connect_admin_queue(ctrl, &ctrl->queues[0],
+host/fc.c:	ret = nvmf_connect_admin_queue(&ctrl->ctrl);
+host/fc.c:	set_bit(NVME_FC_Q_LIVE, &ctrl->queues[0].flags);
+host/fc.c:	ret = nvme_enable_ctrl(&ctrl->ctrl);
+host/fc.c:	if (!ret && test_bit(ASSOC_FAILED, &ctrl->flags))
+host/fc.c:	ctrl->ctrl.max_segments = ctrl->lport->ops->max_sgl_segments;
+host/fc.c:	ctrl->ctrl.max_hw_sectors = ctrl->ctrl.max_segments <<
+host/fc.c:	nvme_unquiesce_admin_queue(&ctrl->ctrl);
+host/fc.c:	ret = nvme_init_ctrl_finish(&ctrl->ctrl, false);
+host/fc.c:	if (test_bit(ASSOC_FAILED, &ctrl->flags)) {
+host/fc.c:	if (ctrl->ctrl.icdoff) {
+host/fc.c:		dev_err(ctrl->ctrl.device, "icdoff %d is not supported!\n",
+host/fc.c:				ctrl->ctrl.icdoff);
+host/fc.c:	if (!nvme_ctrl_sgl_supported(&ctrl->ctrl)) {
+host/fc.c:		dev_err(ctrl->ctrl.device,
+host/fc.c:	if (opts->queue_size > ctrl->ctrl.maxcmd) {
+host/fc.c:		dev_warn(ctrl->ctrl.device,
+host/fc.c:			opts->queue_size, ctrl->ctrl.maxcmd);
+host/fc.c:		opts->queue_size = ctrl->ctrl.maxcmd;
+host/fc.c:		ctrl->ctrl.sqsize = opts->queue_size - 1;
+host/fc.c:	if (ctrl->ctrl.queue_count > 1) {
+host/fc.c:		if (!ctrl->ioq_live)
+host/fc.c:	if (!ret && test_bit(ASSOC_FAILED, &ctrl->flags))
+host/fc.c:	changed = nvme_change_ctrl_state(&ctrl->ctrl, NVME_CTRL_LIVE);
+host/fc.c:	ctrl->ctrl.nr_reconnects = 0;
+host/fc.c:		nvme_start_ctrl(&ctrl->ctrl);
+host/fc.c:	nvme_stop_keep_alive(&ctrl->ctrl);
+host/fc.c:	dev_warn(ctrl->ctrl.device,
+host/fc.c:		ctrl->cnum, ctrl->association_id, ret);
+host/fc.c:	spin_lock_irqsave(&ctrl->lock, flags);
+host/fc.c:	ctrl->association_id = 0;
+host/fc.c:	disls = ctrl->rcv_disconn;
+host/fc.c:	ctrl->rcv_disconn = NULL;
+host/fc.c:	spin_unlock_irqrestore(&ctrl->lock, flags);
+host/fc.c:	__nvme_fc_delete_hw_queue(ctrl, &ctrl->queues[0], 0);
+host/fc.c:	nvme_fc_free_queue(&ctrl->queues[0]);
+host/fc.c:	clear_bit(ASSOC_ACTIVE, &ctrl->flags);
+host/fc.c:	if (!test_and_clear_bit(ASSOC_ACTIVE, &ctrl->flags))
+host/fc.c:	spin_lock_irqsave(&ctrl->lock, flags);
+host/fc.c:	set_bit(FCCTRL_TERMIO, &ctrl->flags);
+host/fc.c:	ctrl->iocnt = 0;
+host/fc.c:	spin_unlock_irqrestore(&ctrl->lock, flags);
+host/fc.c:	spin_lock_irq(&ctrl->lock);
+host/fc.c:	wait_event_lock_irq(ctrl->ioabort_wait, ctrl->iocnt == 0, ctrl->lock);
+host/fc.c:	clear_bit(FCCTRL_TERMIO, &ctrl->flags);
+host/fc.c:	spin_unlock_irq(&ctrl->lock);
+host/fc.c:	if (ctrl->association_id)
+host/fc.c:	spin_lock_irqsave(&ctrl->lock, flags);
+host/fc.c:	ctrl->association_id = 0;
+host/fc.c:	disls = ctrl->rcv_disconn;
+host/fc.c:	ctrl->rcv_disconn = NULL;
+host/fc.c:	spin_unlock_irqrestore(&ctrl->lock, flags);
+host/fc.c:	if (ctrl->ctrl.tagset) {
+host/fc.c:	__nvme_fc_delete_hw_queue(ctrl, &ctrl->queues[0], 0);
+host/fc.c:	nvme_fc_free_queue(&ctrl->queues[0]);
+host/fc.c:	nvme_unquiesce_admin_queue(&ctrl->ctrl);
+host/fc.c:	nvme_unquiesce_io_queues(&ctrl->ctrl);
+host/fc.c:	cancel_work_sync(&ctrl->ioerr_work);
+host/fc.c:	cancel_delayed_work_sync(&ctrl->connect_work);
+host/fc.c:	struct nvme_fc_rport *rport = ctrl->rport;
+host/fc.c:	unsigned long recon_delay = ctrl->ctrl.opts->reconnect_delay * HZ;
+host/fc.c:	if (nvme_ctrl_state(&ctrl->ctrl) != NVME_CTRL_CONNECTING)
+host/fc.c:		dev_info(ctrl->ctrl.device,
+host/fc.c:			ctrl->cnum, status);
+host/fc.c:	if (recon && nvmf_should_reconnect(&ctrl->ctrl)) {
+host/fc.c:			dev_info(ctrl->ctrl.device,
+host/fc.c:				ctrl->cnum, recon_delay / HZ);
+host/fc.c:		queue_delayed_work(nvme_wq, &ctrl->connect_work, recon_delay);
+host/fc.c:				dev_warn(ctrl->ctrl.device,
+host/fc.c:					 ctrl->cnum);
+host/fc.c:				dev_warn(ctrl->ctrl.device,
+host/fc.c:					 ctrl->cnum, ctrl->ctrl.nr_reconnects);
+host/fc.c:			dev_warn(ctrl->ctrl.device,
+host/fc.c:				ctrl->cnum, min_t(int, portptr->dev_loss_tmo,
+host/fc.c:					(ctrl->ctrl.opts->max_reconnects *
+host/fc.c:					 ctrl->ctrl.opts->reconnect_delay)));
+host/fc.c:		WARN_ON(nvme_delete_ctrl(&ctrl->ctrl));
+host/fc.c:	nvme_stop_ctrl(&ctrl->ctrl);
+host/fc.c:	if (!nvme_change_ctrl_state(&ctrl->ctrl, NVME_CTRL_CONNECTING))
+host/fc.c:		dev_err(ctrl->ctrl.device,
+host/fc.c:			"to CONNECTING\n", ctrl->cnum);
+host/fc.c:	if (ctrl->rport->remoteport.port_state == FC_OBJSTATE_ONLINE) {
+host/fc.c:		if (!queue_delayed_work(nvme_wq, &ctrl->connect_work, 0)) {
+host/fc.c:			dev_err(ctrl->ctrl.device,
+host/fc.c:				"after reset\n", ctrl->cnum);
+host/fc.c:			flush_delayed_work(&ctrl->connect_work);
+host/fc.c:		dev_info(ctrl->ctrl.device,
+host/fc.c:			ctrl->cnum);
+host/fc.c:		found = nvmf_ctlr_matches_baseopts(&ctrl->ctrl, opts);
+host/fc.c:	ctrl->ctrl.opts = opts;
+host/fc.c:	ctrl->ctrl.nr_reconnects = 0;
+host/fc.c:	INIT_LIST_HEAD(&ctrl->ctrl_list);
+host/fc.c:	ctrl->lport = lport;
+host/fc.c:	ctrl->rport = rport;
+host/fc.c:	ctrl->dev = lport->dev;
+host/fc.c:	ctrl->cnum = idx;
+host/fc.c:	ctrl->ioq_live = false;
+host/fc.c:	init_waitqueue_head(&ctrl->ioabort_wait);
+host/fc.c:	get_device(ctrl->dev);
+host/fc.c:	kref_init(&ctrl->ref);
+host/fc.c:	INIT_WORK(&ctrl->ctrl.reset_work, nvme_fc_reset_ctrl_work);
+host/fc.c:	INIT_DELAYED_WORK(&ctrl->connect_work, nvme_fc_connect_ctrl_work);
+host/fc.c:	INIT_WORK(&ctrl->ioerr_work, nvme_fc_ctrl_ioerr_work);
+host/fc.c:	spin_lock_init(&ctrl->lock);
+host/fc.c:	ctrl->ctrl.queue_count = min_t(unsigned int,
+host/fc.c:	ctrl->ctrl.queue_count++;	/* +1 for admin queue */
+host/fc.c:	ctrl->ctrl.sqsize = opts->queue_size - 1;
+host/fc.c:	ctrl->ctrl.kato = opts->kato;
+host/fc.c:	ctrl->ctrl.cntlid = 0xffff;
+host/fc.c:	ctrl->queues = kcalloc(ctrl->ctrl.queue_count,
+host/fc.c:	if (!ctrl->queues)
+host/fc.c:	ret = nvme_init_ctrl(&ctrl->ctrl, dev, &nvme_fc_ctrl_ops, 0);
+host/fc.c:		ctrl->ctrl.numa_node = dev_to_node(lport->dev);
+host/fc.c:	ret = nvme_alloc_admin_tag_set(&ctrl->ctrl, &ctrl->admin_tag_set,
+host/fc.c:				      ctrl->lport->ops->fcprqst_priv_sz));
+host/fc.c:	list_add_tail(&ctrl->ctrl_list, &rport->ctrl_list);
+host/fc.c:	if (!nvme_change_ctrl_state(&ctrl->ctrl, NVME_CTRL_RESETTING) ||
+host/fc.c:	    !nvme_change_ctrl_state(&ctrl->ctrl, NVME_CTRL_CONNECTING)) {
+host/fc.c:		dev_err(ctrl->ctrl.device,
+host/fc.c:			"NVME-FC{%d}: failed to init ctrl state\n", ctrl->cnum);
+host/fc.c:	if (!queue_delayed_work(nvme_wq, &ctrl->connect_work, 0)) {
+host/fc.c:		dev_err(ctrl->ctrl.device,
+host/fc.c:			ctrl->cnum);
+host/fc.c:	flush_delayed_work(&ctrl->connect_work);
+host/fc.c:	dev_info(ctrl->ctrl.device,
+host/fc.c:		ctrl->cnum, nvmf_ctrl_subsysnqn(&ctrl->ctrl));
+host/fc.c:	return &ctrl->ctrl;
+host/fc.c:	nvme_change_ctrl_state(&ctrl->ctrl, NVME_CTRL_DELETING);
+host/fc.c:	cancel_work_sync(&ctrl->ioerr_work);
+host/fc.c:	cancel_work_sync(&ctrl->ctrl.reset_work);
+host/fc.c:	cancel_delayed_work_sync(&ctrl->connect_work);
+host/fc.c:	ctrl->ctrl.opts = NULL;
+host/fc.c:	nvme_uninit_ctrl(&ctrl->ctrl);
+host/fc.c:	nvme_put_ctrl(&ctrl->ctrl);
+host/fc.c:	kfree(ctrl->queues);
+host/fc.c:	put_device(ctrl->dev);
+host/fc.c:	ida_free(&nvme_fc_ctrl_cnt, ctrl->cnum);
+host/fc.c:		dev_warn(ctrl->ctrl.device,
+host/fc.c:			ctrl->cnum);
+host/fc.c:		nvme_delete_ctrl(&ctrl->ctrl);
+host/hwmon.c:		*val = kelvin_to_millicelsius(data->ctrl->cctemp);
+host/hwmon.c:		if (!channel && data->ctrl->cctemp)
+host/hwmon.c:		if ((!channel && data->ctrl->wctemp) ||
+host/hwmon.c:		     !(data->ctrl->quirks &
+host/hwmon.c:			if (data->ctrl->quirks &
+host/hwmon.c:	struct device *dev = ctrl->device;
+host/hwmon.c:	ctrl->hwmon_device = hwmon;
+host/hwmon.c:	if (ctrl->hwmon_device) {
+host/hwmon.c:			dev_get_drvdata(ctrl->hwmon_device);
+host/hwmon.c:		hwmon_device_unregister(ctrl->hwmon_device);
+host/hwmon.c:		ctrl->hwmon_device = NULL;
+host/ioctl.c:		dev_err(ctrl->device,
+host/ioctl.c:	status = nvme_submit_user_cmd(ns ? ns->queue : ctrl->admin_q, &c,
+host/ioctl.c:	status = nvme_submit_user_cmd(ns ? ns->queue : ctrl->admin_q, &c,
+host/ioctl.c:	struct request_queue *q = ns ? ns->queue : ctrl->admin_q;
+host/ioctl.c:		return sed_ioctl(ctrl->opal_dev, cmd, argp);
+host/ioctl.c:	down_read(&ctrl->namespaces_rwsem);
+host/ioctl.c:	if (list_empty(&ctrl->namespaces)) {
+host/ioctl.c:	ns = list_first_entry(&ctrl->namespaces, struct nvme_ns, list);
+host/ioctl.c:	if (ns != list_last_entry(&ctrl->namespaces, struct nvme_ns, list)) {
+host/ioctl.c:		dev_warn(ctrl->device,
+host/ioctl.c:	dev_warn(ctrl->device,
+host/ioctl.c:	up_read(&ctrl->namespaces_rwsem);
+host/ioctl.c:	up_read(&ctrl->namespaces_rwsem);
+host/ioctl.c:		dev_warn(ctrl->device, "resetting controller\n");
+host/multipath.c:	if (nvme_is_ana_error(status) && ns->ctrl->ana_log_buf) {
+host/multipath.c:		queue_work(nvme_wq, &ns->ctrl->ana_work);
+host/multipath.c:	down_read(&ctrl->namespaces_rwsem);
+host/multipath.c:	list_for_each_entry(ns, &ctrl->namespaces, list) {
+host/multipath.c:		if (ctrl->state == NVME_CTRL_LIVE)
+host/multipath.c:	up_read(&ctrl->namespaces_rwsem);
+host/multipath.c:	down_read(&ctrl->namespaces_rwsem);
+host/multipath.c:	list_for_each_entry(ns, &ctrl->namespaces, list) {
+host/multipath.c:	up_read(&ctrl->namespaces_rwsem);
+host/multipath.c:	if (ns->ctrl->state != NVME_CTRL_LIVE &&
+host/multipath.c:	    ns->ctrl->state != NVME_CTRL_DELETING)
+host/multipath.c:			distance = node_distance(node, ns->ctrl->numa_node);
+host/multipath.c:	return ns->ctrl->state == NVME_CTRL_LIVE &&
+host/multipath.c:		if (test_bit(NVME_CTRL_FAILFAST_EXPIRED, &ns->ctrl->flags))
+host/multipath.c:		switch (ns->ctrl->state) {
+host/multipath.c:	if (!(ctrl->subsys->cmic & NVME_CTRL_CMIC_MULTI_CTRL) ||
+host/multipath.c:	head->disk = blk_alloc_disk(ctrl->numa_node);
+host/multipath.c:			ctrl->subsys->instance, head->instance);
+host/multipath.c:	if (ctrl->tagset->nr_maps > HCTX_TYPE_POLL &&
+host/multipath.c:	    ctrl->tagset->map[HCTX_TYPE_POLL].nr_queues)
+host/multipath.c:	if (ctrl->vwc & NVME_CTRL_VWC_PRESENT)
+host/multipath.c:	void *base = ctrl->ana_log_buf;
+host/multipath.c:	lockdep_assert_held(&ctrl->ana_lock);
+host/multipath.c:	for (i = 0; i < le16_to_cpu(ctrl->ana_log_buf->ngrps); i++) {
+host/multipath.c:		if (WARN_ON_ONCE(offset > ctrl->ana_log_size - sizeof(*desc)))
+host/multipath.c:		if (WARN_ON_ONCE(le32_to_cpu(desc->grpid) > ctrl->anagrpmax))
+host/multipath.c:		if (WARN_ON_ONCE(offset > ctrl->ana_log_size - nsid_buf_size))
+host/multipath.c:	    ns->ctrl->state == NVME_CTRL_LIVE)
+host/multipath.c:	dev_dbg(ctrl->device, "ANA group %d: %s.\n",
+host/multipath.c:	down_read(&ctrl->namespaces_rwsem);
+host/multipath.c:	list_for_each_entry(ns, &ctrl->namespaces, list) {
+host/multipath.c:	up_read(&ctrl->namespaces_rwsem);
+host/multipath.c:	mutex_lock(&ctrl->ana_lock);
+host/multipath.c:			ctrl->ana_log_buf, ctrl->ana_log_size, 0);
+host/multipath.c:		dev_warn(ctrl->device, "Failed to get ANA log: %d\n", error);
+host/multipath.c:		mod_timer(&ctrl->anatt_timer, ctrl->anatt * HZ * 2 + jiffies);
+host/multipath.c:		del_timer_sync(&ctrl->anatt_timer);
+host/multipath.c:	mutex_unlock(&ctrl->ana_lock);
+host/multipath.c:	if (ctrl->state != NVME_CTRL_LIVE)
+host/multipath.c:	if (!ctrl->ana_log_buf)
+host/multipath.c:	mutex_lock(&ctrl->ana_lock);
+host/multipath.c:	mutex_unlock(&ctrl->ana_lock);
+host/multipath.c:	dev_info(ctrl->device, "ANATT timeout, resetting controller.\n");
+host/multipath.c:	del_timer_sync(&ctrl->anatt_timer);
+host/multipath.c:	cancel_work_sync(&ctrl->ana_work);
+host/multipath.c:		mutex_lock(&ns->ctrl->ana_lock);
+host/multipath.c:		mutex_unlock(&ns->ctrl->ana_lock);
+host/multipath.c:			queue_work(nvme_wq, &ns->ctrl->ana_work);
+host/multipath.c:	mutex_init(&ctrl->ana_lock);
+host/multipath.c:	timer_setup(&ctrl->anatt_timer, nvme_anatt_timeout, 0);
+host/multipath.c:	INIT_WORK(&ctrl->ana_work, nvme_ana_work);
+host/multipath.c:	size_t max_transfer_size = ctrl->max_hw_sectors << SECTOR_SHIFT;
+host/multipath.c:	if (!multipath || !ctrl->subsys ||
+host/multipath.c:	    !(ctrl->subsys->cmic & NVME_CTRL_CMIC_ANA))
+host/multipath.c:	if (!ctrl->max_namespaces ||
+host/multipath.c:	    ctrl->max_namespaces > le32_to_cpu(id->nn)) {
+host/multipath.c:		dev_err(ctrl->device,
+host/multipath.c:			"Invalid MNAN value %u\n", ctrl->max_namespaces);
+host/multipath.c:	ctrl->anacap = id->anacap;
+host/multipath.c:	ctrl->anatt = id->anatt;
+host/multipath.c:	ctrl->nanagrpid = le32_to_cpu(id->nanagrpid);
+host/multipath.c:	ctrl->anagrpmax = le32_to_cpu(id->anagrpmax);
+host/multipath.c:		ctrl->nanagrpid * sizeof(struct nvme_ana_group_desc) +
+host/multipath.c:		ctrl->max_namespaces * sizeof(__le32);
+host/multipath.c:		dev_err(ctrl->device,
+host/multipath.c:		dev_err(ctrl->device, "disabling ANA support.\n");
+host/multipath.c:	if (ana_log_size > ctrl->ana_log_size) {
+host/multipath.c:		ctrl->ana_log_buf = kvmalloc(ana_log_size, GFP_KERNEL);
+host/multipath.c:		if (!ctrl->ana_log_buf)
+host/multipath.c:	ctrl->ana_log_size = ana_log_size;
+host/multipath.c:	kvfree(ctrl->ana_log_buf);
+host/multipath.c:	ctrl->ana_log_buf = NULL;
+host/multipath.c:	ctrl->ana_log_size = 0;
+host/nvme.h:	return READ_ONCE(ctrl->state);
+host/nvme.h:		dev_err(nvme_req(rq)->ctrl->device,
+host/nvme.h:	struct nvme_subsystem *subsys = ctrl->subsys;
+host/nvme.h:	if (ctrl->ops->print_device_info) {
+host/nvme.h:		ctrl->ops->print_device_info(ctrl);
+host/nvme.h:	dev_err(ctrl->device,
+host/nvme.h:	if (!ctrl->subsystem)
+host/nvme.h:	ret = ctrl->ops->reg_write32(ctrl, NVME_REG_NSSR, 0x4E564D65);
+host/nvme.h:	if (!(ctrl->quirks & NVME_QUIRK_SKIP_CID_GEN))
+host/nvme.h:	get_device(ctrl->device);
+host/nvme.h:	put_device(ctrl->device);
+host/nvme.h:	if (likely(ctrl->state == NVME_CTRL_LIVE))
+host/nvme.h:	if (ctrl->ops->flags & NVME_F_FABRICS &&
+host/nvme.h:	    ctrl->state == NVME_CTRL_DELETING)
+host/nvme.h:		(ctrl->oacs & NVME_CTRL_OACS_NS_MNGT_SUPP) ||
+host/nvme.h:		(ctrl->subsys->cmic & NVME_CTRL_CMIC_ANA) ||
+host/nvme.h:		(ctrl->ctratt & NVME_CTRL_CTRATT_NVM_SETS);
+host/nvme.h:	return ctrl->ana_log_buf != NULL;
+host/nvme.h:	if (ctrl->subsys->cmic & NVME_CTRL_CMIC_ANA)
+host/nvme.h:		dev_warn(ctrl->device,
+host/nvme.h:	dev_warn(ns->ctrl->device,
+host/nvme.h:	return ctrl->sgls & ((1 << 0) | (1 << 1));
+host/nvme.h:	return (ctrl->ctrl_config & NVME_CC_CSS_MASK) == NVME_CC_CSS_CSI;
+host/pci.c:	if (ctrl->quirks & NVME_QUIRK_MEDIUM_PRIO_SQ)
+host/pci.c:	if (a == &dev_attr_hmb.attr && !ctrl->hmpre)
+host/pci.c:	struct nvme_subsystem *subsys = ctrl->subsys;
+host/pci.c:	dev_err(ctrl->device,
+host/pci.c:	if (ctrl->hmpre && nvme_setup_host_mem(ndev))
+host/pci.c:	if (pm_suspend_via_firmware() || !ctrl->npss ||
+host/pci.c:	ret = nvme_set_power_state(ctrl, ctrl->npss);
+host/pci.c:		ctrl->npss = 0;
+host/rdma.c:	return queue - queue->ctrl->queues;
+host/rdma.c:		queue->ctrl->io_queues[HCTX_TYPE_DEFAULT] +
+host/rdma.c:		queue->ctrl->io_queues[HCTX_TYPE_READ];
+host/rdma.c:	int queue_idx = (set == &ctrl->tag_set) ? hctx_idx + 1 : 0;
+host/rdma.c:	struct nvme_rdma_queue *queue = &ctrl->queues[queue_idx];
+host/rdma.c:	nvme_req(rq)->ctrl = &ctrl->ctrl;
+host/rdma.c:	struct nvme_rdma_queue *queue = &ctrl->queues[hctx_idx + 1];
+host/rdma.c:	BUG_ON(hctx_idx >= ctrl->ctrl.queue_count);
+host/rdma.c:	struct nvme_rdma_queue *queue = &ctrl->queues[0];
+host/rdma.c:		dev_err(queue->ctrl->ctrl.device,
+host/rdma.c:			dev_err(queue->ctrl->ctrl.device,
+host/rdma.c:	queue = &ctrl->queues[idx];
+host/rdma.c:	if (idx && ctrl->ctrl.max_integrity_segments)
+host/rdma.c:		queue->cmnd_capsule_len = ctrl->ctrl.ioccsz * 16;
+host/rdma.c:		dev_info(ctrl->ctrl.device,
+host/rdma.c:	if (ctrl->ctrl.opts->mask & NVMF_OPT_HOST_TRADDR)
+host/rdma.c:		src_addr = (struct sockaddr *)&ctrl->src_addr;
+host/rdma.c:			(struct sockaddr *)&ctrl->addr,
+host/rdma.c:		dev_info(ctrl->ctrl.device,
+host/rdma.c:		dev_info(ctrl->ctrl.device,
+host/rdma.c:	for (i = 1; i < ctrl->ctrl.queue_count; i++)
+host/rdma.c:		nvme_rdma_free_queue(&ctrl->queues[i]);
+host/rdma.c:	for (i = 1; i < ctrl->ctrl.queue_count; i++)
+host/rdma.c:		nvme_rdma_stop_queue(&ctrl->queues[i]);
+host/rdma.c:	struct nvme_rdma_queue *queue = &ctrl->queues[idx];
+host/rdma.c:		ret = nvmf_connect_io_queue(&ctrl->ctrl, idx);
+host/rdma.c:		ret = nvmf_connect_admin_queue(&ctrl->ctrl);
+host/rdma.c:		dev_info(ctrl->ctrl.device,
+host/rdma.c:		nvme_rdma_stop_queue(&ctrl->queues[i]);
+host/rdma.c:	struct nvmf_ctrl_options *opts = ctrl->ctrl.opts;
+host/rdma.c:	ret = nvme_set_queue_count(&ctrl->ctrl, &nr_io_queues);
+host/rdma.c:		dev_err(ctrl->ctrl.device,
+host/rdma.c:	ctrl->ctrl.queue_count = nr_io_queues + 1;
+host/rdma.c:	dev_info(ctrl->ctrl.device,
+host/rdma.c:	nvmf_set_io_queues(opts, nr_io_queues, ctrl->io_queues);
+host/rdma.c:	for (i = 1; i < ctrl->ctrl.queue_count; i++) {
+host/rdma.c:				ctrl->ctrl.sqsize + 1);
+host/rdma.c:		nvme_rdma_free_queue(&ctrl->queues[i]);
+host/rdma.c:	if (ctrl->max_integrity_segments)
+host/rdma.c:			ctrl->opts->nr_poll_queues ? HCTX_MAX_TYPES : 2,
+host/rdma.c:	if (ctrl->async_event_sqe.data) {
+host/rdma.c:		cancel_work_sync(&ctrl->ctrl.async_event_work);
+host/rdma.c:		nvme_rdma_free_qe(ctrl->device->dev, &ctrl->async_event_sqe,
+host/rdma.c:		ctrl->async_event_sqe.data = NULL;
+host/rdma.c:	nvme_rdma_free_queue(&ctrl->queues[0]);
+host/rdma.c:	ctrl->device = ctrl->queues[0].device;
+host/rdma.c:	ctrl->ctrl.numa_node = ibdev_to_node(ctrl->device->dev);
+host/rdma.c:	if (ctrl->device->dev->attrs.kernel_cap_flags &
+host/rdma.c:	ctrl->max_fr_pages = nvme_rdma_get_max_fr_pages(ctrl->device->dev,
+host/rdma.c:	error = nvme_rdma_alloc_qe(ctrl->device->dev, &ctrl->async_event_sqe,
+host/rdma.c:		error = nvme_alloc_admin_tag_set(&ctrl->ctrl,
+host/rdma.c:				&ctrl->admin_tag_set, &nvme_rdma_admin_mq_ops,
+host/rdma.c:	error = nvme_enable_ctrl(&ctrl->ctrl);
+host/rdma.c:	ctrl->ctrl.max_segments = ctrl->max_fr_pages;
+host/rdma.c:	ctrl->ctrl.max_hw_sectors = ctrl->max_fr_pages << (ilog2(SZ_4K) - 9);
+host/rdma.c:		ctrl->ctrl.max_integrity_segments = ctrl->max_fr_pages;
+host/rdma.c:		ctrl->ctrl.max_integrity_segments = 0;
+host/rdma.c:	nvme_unquiesce_admin_queue(&ctrl->ctrl);
+host/rdma.c:	error = nvme_init_ctrl_finish(&ctrl->ctrl, false);
+host/rdma.c:	nvme_quiesce_admin_queue(&ctrl->ctrl);
+host/rdma.c:	blk_sync_queue(ctrl->ctrl.admin_q);
+host/rdma.c:	nvme_rdma_stop_queue(&ctrl->queues[0]);
+host/rdma.c:	nvme_cancel_admin_tagset(&ctrl->ctrl);
+host/rdma.c:		nvme_remove_admin_tag_set(&ctrl->ctrl);
+host/rdma.c:	if (ctrl->async_event_sqe.data) {
+host/rdma.c:		nvme_rdma_free_qe(ctrl->device->dev, &ctrl->async_event_sqe,
+host/rdma.c:		ctrl->async_event_sqe.data = NULL;
+host/rdma.c:	nvme_rdma_free_queue(&ctrl->queues[0]);
+host/rdma.c:		ret = nvme_rdma_alloc_tag_set(&ctrl->ctrl);
+host/rdma.c:	nr_queues = min(ctrl->tag_set.nr_hw_queues + 1, ctrl->ctrl.queue_count);
+host/rdma.c:		nvme_start_freeze(&ctrl->ctrl);
+host/rdma.c:		nvme_unquiesce_io_queues(&ctrl->ctrl);
+host/rdma.c:		if (!nvme_wait_freeze_timeout(&ctrl->ctrl, NVME_IO_TIMEOUT)) {
+host/rdma.c:			nvme_unfreeze(&ctrl->ctrl);
+host/rdma.c:		blk_mq_update_nr_hw_queues(ctrl->ctrl.tagset,
+host/rdma.c:			ctrl->ctrl.queue_count - 1);
+host/rdma.c:		nvme_unfreeze(&ctrl->ctrl);
+host/rdma.c:					ctrl->tag_set.nr_hw_queues + 1);
+host/rdma.c:	nvme_quiesce_io_queues(&ctrl->ctrl);
+host/rdma.c:	nvme_sync_io_queues(&ctrl->ctrl);
+host/rdma.c:	nvme_cancel_tagset(&ctrl->ctrl);
+host/rdma.c:		nvme_remove_io_tag_set(&ctrl->ctrl);
+host/rdma.c:	nvme_quiesce_admin_queue(&ctrl->ctrl);
+host/rdma.c:	blk_sync_queue(ctrl->ctrl.admin_q);
+host/rdma.c:	nvme_rdma_stop_queue(&ctrl->queues[0]);
+host/rdma.c:	nvme_cancel_admin_tagset(&ctrl->ctrl);
+host/rdma.c:		nvme_unquiesce_admin_queue(&ctrl->ctrl);
+host/rdma.c:		nvme_remove_admin_tag_set(&ctrl->ctrl);
+host/rdma.c:	if (ctrl->ctrl.queue_count > 1) {
+host/rdma.c:		nvme_quiesce_io_queues(&ctrl->ctrl);
+host/rdma.c:		nvme_sync_io_queues(&ctrl->ctrl);
+host/rdma.c:		nvme_cancel_tagset(&ctrl->ctrl);
+host/rdma.c:			nvme_unquiesce_io_queues(&ctrl->ctrl);
+host/rdma.c:			nvme_remove_io_tag_set(&ctrl->ctrl);
+host/rdma.c:	flush_work(&ctrl->err_work);
+host/rdma.c:	cancel_delayed_work_sync(&ctrl->reconnect_work);
+host/rdma.c:	if (list_empty(&ctrl->list))
+host/rdma.c:	list_del(&ctrl->list);
+host/rdma.c:	nvmf_free_options(nctrl->opts);
+host/rdma.c:	kfree(ctrl->queues);
+host/rdma.c:	enum nvme_ctrl_state state = nvme_ctrl_state(&ctrl->ctrl);
+host/rdma.c:	if (nvmf_should_reconnect(&ctrl->ctrl)) {
+host/rdma.c:		dev_info(ctrl->ctrl.device, "Reconnecting in %d seconds...\n",
+host/rdma.c:			ctrl->ctrl.opts->reconnect_delay);
+host/rdma.c:		queue_delayed_work(nvme_wq, &ctrl->reconnect_work,
+host/rdma.c:				ctrl->ctrl.opts->reconnect_delay * HZ);
+host/rdma.c:		nvme_delete_ctrl(&ctrl->ctrl);
+host/rdma.c:	if (ctrl->ctrl.icdoff) {
+host/rdma.c:		dev_err(ctrl->ctrl.device, "icdoff is not supported!\n");
+host/rdma.c:	if (!(ctrl->ctrl.sgls & (1 << 2))) {
+host/rdma.c:		dev_err(ctrl->ctrl.device,
+host/rdma.c:	if (ctrl->ctrl.opts->queue_size > ctrl->ctrl.sqsize + 1) {
+host/rdma.c:		dev_warn(ctrl->ctrl.device,
+host/rdma.c:			ctrl->ctrl.opts->queue_size, ctrl->ctrl.sqsize + 1);
+host/rdma.c:	if (ctrl->ctrl.sqsize + 1 > NVME_RDMA_MAX_QUEUE_SIZE) {
+host/rdma.c:		dev_warn(ctrl->ctrl.device,
+host/rdma.c:			ctrl->ctrl.sqsize + 1, NVME_RDMA_MAX_QUEUE_SIZE);
+host/rdma.c:		ctrl->ctrl.sqsize = NVME_RDMA_MAX_QUEUE_SIZE - 1;
+host/rdma.c:	if (ctrl->ctrl.sqsize + 1 > ctrl->ctrl.maxcmd) {
+host/rdma.c:		dev_warn(ctrl->ctrl.device,
+host/rdma.c:			ctrl->ctrl.sqsize + 1, ctrl->ctrl.maxcmd);
+host/rdma.c:		ctrl->ctrl.sqsize = ctrl->ctrl.maxcmd - 1;
+host/rdma.c:	if (ctrl->ctrl.sgls & (1 << 20))
+host/rdma.c:		ctrl->use_inline_data = true;
+host/rdma.c:	if (ctrl->ctrl.queue_count > 1) {
+host/rdma.c:	changed = nvme_change_ctrl_state(&ctrl->ctrl, NVME_CTRL_LIVE);
+host/rdma.c:		enum nvme_ctrl_state state = nvme_ctrl_state(&ctrl->ctrl);
+host/rdma.c:	nvme_start_ctrl(&ctrl->ctrl);
+host/rdma.c:	if (ctrl->ctrl.queue_count > 1) {
+host/rdma.c:		nvme_quiesce_io_queues(&ctrl->ctrl);
+host/rdma.c:		nvme_sync_io_queues(&ctrl->ctrl);
+host/rdma.c:		nvme_cancel_tagset(&ctrl->ctrl);
+host/rdma.c:			nvme_remove_io_tag_set(&ctrl->ctrl);
+host/rdma.c:	nvme_stop_keep_alive(&ctrl->ctrl);
+host/rdma.c:	nvme_quiesce_admin_queue(&ctrl->ctrl);
+host/rdma.c:	blk_sync_queue(ctrl->ctrl.admin_q);
+host/rdma.c:	nvme_rdma_stop_queue(&ctrl->queues[0]);
+host/rdma.c:	nvme_cancel_admin_tagset(&ctrl->ctrl);
+host/rdma.c:		nvme_remove_admin_tag_set(&ctrl->ctrl);
+host/rdma.c:	++ctrl->ctrl.nr_reconnects;
+host/rdma.c:	dev_info(ctrl->ctrl.device, "Successfully reconnected (%d attempts)\n",
+host/rdma.c:			ctrl->ctrl.nr_reconnects);
+host/rdma.c:	ctrl->ctrl.nr_reconnects = 0;
+host/rdma.c:	dev_info(ctrl->ctrl.device, "Failed reconnect attempt %d\n",
+host/rdma.c:			ctrl->ctrl.nr_reconnects);
+host/rdma.c:	nvme_stop_keep_alive(&ctrl->ctrl);
+host/rdma.c:	flush_work(&ctrl->ctrl.async_event_work);
+host/rdma.c:	nvme_unquiesce_io_queues(&ctrl->ctrl);
+host/rdma.c:	nvme_unquiesce_admin_queue(&ctrl->ctrl);
+host/rdma.c:	nvme_auth_stop(&ctrl->ctrl);
+host/rdma.c:	if (!nvme_change_ctrl_state(&ctrl->ctrl, NVME_CTRL_CONNECTING)) {
+host/rdma.c:		enum nvme_ctrl_state state = nvme_ctrl_state(&ctrl->ctrl);
+host/rdma.c:	if (!nvme_change_ctrl_state(&ctrl->ctrl, NVME_CTRL_RESETTING))
+host/rdma.c:	dev_warn(ctrl->ctrl.device, "starting error recovery\n");
+host/rdma.c:	queue_work(nvme_reset_wq, &ctrl->err_work);
+host/rdma.c:	if (nvme_ctrl_state(&ctrl->ctrl) == NVME_CTRL_LIVE)
+host/rdma.c:		dev_info(ctrl->ctrl.device,
+host/rdma.c:	sg->addr = cpu_to_le64(queue->ctrl->ctrl.icdoff);
+host/rdma.c:		    queue->ctrl->use_inline_data &&
+host/rdma.c:		dev_err(queue->ctrl->ctrl.device,
+host/rdma.c:		dev_err(queue->ctrl->ctrl.device,
+host/rdma.c:		return queue->ctrl->admin_tag_set.tags[queue_idx];
+host/rdma.c:	return queue->ctrl->tag_set.tags[queue_idx - 1];
+host/rdma.c:	struct nvme_rdma_queue *queue = &ctrl->queues[0];
+host/rdma.c:	struct nvme_rdma_qe *sqe = &ctrl->async_event_sqe;
+host/rdma.c:		dev_err(queue->ctrl->ctrl.device,
+host/rdma.c:			dev_err(queue->ctrl->ctrl.device,
+host/rdma.c:			dev_err(queue->ctrl->ctrl.device,
+host/rdma.c:		dev_err(queue->ctrl->ctrl.device,
+host/rdma.c:		nvme_complete_async_event(&queue->ctrl->ctrl, cqe->status,
+host/rdma.c:		dev_err(queue->ctrl->ctrl.device,
+host/rdma.c:		dev_err(queue->ctrl->ctrl.device,
+host/rdma.c:	struct nvme_ctrl *ctrl = &queue->ctrl->ctrl;
+host/rdma.c:	if (ctrl->opts->tos >= 0)
+host/rdma.c:		rdma_set_service_type(queue->cm_id, ctrl->opts->tos);
+host/rdma.c:		dev_err(ctrl->device, "rdma_resolve_route failed (%d).\n",
+host/rdma.c:		priv.hsqsize = cpu_to_le16(queue->ctrl->ctrl.sqsize);
+host/rdma.c:		dev_err(ctrl->ctrl.device,
+host/rdma.c:	dev_dbg(queue->ctrl->ctrl.device, "%s (%d): status %d id %p\n",
+host/rdma.c:		dev_dbg(queue->ctrl->ctrl.device,
+host/rdma.c:		dev_dbg(queue->ctrl->ctrl.device,
+host/rdma.c:		dev_err(queue->ctrl->ctrl.device,
+host/rdma.c:	dev_warn(ctrl->ctrl.device,
+host/rdma.c:	if (nvme_ctrl_state(&ctrl->ctrl) != NVME_CTRL_LIVE) {
+host/rdma.c:	if (!nvme_check_ready(&queue->ctrl->ctrl, rq, queue_ready))
+host/rdma.c:		return nvme_fail_nonready_command(&queue->ctrl->ctrl, rq);
+host/rdma.c:		dev_err(queue->ctrl->ctrl.device,
+host/rdma.c:	nvmf_map_queues(set, &ctrl->ctrl, ctrl->io_queues);
+host/rdma.c:	nvme_quiesce_admin_queue(&ctrl->ctrl);
+host/rdma.c:	nvme_disable_ctrl(&ctrl->ctrl, shutdown);
+host/rdma.c:	nvme_stop_ctrl(&ctrl->ctrl);
+host/rdma.c:	if (!nvme_change_ctrl_state(&ctrl->ctrl, NVME_CTRL_CONNECTING)) {
+host/rdma.c:	++ctrl->ctrl.nr_reconnects;
+host/rdma.c:		found = nvmf_ip_options_match(&ctrl->ctrl, opts);
+host/rdma.c:	ctrl->ctrl.opts = opts;
+host/rdma.c:	INIT_LIST_HEAD(&ctrl->list);
+host/rdma.c:			opts->traddr, opts->trsvcid, &ctrl->addr);
+host/rdma.c:			opts->host_traddr, NULL, &ctrl->src_addr);
+host/rdma.c:	INIT_DELAYED_WORK(&ctrl->reconnect_work,
+host/rdma.c:	INIT_WORK(&ctrl->err_work, nvme_rdma_error_recovery_work);
+host/rdma.c:	INIT_WORK(&ctrl->ctrl.reset_work, nvme_rdma_reset_ctrl_work);
+host/rdma.c:	ctrl->ctrl.queue_count = opts->nr_io_queues + opts->nr_write_queues +
+host/rdma.c:	ctrl->ctrl.sqsize = opts->queue_size - 1;
+host/rdma.c:	ctrl->ctrl.kato = opts->kato;
+host/rdma.c:	ctrl->queues = kcalloc(ctrl->ctrl.queue_count, sizeof(*ctrl->queues),
+host/rdma.c:	if (!ctrl->queues)
+host/rdma.c:	ret = nvme_init_ctrl(&ctrl->ctrl, dev, &nvme_rdma_ctrl_ops,
+host/rdma.c:	changed = nvme_change_ctrl_state(&ctrl->ctrl, NVME_CTRL_CONNECTING);
+host/rdma.c:	dev_info(ctrl->ctrl.device, "new ctrl: NQN \"%s\", addr %pISpcs\n",
+host/rdma.c:		nvmf_ctrl_subsysnqn(&ctrl->ctrl), &ctrl->addr);
+host/rdma.c:	list_add_tail(&ctrl->list, &nvme_rdma_ctrl_list);
+host/rdma.c:	return &ctrl->ctrl;
+host/rdma.c:	nvme_uninit_ctrl(&ctrl->ctrl);
+host/rdma.c:	nvme_put_ctrl(&ctrl->ctrl);
+host/rdma.c:	kfree(ctrl->queues);
+host/rdma.c:		if (ctrl->device->dev != ib_device)
+host/rdma.c:		nvme_delete_ctrl(&ctrl->ctrl);
+host/rdma.c:		nvme_delete_ctrl(&ctrl->ctrl);
+host/sysfs.c:		(int)sizeof(ctrl->subsys->field), ctrl->subsys->field);		\
+host/sysfs.c:        return sysfs_emit(buf, "%d\n", ctrl->field);				\
+host/sysfs.c:	if (!test_bit(NVME_CTRL_STARTED_ONCE, &ctrl->flags))
+host/sysfs.c:	return sysfs_emit(buf, "%s\n", ctrl->ops->name);
+host/sysfs.c:	if ((unsigned)ctrl->state < ARRAY_SIZE(state_name) &&
+host/sysfs.c:	    state_name[ctrl->state])
+host/sysfs.c:		return sysfs_emit(buf, "%s\n", state_name[ctrl->state]);
+host/sysfs.c:	return sysfs_emit(buf, "%s\n", ctrl->subsys->subnqn);
+host/sysfs.c:	return sysfs_emit(buf, "%s\n", ctrl->opts->host->nqn);
+host/sysfs.c:	return sysfs_emit(buf, "%pU\n", &ctrl->opts->host->id);
+host/sysfs.c:	return ctrl->ops->get_address(ctrl, buf, PAGE_SIZE);
+host/sysfs.c:	struct nvmf_ctrl_options *opts = ctrl->opts;
+host/sysfs.c:	if (ctrl->opts->max_reconnects == -1)
+host/sysfs.c:	struct nvmf_ctrl_options *opts = ctrl->opts;
+host/sysfs.c:	if (ctrl->opts->reconnect_delay == -1)
+host/sysfs.c:	return sysfs_emit(buf, "%d\n", ctrl->opts->reconnect_delay);
+host/sysfs.c:	ctrl->opts->reconnect_delay = v;
+host/sysfs.c:	if (ctrl->opts->fast_io_fail_tmo == -1)
+host/sysfs.c:	return sysfs_emit(buf, "%d\n", ctrl->opts->fast_io_fail_tmo);
+host/sysfs.c:	struct nvmf_ctrl_options *opts = ctrl->opts;
+host/sysfs.c:	if (ctrl->cntrltype > NVME_CTRL_ADMIN || !type[ctrl->cntrltype])
+host/sysfs.c:	return sysfs_emit(buf, type[ctrl->cntrltype]);
+host/sysfs.c:	if (ctrl->dctype > NVME_DCTYPE_CDC || !type[ctrl->dctype])
+host/sysfs.c:	return sysfs_emit(buf, type[ctrl->dctype]);
+host/sysfs.c:	struct nvmf_ctrl_options *opts = ctrl->opts;
+host/sysfs.c:	struct nvmf_ctrl_options *opts = ctrl->opts;
+host/sysfs.c:	if (!ctrl->opts->dhchap_secret)
+host/sysfs.c:		host_key = ctrl->host_key;
+host/sysfs.c:		mutex_lock(&ctrl->dhchap_auth_mutex);
+host/sysfs.c:		ctrl->host_key = key;
+host/sysfs.c:		mutex_unlock(&ctrl->dhchap_auth_mutex);
+host/sysfs.c:	dev_info(ctrl->device, "re-authenticating controller\n");
+host/sysfs.c:	queue_work(nvme_wq, &ctrl->dhchap_auth_work);
+host/sysfs.c:	struct nvmf_ctrl_options *opts = ctrl->opts;
+host/sysfs.c:	struct nvmf_ctrl_options *opts = ctrl->opts;
+host/sysfs.c:	if (!ctrl->opts->dhchap_ctrl_secret)
+host/sysfs.c:		ctrl_key = ctrl->ctrl_key;
+host/sysfs.c:		mutex_lock(&ctrl->dhchap_auth_mutex);
+host/sysfs.c:		ctrl->ctrl_key = key;
+host/sysfs.c:		mutex_unlock(&ctrl->dhchap_auth_mutex);
+host/sysfs.c:	dev_info(ctrl->device, "re-authenticating controller\n");
+host/sysfs.c:	queue_work(nvme_wq, &ctrl->dhchap_auth_work);
+host/sysfs.c:	if (!ctrl->tls_key)
+host/sysfs.c:	return sysfs_emit(buf, "%08x", key_serial(ctrl->tls_key));
+host/sysfs.c:	if (a == &dev_attr_delete_controller.attr && !ctrl->ops->delete_ctrl)
+host/sysfs.c:	if (a == &dev_attr_address.attr && !ctrl->ops->get_address)
+host/sysfs.c:	if (a == &dev_attr_hostnqn.attr && !ctrl->opts)
+host/sysfs.c:	if (a == &dev_attr_hostid.attr && !ctrl->opts)
+host/sysfs.c:	if (a == &dev_attr_ctrl_loss_tmo.attr && !ctrl->opts)
+host/sysfs.c:	if (a == &dev_attr_reconnect_delay.attr && !ctrl->opts)
+host/sysfs.c:	if (a == &dev_attr_fast_io_fail_tmo.attr && !ctrl->opts)
+host/sysfs.c:	if (a == &dev_attr_dhchap_secret.attr && !ctrl->opts)
+host/sysfs.c:	if (a == &dev_attr_dhchap_ctrl_secret.attr && !ctrl->opts)
+host/sysfs.c:	    (!ctrl->opts || strcmp(ctrl->opts->transport, "tcp")))
+host/tcp.c:	return queue - queue->ctrl->queues;
+host/tcp.c:	return ctrl->opts->tls;
+host/tcp.c:		return queue->ctrl->admin_tag_set.tags[queue_idx];
+host/tcp.c:	return queue->ctrl->tag_set.tags[queue_idx - 1];
+host/tcp.c:	return req == &req->queue->ctrl->async_req;
+host/tcp.c:		dev_err(queue->ctrl->ctrl.device,
+host/tcp.c:		dev_err(queue->ctrl->ctrl.device,
+host/tcp.c:		dev_err(queue->ctrl->ctrl.device,
+host/tcp.c:	int queue_idx = (set == &ctrl->tag_set) ? hctx_idx + 1 : 0;
+host/tcp.c:	struct nvme_tcp_queue *queue = &ctrl->queues[queue_idx];
+host/tcp.c:	nvme_req(rq)->ctrl = &ctrl->ctrl;
+host/tcp.c:	struct nvme_tcp_queue *queue = &ctrl->queues[hctx_idx + 1];
+host/tcp.c:	struct nvme_tcp_queue *queue = &ctrl->queues[0];
+host/tcp.c:	dev_warn(ctrl->device, "starting error recovery\n");
+host/tcp.c:		dev_err(queue->ctrl->ctrl.device,
+host/tcp.c:		nvme_tcp_error_recovery(&queue->ctrl->ctrl);
+host/tcp.c:		dev_err(queue->ctrl->ctrl.device,
+host/tcp.c:		dev_err(queue->ctrl->ctrl.device,
+host/tcp.c:		dev_err(queue->ctrl->ctrl.device,
+host/tcp.c:		nvme_tcp_error_recovery(&queue->ctrl->ctrl);
+host/tcp.c:		nvme_complete_async_event(&queue->ctrl->ctrl, cqe->status,
+host/tcp.c:		dev_err(queue->ctrl->ctrl.device,
+host/tcp.c:		dev_err(queue->ctrl->ctrl.device,
+host/tcp.c:		dev_err(queue->ctrl->ctrl.device,
+host/tcp.c:		dev_err(queue->ctrl->ctrl.device,
+host/tcp.c:		dev_err(queue->ctrl->ctrl.device,
+host/tcp.c:				dev_err(queue->ctrl->ctrl.device,
+host/tcp.c:			dev_err(queue->ctrl->ctrl.device,
+host/tcp.c:		dev_err(queue->ctrl->ctrl.device,
+host/tcp.c:			dev_err(queue->ctrl->ctrl.device,
+host/tcp.c:			nvme_tcp_error_recovery(&queue->ctrl->ctrl);
+host/tcp.c:		nvme_tcp_error_recovery(&queue->ctrl->ctrl);
+host/tcp.c:		dev_info(queue->ctrl->ctrl.device,
+host/tcp.c:		nvme_complete_async_event(&req->queue->ctrl->ctrl,
+host/tcp.c:		dev_err(queue->ctrl->ctrl.device,
+host/tcp.c:	struct nvme_tcp_request *async = &ctrl->async_req;
+host/tcp.c:	struct nvme_tcp_queue *queue = &ctrl->queues[0];
+host/tcp.c:	struct nvme_tcp_request *async = &ctrl->async_req;
+host/tcp.c:	async->queue = &ctrl->queues[0];
+host/tcp.c:	struct nvme_tcp_queue *queue = &ctrl->queues[qid];
+host/tcp.c:	if (nvme_tcp_tls(&queue->ctrl->ctrl)) {
+host/tcp.c:	if (nvme_tcp_tls(&queue->ctrl->ctrl)) {
+host/tcp.c:		qid < 1 + ctrl->io_queues[HCTX_TYPE_DEFAULT];
+host/tcp.c:		qid < 1 + ctrl->io_queues[HCTX_TYPE_DEFAULT] +
+host/tcp.c:			  ctrl->io_queues[HCTX_TYPE_READ];
+host/tcp.c:		qid < 1 + ctrl->io_queues[HCTX_TYPE_DEFAULT] +
+host/tcp.c:			  ctrl->io_queues[HCTX_TYPE_READ] +
+host/tcp.c:			  ctrl->io_queues[HCTX_TYPE_POLL];
+host/tcp.c:		n = qid - ctrl->io_queues[HCTX_TYPE_DEFAULT] - 1;
+host/tcp.c:		n = qid - ctrl->io_queues[HCTX_TYPE_DEFAULT] -
+host/tcp.c:				ctrl->io_queues[HCTX_TYPE_READ] - 1;
+host/tcp.c:	dev_dbg(ctrl->ctrl.device, "queue %d: TLS handshake done, key %x, status %d\n",
+host/tcp.c:		dev_warn(ctrl->ctrl.device, "queue %d: Invalid key %x\n",
+host/tcp.c:		ctrl->ctrl.tls_key = tls_key;
+host/tcp.c:	dev_dbg(nctrl->device, "queue %d: start TLS with key %x\n",
+host/tcp.c:	if (nctrl->opts->keyring)
+host/tcp.c:		keyring = key_serial(nctrl->opts->keyring);
+host/tcp.c:		dev_err(nctrl->device, "queue %d: failed to start TLS: %d\n",
+host/tcp.c:		dev_err(nctrl->device,
+host/tcp.c:		dev_dbg(nctrl->device,
+host/tcp.c:	struct nvme_tcp_queue *queue = &ctrl->queues[qid];
+host/tcp.c:		queue->cmnd_capsule_len = nctrl->ioccsz * 16;
+host/tcp.c:	ret = sock_create(ctrl->addr.ss_family, SOCK_STREAM,
+host/tcp.c:		dev_err(nctrl->device,
+host/tcp.c:	if (nctrl->opts->tos >= 0)
+host/tcp.c:		ip_sock_set_tos(queue->sock->sk, nctrl->opts->tos);
+host/tcp.c:	if (nctrl->opts->mask & NVMF_OPT_HOST_TRADDR) {
+host/tcp.c:		ret = kernel_bind(queue->sock, (struct sockaddr *)&ctrl->src_addr,
+host/tcp.c:			sizeof(ctrl->src_addr));
+host/tcp.c:			dev_err(nctrl->device,
+host/tcp.c:	if (nctrl->opts->mask & NVMF_OPT_HOST_IFACE) {
+host/tcp.c:		char *iface = nctrl->opts->host_iface;
+host/tcp.c:			dev_err(nctrl->device,
+host/tcp.c:	queue->hdr_digest = nctrl->opts->hdr_digest;
+host/tcp.c:	queue->data_digest = nctrl->opts->data_digest;
+host/tcp.c:			dev_err(nctrl->device,
+host/tcp.c:	dev_dbg(nctrl->device, "connecting queue %d\n",
+host/tcp.c:	ret = kernel_connect(queue->sock, (struct sockaddr *)&ctrl->addr,
+host/tcp.c:		sizeof(ctrl->addr), 0);
+host/tcp.c:		dev_err(nctrl->device,
+host/tcp.c:	struct nvme_tcp_queue *queue = &ctrl->queues[qid];
+host/tcp.c:	struct nvme_tcp_queue *queue = &ctrl->queues[idx];
+host/tcp.c:		dev_err(nctrl->device,
+host/tcp.c:		cancel_work_sync(&ctrl->async_event_work);
+host/tcp.c:	for (i = 1; i < ctrl->queue_count; i++)
+host/tcp.c:	for (i = 1; i < ctrl->queue_count; i++)
+host/tcp.c:		if (ctrl->opts->tls_key)
+host/tcp.c:			pskid = key_serial(ctrl->opts->tls_key);
+host/tcp.c:			pskid = nvme_tls_psk_default(ctrl->opts->keyring,
+host/tcp.c:						      ctrl->opts->host->nqn,
+host/tcp.c:						      ctrl->opts->subsysnqn);
+host/tcp.c:			dev_err(ctrl->device, "no valid PSK found\n");
+host/tcp.c:	if (nvme_tcp_tls(ctrl) && !ctrl->tls_key) {
+host/tcp.c:		dev_err(ctrl->device, "no PSK negotiated\n");
+host/tcp.c:	for (i = 1; i < ctrl->queue_count; i++) {
+host/tcp.c:				key_serial(ctrl->tls_key));
+host/tcp.c:	nr_io_queues = nvmf_nr_io_queues(ctrl->opts);
+host/tcp.c:		dev_err(ctrl->device,
+host/tcp.c:	ctrl->queue_count = nr_io_queues + 1;
+host/tcp.c:	dev_info(ctrl->device,
+host/tcp.c:	nvmf_set_io_queues(ctrl->opts, nr_io_queues,
+host/tcp.c:				ctrl->opts->nr_poll_queues ? HCTX_MAX_TYPES : 2,
+host/tcp.c:	nr_queues = min(ctrl->tagset->nr_hw_queues + 1, ctrl->queue_count);
+host/tcp.c:		blk_mq_update_nr_hw_queues(ctrl->tagset,
+host/tcp.c:			ctrl->queue_count - 1);
+host/tcp.c:				       ctrl->tagset->nr_hw_queues + 1);
+host/tcp.c:	blk_sync_queue(ctrl->admin_q);
+host/tcp.c:	blk_sync_queue(ctrl->admin_q);
+host/tcp.c:	if (ctrl->queue_count <= 1)
+host/tcp.c:		dev_info(ctrl->device, "Reconnecting in %d seconds...\n",
+host/tcp.c:			ctrl->opts->reconnect_delay);
+host/tcp.c:				ctrl->opts->reconnect_delay * HZ);
+host/tcp.c:		dev_info(ctrl->device, "Removing controller...\n");
+host/tcp.c:	struct nvmf_ctrl_options *opts = ctrl->opts;
+host/tcp.c:	if (ctrl->icdoff) {
+host/tcp.c:		dev_err(ctrl->device, "icdoff is not supported!\n");
+host/tcp.c:		dev_err(ctrl->device, "Mandatory sgls are not supported!\n");
+host/tcp.c:	if (opts->queue_size > ctrl->sqsize + 1)
+host/tcp.c:		dev_warn(ctrl->device,
+host/tcp.c:			opts->queue_size, ctrl->sqsize + 1);
+host/tcp.c:	if (ctrl->sqsize + 1 > ctrl->maxcmd) {
+host/tcp.c:		dev_warn(ctrl->device,
+host/tcp.c:			ctrl->sqsize + 1, ctrl->maxcmd);
+host/tcp.c:		ctrl->sqsize = ctrl->maxcmd - 1;
+host/tcp.c:	if (ctrl->queue_count > 1) {
+host/tcp.c:	if (ctrl->queue_count > 1) {
+host/tcp.c:	struct nvme_ctrl *ctrl = &tcp_ctrl->ctrl;
+host/tcp.c:	++ctrl->nr_reconnects;
+host/tcp.c:	dev_info(ctrl->device, "Successfully reconnected (%d attempt)\n",
+host/tcp.c:			ctrl->nr_reconnects);
+host/tcp.c:	ctrl->nr_reconnects = 0;
+host/tcp.c:	dev_info(ctrl->device, "Failed reconnect attempt %d\n",
+host/tcp.c:			ctrl->nr_reconnects);
+host/tcp.c:	struct nvme_ctrl *ctrl = &tcp_ctrl->ctrl;
+host/tcp.c:	flush_work(&ctrl->async_event_work);
+host/tcp.c:	++ctrl->nr_reconnects;
+host/tcp.c:	if (list_empty(&ctrl->list))
+host/tcp.c:	list_del(&ctrl->list);
+host/tcp.c:	nvmf_free_options(nctrl->opts);
+host/tcp.c:	kfree(ctrl->queues);
+host/tcp.c:	sg->addr = cpu_to_le64(queue->ctrl->ctrl.icdoff);
+host/tcp.c:	struct nvme_tcp_queue *queue = &ctrl->queues[0];
+host/tcp.c:	struct nvme_tcp_cmd_pdu *pdu = ctrl->async_req.pdu;
+host/tcp.c:	ctrl->async_req.state = NVME_TCP_SEND_CMD_PDU;
+host/tcp.c:	ctrl->async_req.offset = 0;
+host/tcp.c:	ctrl->async_req.curr_bio = NULL;
+host/tcp.c:	ctrl->async_req.data_len = 0;
+host/tcp.c:	nvme_tcp_queue_request(&ctrl->async_req, true, true);
+host/tcp.c:	struct nvme_ctrl *ctrl = &req->queue->ctrl->ctrl;
+host/tcp.c:	struct nvme_ctrl *ctrl = &req->queue->ctrl->ctrl;
+host/tcp.c:	dev_warn(ctrl->device,
+host/tcp.c:		dev_err(queue->ctrl->ctrl.device,
+host/tcp.c:	if (!nvme_check_ready(&queue->ctrl->ctrl, rq, queue_ready))
+host/tcp.c:		return nvme_fail_nonready_command(&queue->ctrl->ctrl, rq);
+host/tcp.c:	nvmf_map_queues(set, &ctrl->ctrl, ctrl->io_queues);
+host/tcp.c:		found = nvmf_ip_options_match(&ctrl->ctrl, opts);
+host/tcp.c:	INIT_LIST_HEAD(&ctrl->list);
+host/tcp.c:	ctrl->ctrl.opts = opts;
+host/tcp.c:	ctrl->ctrl.queue_count = opts->nr_io_queues + opts->nr_write_queues +
+host/tcp.c:	ctrl->ctrl.sqsize = opts->queue_size - 1;
+host/tcp.c:	ctrl->ctrl.kato = opts->kato;
+host/tcp.c:	INIT_DELAYED_WORK(&ctrl->connect_work,
+host/tcp.c:	INIT_WORK(&ctrl->err_work, nvme_tcp_error_recovery_work);
+host/tcp.c:	INIT_WORK(&ctrl->ctrl.reset_work, nvme_reset_ctrl_work);
+host/tcp.c:			opts->traddr, opts->trsvcid, &ctrl->addr);
+host/tcp.c:			opts->host_traddr, NULL, &ctrl->src_addr);
+host/tcp.c:	ctrl->queues = kcalloc(ctrl->ctrl.queue_count, sizeof(*ctrl->queues),
+host/tcp.c:	if (!ctrl->queues) {
+host/tcp.c:	ret = nvme_init_ctrl(&ctrl->ctrl, dev, &nvme_tcp_ctrl_ops, 0);
+host/tcp.c:	if (!nvme_change_ctrl_state(&ctrl->ctrl, NVME_CTRL_CONNECTING)) {
+host/tcp.c:	ret = nvme_tcp_setup_ctrl(&ctrl->ctrl, true);
+host/tcp.c:	dev_info(ctrl->ctrl.device, "new ctrl: NQN \"%s\", addr %pISp\n",
+host/tcp.c:		nvmf_ctrl_subsysnqn(&ctrl->ctrl), &ctrl->addr);
+host/tcp.c:	list_add_tail(&ctrl->list, &nvme_tcp_ctrl_list);
+host/tcp.c:	return &ctrl->ctrl;
+host/tcp.c:	nvme_uninit_ctrl(&ctrl->ctrl);
+host/tcp.c:	nvme_put_ctrl(&ctrl->ctrl);
+host/tcp.c:	kfree(ctrl->queues);
+host/tcp.c:		nvme_delete_ctrl(&ctrl->ctrl);
+host/trace.h:		__entry->ctrl_id = nvme_req(req)->ctrl->instance;
+host/trace.h:		__entry->ctrl_id = nvme_req(req)->ctrl->instance;
+host/trace.h:		__entry->ctrl_id = ctrl->instance;
+host/trace.h:		__entry->ctrl_id = nvme_req(req)->ctrl->instance;
+host/zns.c:	blk_queue_max_zone_append_sectors(q, ns->ctrl->max_zone_append);
+host/zns.c:	status = nvme_submit_sync_cmd(ctrl->admin_q, &c, id, sizeof(*id));
+host/zns.c:		ctrl->max_zone_append = 1 << (id->zasl + 3);
+host/zns.c:		ctrl->max_zone_append = ctrl->max_hw_sectors;
+host/zns.c:			dev_warn(ns->ctrl->device,
+host/zns.c:		dev_warn(ns->ctrl->device,
+host/zns.c:	if (!ns->ctrl->max_zone_append) {
+host/zns.c:	status = nvme_submit_sync_cmd(ns->ctrl->admin_q, &c, id, sizeof(*id));
+host/zns.c:		dev_warn(ns->ctrl->device,
+host/zns.c:		dev_warn(ns->ctrl->device,
+host/zns.c:		dev_err(ctrl->device, "invalid zone type %#x\n",

@@ -1,0 +1,71 @@
+From 651eb4f27bc51cec5e223ddb208d0fa754be20ca Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Sun, 11 Feb 2024 18:45:56 -0800
+Subject: [PATCH 2/2] nvme: export and use previously added helper
+
+Export nvme_ctrl_state_str() and use it in the host/sysfs.c:
+nvme_sysfs_show_state().
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/host/core.c  |  2 +-
+ drivers/nvme/host/nvme.h  |  1 +
+ drivers/nvme/host/sysfs.c | 16 ++--------------
+ 3 files changed, 4 insertions(+), 15 deletions(-)
+
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index daeb2409f989..acde9e377c00 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -544,7 +544,7 @@ void nvme_cancel_admin_tagset(struct nvme_ctrl *ctrl)
+ }
+ EXPORT_SYMBOL_GPL(nvme_cancel_admin_tagset);
+ 
+-static const char *nvme_ctrl_state_str(enum nvme_ctrl_state st)
++const char *nvme_ctrl_state_str(enum nvme_ctrl_state st)
+ {
+ 	static const char *const str[] = {
+ 		[NVME_CTRL_NEW]			= "new",
+diff --git a/drivers/nvme/host/nvme.h b/drivers/nvme/host/nvme.h
+index 3ca486fe927c..3584c3861d6c 100644
+--- a/drivers/nvme/host/nvme.h
++++ b/drivers/nvme/host/nvme.h
+@@ -1094,6 +1094,7 @@ void nvme_passthru_end(struct nvme_ctrl *ctrl, struct nvme_ns *ns, u32 effects,
+ struct nvme_ctrl *nvme_ctrl_from_file(struct file *file);
+ struct nvme_ns *nvme_find_get_ns(struct nvme_ctrl *ctrl, unsigned nsid);
+ void nvme_put_ns(struct nvme_ns *ns);
++const char *nvme_ctrl_state_str(enum nvme_ctrl_state st);
+ 
+ static inline bool nvme_multi_css(struct nvme_ctrl *ctrl)
+ {
+diff --git a/drivers/nvme/host/sysfs.c b/drivers/nvme/host/sysfs.c
+index f2832f70e7e0..a067feaba5ae 100644
+--- a/drivers/nvme/host/sysfs.c
++++ b/drivers/nvme/host/sysfs.c
+@@ -368,21 +368,9 @@ static ssize_t nvme_sysfs_show_state(struct device *dev,
+ 				     char *buf)
+ {
+ 	struct nvme_ctrl *ctrl = dev_get_drvdata(dev);
+-	unsigned state = (unsigned)nvme_ctrl_state(ctrl);
+-	static const char *const state_name[] = {
+-		[NVME_CTRL_NEW]		= "new",
+-		[NVME_CTRL_LIVE]	= "live",
+-		[NVME_CTRL_RESETTING]	= "resetting",
+-		[NVME_CTRL_CONNECTING]	= "connecting",
+-		[NVME_CTRL_DELETING]	= "deleting",
+-		[NVME_CTRL_DELETING_NOIO]= "deleting (no IO)",
+-		[NVME_CTRL_DEAD]	= "dead",
+-	};
+-
+-	if (state < ARRAY_SIZE(state_name) && state_name[state])
+-		return sysfs_emit(buf, "%s\n", state_name[state]);
+ 
+-	return sysfs_emit(buf, "unknown state\n");
++	return sysfs_emit(buf, "%s\n",
++			  nvme_ctrl_state_str(nvme_ctrl_state(ctrl)));
+ }
+ 
+ static DEVICE_ATTR(state, S_IRUGO, nvme_sysfs_show_state, NULL);
+-- 
+2.40.0
+

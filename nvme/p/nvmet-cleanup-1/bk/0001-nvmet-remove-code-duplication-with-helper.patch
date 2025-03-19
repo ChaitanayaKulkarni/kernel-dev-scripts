@@ -1,0 +1,62 @@
+From cf66529bb47312ec65c52165bb891558b59b6c1a Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Thu, 8 Feb 2024 14:27:13 -0800
+Subject: [PATCH 1/2] nvmet: remove code duplication with helper
+
+There is no point in duplicating the error handling code for the default
+case in nvmet_parse_admin_cmd() and nvmet_parse_io_cmd() when the
+fabrics command fctype is invalid.
+
+Factor out the helper for common code to avoid duplication.
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/target/fabrics-cmd.c | 18 ++++++++++--------
+ 1 file changed, 10 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/nvme/target/fabrics-cmd.c b/drivers/nvme/target/fabrics-cmd.c
+index d8da840a1c0e..39f382056e27 100644
+--- a/drivers/nvme/target/fabrics-cmd.c
++++ b/drivers/nvme/target/fabrics-cmd.c
+@@ -82,6 +82,14 @@ static void nvmet_execute_prop_get(struct nvmet_req *req)
+ 	nvmet_req_complete(req, status);
+ }
+ 
++static u16 nvmet_fabrics_error_capsule_err(struct nvmet_req *req)
++{
++	pr_debug("received unknown capsule type 0x%x\n",
++		 req->cmd->fabrics.fctype);
++	req->error_loc = offsetof(struct nvmf_common_command, fctype);
++	return NVME_SC_INVALID_OPCODE | NVME_SC_DNR;
++}
++
+ u16 nvmet_parse_fabrics_admin_cmd(struct nvmet_req *req)
+ {
+ 	struct nvme_command *cmd = req->cmd;
+@@ -102,10 +110,7 @@ u16 nvmet_parse_fabrics_admin_cmd(struct nvmet_req *req)
+ 		break;
+ #endif
+ 	default:
+-		pr_debug("received unknown capsule type 0x%x\n",
+-			cmd->fabrics.fctype);
+-		req->error_loc = offsetof(struct nvmf_common_command, fctype);
+-		return NVME_SC_INVALID_OPCODE | NVME_SC_DNR;
++		return nvmet_fabrics_error_capsule_err(req);
+ 	}
+ 
+ 	return 0;
+@@ -125,10 +130,7 @@ u16 nvmet_parse_fabrics_io_cmd(struct nvmet_req *req)
+ 		break;
+ #endif
+ 	default:
+-		pr_debug("received unknown capsule type 0x%x\n",
+-			cmd->fabrics.fctype);
+-		req->error_loc = offsetof(struct nvmf_common_command, fctype);
+-		return NVME_SC_INVALID_OPCODE | NVME_SC_DNR;
++		return nvmet_fabrics_error_capsule_err(req);
+ 	}
+ 
+ 	return 0;
+-- 
+2.40.0
+

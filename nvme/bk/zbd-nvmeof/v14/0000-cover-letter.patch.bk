@@ -1,0 +1,180 @@
+From 8a669db59446b0cb521990e8eedcc0c66975fded Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Tue, 27 Apr 2021 20:58:20 -0700
+Subject: [PATCH V14 0/4] *** SUBJECT HERE ***
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+*** BLURB HERE ***
+
+Chaitanya Kulkarni (4):
+  nvmet: add req cns error complete helper
+  nvmet: add nvmet_req_bio put helper for backends
+  nvmet: add Command Set Identifier support
+  nvmet: add ZBD over ZNS backend support
+
+ drivers/nvme/target/Makefile      |   1 +
+ drivers/nvme/target/admin-cmd.c   | 123 ++++++-
+ drivers/nvme/target/core.c        |  32 +-
+ drivers/nvme/target/io-cmd-bdev.c |  29 +-
+ drivers/nvme/target/nvmet.h       |  28 ++
+ drivers/nvme/target/passthru.c    |   3 +-
+ drivers/nvme/target/zns.c         | 561 ++++++++++++++++++++++++++++++
+ include/linux/nvme.h              |   8 +
+ 8 files changed, 751 insertions(+), 34 deletions(-)
+ create mode 100644 drivers/nvme/target/zns.c
+
+# ./run_test.sh 
+Linux vm 5.13.0-rc3nvme+ #212 SMP Thu Jun 3 15:34:38 PDT 2021 x86_64 x86_64 x86_64 GNU/Linux
+Executing section 00 - ZNS command completion tests...
+    00.010: Report Zones command completion...                                               [Passed]
+    00.020: Report Zones (partial bit) command completion...                                 [Passed]
+    00.030: Report Zones (reporting option 0x10) command completion...                       [Passed]
+    00.040: Report Zones (reporting option 0x11) command completion...                       [Passed]
+    00.050: Report Zones (invalid reporting option) command completion...                    [Passed]
+    00.060: Report Zones command completion (not zone-aligned)...                            [Passed]
+    00.070: Report Zones command completion, 1 descriptor per command...                     [Passed]
+    00.080: Report Zones command completion, 2 descriptors per command...                    [Passed]
+    00.090: Report Zones command completion, 8 descriptors per command...                    [Passed]
+    00.100: Report Zones command completion, 64 descriptors per command...                   [Passed]
+    00.110: Extended Report Zones command completion...                                      [Passed]
+    00.120: Extended Report Zones (partial bit) command completion...                        [Passed]
+    00.130: Open Zone command completion...                                                  [Passed]
+    00.140: Close Zone command completion...                                                 [Passed]
+    00.150: Finish Zone command completion...                                                [Passed]
+    00.160: Reset Zone command completion...                                                 [Passed]
+    00.190: Read command completion, Implicitly Opened zone...                               [Passed]
+    00.200: Read command completion, Explicitly Open zone...                                 [Passed]
+    00.210: Read command completion, Closed zone...                                          [Passed]
+    00.220: Read command completion, Full zone...                                            [Passed]
+    00.230: Read command completion, Empty zone...                                           [Passed]
+    00.260: Write command completion, Empty zone...                                          [Passed]
+    00.265: Write Zeroes command completion, Empty zone...                                   [Passed]
+    00.290: Zone Append command completion, Empty zone...                                    [Passed]
+Run time: 00:00:12
+Linux vm 5.13.0-rc3nvme+ #212 SMP Thu Jun 3 15:34:38 PDT 2021 x86_64 x86_64 x86_64 GNU/Linux
+Executing section 01 - ZNS status code tests...
+    01.010: Report Zones, Starting LBA out of range...                                       [Passed]
+    01.011: Report Zones, invalid reporting option...                                        [Passed]
+    01.020: Open Zone, unaligned Starting LBA...                                             [Passed]
+    01.023: Open Zone, Starting LBA out of range...                                          [Passed]
+    01.024: Open Zone, Starting LBA at End of Medium...                                      [Passed]
+    01.025: Close Zone, unaligned Starting LBA...                                            [Passed]
+    01.026: Close Zone, Starting LBA at End of Medium...                                     [Passed]
+    01.027: Close Zone, Starting LBA out of range...                                         [Passed]
+    01.028: Finish Zone, unaligned Starting LBA...                                           [Passed]
+    01.029: Finish Zone, Starting LBA out of range...                                        [Passed]
+    01.030: Finish Zone, Starting LBA at End of Medium...                                    [Passed]
+    01.031: Reset Zone, unaligned Starting LBA...                                            [Passed]
+    01.032: Reset Zone, Starting LBA out of range...                                         [Passed]
+    01.033: Reset Zone, Starting LBA at End of Medium...                                     [Passed]
+    01.035: Offline Zone, Starting LBA out of range...                                       [Passed]
+    01.036: Offline Zone, Starting LBA at End of Medium...                                   [Passed]
+    01.037: Zone Append, unaligned Zone Start LBA...                                         [Passed]
+    01.038: Zone Append, Zone Start LBA out of range...                                      [Passed]
+    01.039: Zone Append, Zone Start LBA at End of Medium...                                  [Passed]
+    01.040: Zone Append, multiple appends, first zone...                                     [Passed]
+    01.041: Zone Append, multiple appends, last zone...                                      [Passed]
+    01.042: Zone Append, multiple appends, mid zone...                                       [Passed]
+    01.043: Zone Append ending at the last writable LBA...                                   [Passed]
+    01.060: Read across write pointer...                                                     [Passed]
+    01.064: Read one logical block(s) starting above Write Pointer...                        [Passed]
+    01.121: Open an Empty zone after Open MOR times and writing one of them to Full...       [Passed]
+    01.122: Open an Empty zone when (MOR - 1) zones are Explicitly Open...                   [Passed]
+    01.124: Open a Closed zone when (MOR - 1) zones are Explicitly Open...                   [Passed]
+    01.141: Finish an Empty zone when (MOR - 0) zones are EOpen...                           [Passed]
+    01.142: Implicitly Open zones autoclose to free OAZR for Finish Zone...                  [Passed]
+    01.144: Finish an Empty zone when (MOR - 1) zones are EOpen...                           [Passed]
+    01.145: Finish a Closed zone when (MOR - 1) zones are EOpen...                           [Passed]
+    01.162: Write a Closed zone when (MOR - 1) zones are EOpen...                            [Passed]
+    01.163: Write zone in Empty state when (MOR - 1) zones are EOpen...                      [Passed]
+    01.166: Write an Empty zone when (MAR - 1) zones are Closed...                           [Passed]
+    01.172: Write Zeroes to a Closed zone when (MOR - 1) zones are EOpen...                  [Passed]
+    01.173: Write Zeroes to zone in Empty state when (MOR - 1) zones are EOpen...            [Passed]
+    01.176: Write Zeroes to an Empty zone when (MAR - 1) zones are Closed...                 [Passed]
+    01.177: Read an Empty zone when MAR zones are Closed...                                  [Passed]
+    01.181: Open an Empty zone when (MAR - 1) zones are Closed...                            [Passed]
+    01.182: Open a Closed zone when (MAR - 0) zones are Closed...                            [Passed]
+    01.192: Read a Full zone when MAR zones are Closed...                                    [Passed]
+Linux vm 5.13.0-rc3nvme+ #212 SMP Thu Jun 3 15:34:38 PDT 2021 x86_64 x86_64 x86_64 GNU/Linux
+Executing section 02 - ZNS zone state machine tests...
+    02.001: Open Zone, Empty->EOpen...                           [Passed]
+    02.002: Close Zone, Empty->Empty...                          [Passed]
+    02.003: Finish Zone, Empty->Full...                          [Passed]
+    02.004: Reset Zone, Empty->Empty...                          [Passed]
+    02.005: Open Zone, IOpen->EOpen...                           [Passed]
+    02.006: Close Zone, IOpen->Closed...                         [Passed]
+    02.007: Finish Zone, IOpen->Full...                          [Passed]
+    02.008: Reset Zone, IOpen->Empty...                          [Passed]
+    02.009: Open Zone, Empty->EOpen->EOpen...                    [Passed]
+    02.011: Finish Zone, Empty->EOpen->Full...                   [Passed]
+    02.012: Reset Zone, Empty->EOpen->Empty...                   [Passed]
+    02.013: Open Zone, IOpen->EOpen->EOpen...                    [Passed]
+    02.014: Close Zone, IOpen->EOpen to Closed...                [Passed]
+    02.015: Finish Zone, IOpen->EOpen->Full...                   [Passed]
+    02.016: Reset Zone, IOpen->EOpen->Empty...                   [Passed]
+    02.017: Open Zone, Closed->EOpen...                          [Passed]
+    02.018: Close Zone, Closed->Closed...                        [Passed]
+    02.019: Finish Zone, Closed->Full...                         [Passed]
+    02.020: Reset Zone, Closed->Empty...                         [Passed]
+    02.021: Open Zone, Full->Full...                             [Passed]
+    02.022: Close Zone, Full->Full...                            [Passed]
+    02.023: Finish Zone, Full->Full...                           [Passed]
+    02.024: Reset Zone, Full->Empty...                           [Passed]
+    02.027: Offline Zone, Empty->Empty...                        [Passed]
+    02.028: Offline Zone, IOpen->IOpen...                        [Passed]
+    02.029: Offline Zone, EOpen->EOpen...                        [Passed]
+    02.030: Offline Zone, Closed->Closed...                      [Passed]
+    02.031: Offline Zone, Full->Full...                          [Passed]
+    02.070: Write one logical block(s), Empty->IOpen...          [Passed]
+    02.072: Write one logical block(s), IOpen->IOpen...          [Passed]
+    02.073: Write starting at Write Pointer, IOpen->Full...      [Passed]
+    02.074: Write one logical block(s), Closed->IOpen...         [Passed]
+    02.075: Write, Closed->Full...                               [Passed]
+    02.076: Write one logical block(s), EOpen->EOpen...          [Passed]
+    02.077: Write, EOpen->Full...                                [Passed]
+    02.080: Zone Append, Empty->IOpen...                         [Passed]
+    02.081: Zone Append, IOpen->IOpen...                         [Passed]
+    02.082: Zone Append, IOpen->Full...                          [Passed]
+    02.083: Zone Append, Closed->IOpen...                        [Passed]
+    02.084: Zone Append, Closed->Full...                         [Passed]
+    02.085: Zone Append, EOpen->EOpen, WP == ZSLBA...            [Passed]
+    02.086: Zone Append, EOpen->EOpen, WP > ZSLBA...             [Passed]
+    02.087: Zone Append, EOpen->Full...                          [Passed]
+    02.090: Write Zeroes one logical block(s), Empty->IOpen...   [Passed]
+    02.092: Write Zeroes one logical block(s), IOpen->IOpen...   [Passed]
+    02.093: Write Zeroes starting at Write Pointer, IOpen->Full..[Passed]
+    02.094: Write Zeroes one logical block(s), Closed->IOpen...  [Passed]
+    02.095: Write Zeroes, Closed->Full...                        [Passed]
+    02.096: Write Zeroes one logical block(s), EOpen->EOpen...   [Passed]
+    02.097: Write Zeroes, EOpen->Full...                         [Passed]
+    02.100: Open Zone, Empty->Empty (Select All bit set)...      [Passed]
+    02.101: Close Zone, Empty->Empty (Select All bit set)...     [Passed]
+    02.102: Finish Zone, Empty->Empty (Select All bit set)...    [Passed]
+    02.103: Reset Zone, Empty->Empty, (Select All bit set)...    [Passed]
+    02.104: Open Zone, IOpen->IOpen (Select All bit set)...      [Passed]
+    02.105: Close Zone, IOpen->Closed (Select All bit set)...    [Passed]
+    02.106: Finish Zone, IOpen->Full (Select All bit set)...     [Passed]
+    02.107: Reset Zone, IOpen->Empty (Select All bit set)...     [Passed]
+    02.108: Open Zone, Empty->EOpen->EOpen (Select All bit set)..[Passed]
+    02.110: Finish Zone, Empty->EOpen->Full (Select All bit set).[Passed]
+    02.111: Reset Zone, Empty->EOpen->Empty (Select All bit set).[Passed]
+    02.112: Open Zone, IOpen->EOpen->EOpen (Select All bit set)..[Passed]
+    02.113: Close Zone, IOpen->EOpen->Closed (Select All bit set)[Passed]
+    02.114: Finish Zone, IOpen->EOpen->Full (Select All bit set).[Passed]
+    02.115: Reset Zone, IOpen->Eopen->Empty (Select All bit set).[Passed]
+    02.116: Open Zone, Closed->EOpen (Select All bit set)...     [Passed]
+    02.117: Close Zone, Closed->Closed (Select All bit set)...   [Passed]
+    02.118: Finish Zone, Closed->Full (Select All bit set)...    [Passed]
+    02.119: Reset Zone, Closed->Empty (Select All bit set)...    [Passed]
+    02.120: Open Zone, Full->Full (Select All bit set)...        [Passed]
+    02.121: Close Zone, Full->Full (Select All bit set)...       [Passed]
+    02.122: Finish Zone, Full->Full (All bit set)...             [Passed]
+    02.123: Reset Zone, Full->Empty (Select All bit set)...      [Passed]
+Run time: 00:00:40
+
+
+-- 
+2.22.1
+

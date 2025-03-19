@@ -1,0 +1,69 @@
+From 366e32c3633890d635b8a9f72850a3b6be8e9581 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Sun, 23 Jan 2022 16:18:22 -0800
+Subject: [PATCH 5/9] nvme-fc: centralize admin tagset initialization
+
+Add and use helper to remove duplicate code for admin tag initialization
+for all transports.
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/host/fc.c   | 12 +++---------
+ drivers/nvme/host/nvme.h | 17 +++++++++++++++++
+ 2 files changed, 20 insertions(+), 9 deletions(-)
+
+diff --git a/drivers/nvme/host/fc.c b/drivers/nvme/host/fc.c
+index 23c896a138a3..ec2afedfa991 100644
+--- a/drivers/nvme/host/fc.c
++++ b/drivers/nvme/host/fc.c
+@@ -3529,18 +3529,12 @@ nvme_fc_init_ctrl(struct device *dev, struct nvmf_ctrl_options *opts,
+ 
+ 	nvme_fc_init_queue(ctrl, 0);
+ 
+-	memset(&ctrl->admin_tag_set, 0, sizeof(ctrl->admin_tag_set));
+-	ctrl->admin_tag_set.ops = &nvme_fc_admin_mq_ops;
+-	ctrl->admin_tag_set.queue_depth = NVME_AQ_MQ_TAG_DEPTH;
+-	ctrl->admin_tag_set.reserved_tags = NVMF_RESERVED_TAGS;
+-	ctrl->admin_tag_set.numa_node = ctrl->ctrl.numa_node;
++	nvme_init_admin_tagset(&(ctrl->admin_tag_set), ctrl,
++			       ctrl->ctrl.numa_node, &nvme_fc_admin_mq_ops,
++			       BLK_MQ_F_NO_SCHED, NVMF_RESERVED_TAGS);
+ 	ctrl->admin_tag_set.cmd_size =
+ 		struct_size((struct nvme_fcp_op_w_sgl *)NULL, priv,
+ 			    ctrl->lport->ops->fcprqst_priv_sz);
+-	ctrl->admin_tag_set.driver_data = ctrl;
+-	ctrl->admin_tag_set.nr_hw_queues = 1;
+-	ctrl->admin_tag_set.timeout = NVME_ADMIN_TIMEOUT;
+-	ctrl->admin_tag_set.flags = BLK_MQ_F_NO_SCHED;
+ 
+ 	ret = blk_mq_alloc_tag_set(&ctrl->admin_tag_set);
+ 	if (ret)
+diff --git a/drivers/nvme/host/nvme.h b/drivers/nvme/host/nvme.h
+index f8658f984d64..6a3fd759415a 100644
+--- a/drivers/nvme/host/nvme.h
++++ b/drivers/nvme/host/nvme.h
+@@ -938,4 +938,21 @@ static inline bool nvme_multi_css(struct nvme_ctrl *ctrl)
+ 	return (ctrl->ctrl_config & NVME_CC_CSS_MASK) == NVME_CC_CSS_CSI;
+ }
+ 
++static inline void nvme_init_admin_tagset(struct blk_mq_tag_set *set,
++					  void *driver_data, int numa_node,
++					  const struct blk_mq_ops *ops,
++					  unsigned int flags,
++					  unsigned int reserved_tags)
++{
++	memset(set, 0, sizeof(*set));
++	set->driver_data = driver_data;
++	set->numa_node = numa_node;
++	set->ops = ops;
++	set->flags = flags;
++	set->reserved_tags = reserved_tags;
++	set->queue_depth = NVME_AQ_MQ_TAG_DEPTH;
++	set->nr_hw_queues = 1;
++	set->timeout = NVME_ADMIN_TIMEOUT;
++}
++
+ #endif /* _NVME_H */
+-- 
+2.29.0
+

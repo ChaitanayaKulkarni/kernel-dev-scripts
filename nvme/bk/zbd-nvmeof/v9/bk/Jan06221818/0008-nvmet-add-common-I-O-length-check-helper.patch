@@ -1,0 +1,109 @@
+From 58800bc2fb5da43e05f791a9e820f0f534ece4fb Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Tue, 15 Dec 2020 15:13:02 -0800
+Subject: [PATCH V9 8/9] nvmet: add common I/O length check helper
+
+With the addition of zns backend now we have three different
+backends with which checks for the nvmet request's transfer len and
+nvmet request's sg_cnt. That leads to having duplicate code in for
+three backends: generic bdev, file and generic zns.
+
+Add a helper function to avoid the duplicate code and update the
+respective backends.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/io-cmd-bdev.c |  8 +-------
+ drivers/nvme/target/io-cmd-file.c |  7 +------
+ drivers/nvme/target/nvmet.h       | 14 ++++++++++++++
+ drivers/nvme/target/zns.c         |  7 +------
+ 4 files changed, 17 insertions(+), 19 deletions(-)
+
+diff --git a/drivers/nvme/target/io-cmd-bdev.c b/drivers/nvme/target/io-cmd-bdev.c
+index 562c2dd9c08c..c23a719513b0 100644
+--- a/drivers/nvme/target/io-cmd-bdev.c
++++ b/drivers/nvme/target/io-cmd-bdev.c
+@@ -240,16 +240,10 @@ static void nvmet_bdev_execute_rw(struct nvmet_req *req)
+ 	int op, i, rc;
+ 	struct sg_mapping_iter prot_miter;
+ 	unsigned int iter_flags;
+-	unsigned int total_len = nvmet_rw_data_len(req) + req->metadata_len;
+ 
+-	if (!nvmet_check_transfer_len(req, total_len))
++	if (!nvmet_continue_io(req, nvmet_rw_data_len(req) + req->metadata_len))
+ 		return;
+ 
+-	if (!req->sg_cnt) {
+-		nvmet_req_complete(req, 0);
+-		return;
+-	}
+-
+ 	if (req->cmd->rw.opcode == nvme_cmd_write) {
+ 		op = REQ_OP_WRITE | REQ_SYNC | REQ_IDLE;
+ 		if (req->cmd->rw.control & cpu_to_le16(NVME_RW_FUA))
+diff --git a/drivers/nvme/target/io-cmd-file.c b/drivers/nvme/target/io-cmd-file.c
+index 0abbefd9925e..e7caff221b7b 100644
+--- a/drivers/nvme/target/io-cmd-file.c
++++ b/drivers/nvme/target/io-cmd-file.c
+@@ -241,14 +241,9 @@ static void nvmet_file_execute_rw(struct nvmet_req *req)
+ {
+ 	ssize_t nr_bvec = req->sg_cnt;
+ 
+-	if (!nvmet_check_transfer_len(req, nvmet_rw_data_len(req)))
++	if (!nvmet_continue_io(req, nvmet_rw_data_len(req)))
+ 		return;
+ 
+-	if (!req->sg_cnt || !nr_bvec) {
+-		nvmet_req_complete(req, 0);
+-		return;
+-	}
+-
+ 	if (nr_bvec > NVMET_MAX_INLINE_BIOVEC)
+ 		req->f.bvec = kmalloc_array(nr_bvec, sizeof(struct bio_vec),
+ 				GFP_KERNEL);
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index 93ebc9ae3fe4..f4f9d622df0d 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -685,4 +685,18 @@ static inline void nvmet_req_bio_put(struct nvmet_req *req, struct bio *bio)
+ 		bio_put(bio);
+ }
+ 
++static inline bool nvmet_continue_io(struct nvmet_req *req,
++				     unsigned int total_len)
++{
++	if (!nvmet_check_transfer_len(req, total_len))
++		return false;
++
++	if (!req->sg_cnt) {
++		nvmet_req_complete(req, 0);
++		return false;
++	}
++
++	return true;
++}
++
+ #endif /* _NVMET_H */
+diff --git a/drivers/nvme/target/zns.c b/drivers/nvme/target/zns.c
+index bba1d6957b6a..149bc8ce7010 100644
+--- a/drivers/nvme/target/zns.c
++++ b/drivers/nvme/target/zns.c
+@@ -289,14 +289,9 @@ void nvmet_bdev_execute_zone_append(struct nvmet_req *req)
+ 	int ret = 0, sg_cnt;
+ 	struct bio *bio;
+ 
+-	if (!nvmet_check_transfer_len(req, nvmet_rw_data_len(req)))
++	if (!nvmet_continue_io(req, nvmet_rw_data_len(req)))
+ 		return;
+ 
+-	if (!req->sg_cnt) {
+-		nvmet_req_complete(req, 0);
+-		return;
+-	}
+-
+ 	bio = nvmet_req_bio_get(req, NULL);
+ 	nvmet_bio_init(bio, req->ns->bdev, op, sect, NULL, NULL);
+ 
+-- 
+2.22.1
+

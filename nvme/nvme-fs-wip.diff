@@ -1,0 +1,26 @@
+diff --git a/drivers/nvme/host/fc.c b/drivers/nvme/host/fc.c
+index 8d14df8eeab8..7ba35b059214 100644
+--- a/drivers/nvme/host/fc.c
++++ b/drivers/nvme/host/fc.c
+@@ -3886,10 +3886,10 @@ static ssize_t fc_appid_store(struct device *dev,
+ 	char app_id[FC_APPID_LEN];
+ 	int ret = 0;
+ 
+-	if (buf[count-1] == '\n')
++	if (buf[count - 1] == '\n')
+ 		count--;
+ 
+-	if ((count > (16+1+FC_APPID_LEN)) || (!strchr(buf, ':')))
++	if ((count > (16 + 1 + FC_APPID_LEN)) || (!strchr(buf, ':')))
+ 		return -EINVAL;
+ 
+ 	cgrpid_len = fc_parse_cgrpid(buf, &cgrp_id);
+@@ -3900,7 +3900,7 @@ static ssize_t fc_appid_store(struct device *dev,
+ 		return -EINVAL;
+ 
+ 	memset(app_id, 0x0, sizeof(app_id));
+-	memcpy(app_id, &buf[cgrpid_len+1], appid_len);
++	memcpy(app_id, &buf[cgrpid_len + 1], appid_len);
+ 	ret = blkcg_set_fc_appid(app_id, cgrp_id, sizeof(app_id));
+ 	if (ret < 0)
+ 		return ret;

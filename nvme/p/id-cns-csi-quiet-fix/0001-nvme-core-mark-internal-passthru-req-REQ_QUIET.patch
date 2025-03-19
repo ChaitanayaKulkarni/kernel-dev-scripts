@@ -1,0 +1,72 @@
+From 605db4459b65e0baf04d797e707a4c60d3211121 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Fri, 8 Apr 2022 16:45:18 -0700
+Subject: [PATCH V2 1/2] nvme-core: mark internal passthru req REQ_QUIET
+
+Mark internal passthru requests quiet in the submission path with
+RQF_QUIET flag added in the __nvme_submit_sync_cmd(). In the completion
+path, if nvme request is resulted in the error and request is marked
+RQF_QUIET then don't log the error with nvme_error_log().
+
+Similarly, mark the internal passthru request which are not going
+through __nvme_submit_sync_cmd() i.e. from nvme_delete_queue(),
+nvme_timeout() and nvme_keep_alive_work().
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/host/core.c | 4 +++-
+ drivers/nvme/host/pci.c  | 2 ++
+ 2 files changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index f204c6f78b5b..e8d6a1e52083 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -370,7 +370,7 @@ static inline void nvme_end_req(struct request *req)
+ {
+ 	blk_status_t status = nvme_error_status(nvme_req(req)->status);
+ 
+-	if (unlikely(nvme_req(req)->status != NVME_SC_SUCCESS))
++	if (unlikely(nvme_req(req)->status && !(req->rq_flags & RQF_QUIET)))
+ 		nvme_log_error(req);
+ 	nvme_end_req_zoned(req);
+ 	nvme_trace_bio_complete(req);
+@@ -1100,6 +1100,7 @@ int __nvme_submit_sync_cmd(struct request_queue *q, struct nvme_command *cmd,
+ 			goto out;
+ 	}
+ 
++	req->rq_flags |= RQF_QUIET;
+ 	ret = nvme_execute_rq(req, at_head);
+ 	if (result && ret >= 0)
+ 		*result = nvme_req(req)->result;
+@@ -1291,6 +1292,7 @@ static void nvme_keep_alive_work(struct work_struct *work)
+ 
+ 	rq->timeout = ctrl->kato * HZ;
+ 	rq->end_io_data = ctrl;
++	rq->rq_flags |= RQF_QUIET;
+ 	blk_execute_rq_nowait(rq, false, nvme_keep_alive_end_io);
+ }
+ 
+diff --git a/drivers/nvme/host/pci.c b/drivers/nvme/host/pci.c
+index 66f1eee2509a..3554c20e78c3 100644
+--- a/drivers/nvme/host/pci.c
++++ b/drivers/nvme/host/pci.c
+@@ -1438,6 +1438,7 @@ static enum blk_eh_timer_return nvme_timeout(struct request *req, bool reserved)
+ 	nvme_init_request(abort_req, &cmd);
+ 
+ 	abort_req->end_io_data = NULL;
++	req->rq_flags |= RQF_QUIET;
+ 	blk_execute_rq_nowait(abort_req, false, abort_endio);
+ 
+ 	/*
+@@ -2485,6 +2486,7 @@ static int nvme_delete_queue(struct nvme_queue *nvmeq, u8 opcode)
+ 	req->end_io_data = nvmeq;
+ 
+ 	init_completion(&nvmeq->delete_done);
++	req->rq_flags |= RQF_QUIET;
+ 	blk_execute_rq_nowait(req, false, opcode == nvme_admin_delete_cq ?
+ 			nvme_del_cq_end : nvme_del_queue_end);
+ 	return 0;
+-- 
+2.29.0
+

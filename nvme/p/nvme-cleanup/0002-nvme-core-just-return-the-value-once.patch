@@ -1,0 +1,47 @@
+From 27e3f1dfa309dff763ea4de8737cd3405c2505a2 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Wed, 19 Oct 2022 22:45:15 -0700
+Subject: [PATCH 2/3] nvme-core: just return the value once
+
+There is a 1:1 mapping between nvme_pr type and the user space
+API PR type values ranging from 1..6. Insated of having to return
+6 different values just return once which qualifies for the valid
+PR type value.
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/host/core.c | 11 +++++------
+ 1 file changed, 5 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index 9bda2122a7fe..772779215868 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -2073,19 +2073,18 @@ static int nvme_update_ns_info(struct nvme_ns *ns, struct nvme_ns_info *info)
+ 
+ static char nvme_pr_type(enum pr_type type)
+ {
++	/*
++	 * There is one to one mapping betweek NVMe PR tye and
++	 * uapi/linux/pr.h definitions.
++	 */
+ 	switch (type) {
+ 	case PR_WRITE_EXCLUSIVE:
+-		return 1;
+ 	case PR_EXCLUSIVE_ACCESS:
+-		return 2;
+ 	case PR_WRITE_EXCLUSIVE_REG_ONLY:
+-		return 3;
+ 	case PR_EXCLUSIVE_ACCESS_REG_ONLY:
+-		return 4;
+ 	case PR_WRITE_EXCLUSIVE_ALL_REGS:
+-		return 5;
+ 	case PR_EXCLUSIVE_ACCESS_ALL_REGS:
+-		return 6;
++		return type;
+ 	default:
+ 		return 0;
+ 	}
+-- 
+2.29.0
+

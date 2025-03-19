@@ -1,0 +1,26 @@
+From 89b33535dc80dc03487d05db8c6624fe18e307ad Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Wed, 8 Jan 2020 09:25:45 -0800
+Subject: [PATCH 0/4] *** SUBJECT HERE ***
+
+*** BLURB HERE ***
+
+Chaitanya Kulkarni (2):
+  nvmet: make ctrl-id configurable
+  nvmet: check sscanf value for subsys serial attr
+
+Daniel Wagner (1):
+  nvmet: update AEN list and array at one place
+
+Mark Ruijter (1):
+  nvmet: make ctrl model configurable
+
+ drivers/nvme/target/admin-cmd.c |  17 +++-
+ drivers/nvme/target/configfs.c  | 139 +++++++++++++++++++++++++++++++-
+ drivers/nvme/target/core.c      |  62 ++++++++------
+ drivers/nvme/target/nvmet.h     |  12 +++
+ 4 files changed, 201 insertions(+), 29 deletions(-)
+
+-- 
+2.22.1
+

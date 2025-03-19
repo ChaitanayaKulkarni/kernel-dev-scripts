@@ -1,0 +1,35 @@
+From fbcb9f3a6094d22856e6761e9441daa75255a2eb Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Thu, 6 Aug 2020 23:29:01 -0700
+Subject: [PATCH V2 04/10] nvmet: use unlikely for uncommon commands
+
+I/O commands (nvme_cmd_read, nvme_cmd_write) are most common commands
+when accessing passthru controller, most controllers should not
+have set the effects for r/w I/O commnds (atleast I don't know at this
+moment). Also, check for req->p.use_workqueue is true in two admin
+commands only which are low frequency commands.
+
+Annotate use_workqueue and command effects check with unlikely in the
+fast path.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/passthru.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/nvme/target/passthru.c b/drivers/nvme/target/passthru.c
+index 682291fb6d7b..8f9c2144a103 100644
+--- a/drivers/nvme/target/passthru.c
++++ b/drivers/nvme/target/passthru.c
+@@ -258,7 +258,7 @@ static void nvmet_passthru_execute_cmd(struct nvmet_req *req)
+ 	 * which is typically in interrupt context.
+ 	 */
+ 	effects = nvme_command_effects(ctrl, ns, req->cmd->common.opcode);
+-	if (req->p.use_workqueue || effects) {
++	if (unlikely(req->p.use_workqueue || effects)) {
+ 		INIT_WORK(&req->p.work, nvmet_passthru_execute_cmd_work);
+ 		req->p.rq = rq;
+ 		schedule_work(&req->p.work);
+-- 
+2.22.1
+

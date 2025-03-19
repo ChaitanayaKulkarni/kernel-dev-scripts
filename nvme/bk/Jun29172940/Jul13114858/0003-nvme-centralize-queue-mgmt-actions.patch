@@ -1,0 +1,449 @@
+From e1edb583829101b77868b7228308dc44163322ca Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Sun, 12 Jul 2020 20:24:28 -0700
+Subject: [PATCH V3 3/4] nvme: centralize queue mgmt actions
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/host/core.c   | 126 ++++++++++++++-----------------------
+ drivers/nvme/host/fc.c     |   4 +-
+ drivers/nvme/host/nvme.h   |  18 +++---
+ drivers/nvme/host/pci.c    |  29 ++++-----
+ drivers/nvme/host/rdma.c   |   7 ++-
+ drivers/nvme/host/tcp.c    |   8 ++-
+ drivers/nvme/target/loop.c |   2 +-
+ 7 files changed, 84 insertions(+), 110 deletions(-)
+
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index 619d4b5632c4..8dd45fd68605 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -1417,8 +1417,8 @@ static u32 nvme_passthru_start(struct nvme_ctrl *ctrl, struct nvme_ns *ns,
+ 		mutex_lock(&ctrl->subsys->lock);
+ 		nvme_mpath_start_freeze(ctrl->subsys);
+ 		nvme_mpath_wait_freeze(ctrl->subsys);
+-		nvme_start_freeze(ctrl);
+-		nvme_wait_freeze(ctrl);
++		nvme_queue_act(ctrl, NVME_START_FREEZE_QUEUE);
++		nvme_queue_act(ctrl, NVME_WAIT_FREEZE_QUEUE);
+ 	}
+ 	return effects;
+ }
+@@ -1452,7 +1452,7 @@ static void nvme_passthru_end(struct nvme_ctrl *ctrl, u32 effects)
+ 	if (effects & NVME_CMD_EFFECTS_LBCC)
+ 		nvme_update_formats(ctrl, &effects);
+ 	if (effects & (NVME_CMD_EFFECTS_LBCC | NVME_CMD_EFFECTS_CSE_MASK)) {
+-		nvme_unfreeze(ctrl);
++		nvme_queue_act(ctrl, NVME_UNFREEZE_QUEUE);
+ 		nvme_mpath_unfreeze(ctrl->subsys);
+ 		mutex_unlock(&ctrl->subsys->lock);
+ 		nvme_remove_invalid_namespaces(ctrl, NVME_NSID_ALL);
+@@ -4107,7 +4107,7 @@ void nvme_remove_namespaces(struct nvme_ctrl *ctrl)
+ 	 * potentially having to clean up the failed sync later.
+ 	 */
+ 	if (ctrl->state == NVME_CTRL_DEAD)
+-		nvme_kill_queues(ctrl);
++		nvme_queue_act(ctrl, NVME_KILL_QUEUES);
+ 
+ 	xa_lock(&ctrl->namespaces);
+ 	xa_for_each(&ctrl->namespaces, idx, ns) {
+@@ -4219,7 +4219,7 @@ static void nvme_fw_act_work(struct work_struct *work)
+ 		fw_act_timeout = jiffies +
+ 				msecs_to_jiffies(admin_timeout * 1000);
+ 
+-	nvme_stop_queues(ctrl);
++	nvme_queue_act(ctrl, NVME_STOP_QUEUE);
+ 	while (nvme_ctrl_pp_status(ctrl)) {
+ 		if (time_after(jiffies, fw_act_timeout)) {
+ 			dev_warn(ctrl->device,
+@@ -4233,7 +4233,7 @@ static void nvme_fw_act_work(struct work_struct *work)
+ 	if (!nvme_change_ctrl_state(ctrl, NVME_CTRL_LIVE))
+ 		return;
+ 
+-	nvme_start_queues(ctrl);
++	nvme_queue_act(ctrl, NVME_START_QUEUE);
+ 	/* read FW slot information to clear the AER */
+ 	nvme_get_fw_slot_info(ctrl);
+ }
+@@ -4318,7 +4318,7 @@ void nvme_start_ctrl(struct nvme_ctrl *ctrl)
+ 
+ 	if (ctrl->queue_count > 1) {
+ 		nvme_queue_scan(ctrl);
+-		nvme_start_queues(ctrl);
++		nvme_queue_act(ctrl, NVME_START_QUEUE);
+ 	}
+ 	ctrl->created = true;
+ }
+@@ -4452,36 +4452,52 @@ int nvme_init_ctrl(struct nvme_ctrl *ctrl, struct device *dev,
+ }
+ EXPORT_SYMBOL_GPL(nvme_init_ctrl);
+ 
+-/**
+- * nvme_kill_queues(): Ends all namespace queues
+- * @ctrl: the dead controller that needs to end
+- *
+- * Call this function when the driver determines it is unable to get the
+- * controller in a state capable of servicing IO.
+- */
+-void nvme_kill_queues(struct nvme_ctrl *ctrl)
++void nvme_queue_act(struct nvme_ctrl *ctrl, enum nvme_queue_act op)
+ {
+ 	struct nvme_ns *ns;
+ 	unsigned long idx;
+ 
+-	/* Forcibly unquiesce queues to avoid blocking dispatch */
+-	if (ctrl->admin_q && !blk_queue_dying(ctrl->admin_q))
+-		blk_mq_unquiesce_queue(ctrl->admin_q);
+-
+-	xa_for_each(&ctrl->namespaces, idx, ns)
+-		nvme_set_queue_dying(ns);
+-}
+-EXPORT_SYMBOL_GPL(nvme_kill_queues);
++	switch (op) {
++	case NVME_KILL_QUEUES:
++		/* Forcibly unquiesce queues to avoid blocking dispatch */
++		if (ctrl->admin_q && !blk_queue_dying(ctrl->admin_q))
++			blk_mq_unquiesce_queue(ctrl->admin_q);
++		break;
++	default:
++		break;
+ 
+-void nvme_unfreeze(struct nvme_ctrl *ctrl)
+-{
+-	struct nvme_ns *ns;
+-	unsigned long idx;
++	}
+ 
+-	xa_for_each(&ctrl->namespaces, idx, ns)
+-		blk_mq_unfreeze_queue(ns->queue);
++	xa_for_each(&ctrl->namespaces, idx, ns) {
++		switch (op) {
++		case NVME_UNFREEZE_QUEUE:
++			blk_mq_unfreeze_queue(ns->queue);
++			break;
++		case NVME_WAIT_FREEZE_QUEUE:
++			blk_mq_freeze_queue_wait(ns->queue);
++			break;
++		case NVME_START_FREEZE_QUEUE:
++			blk_freeze_queue_start(ns->queue);
++			break;
++		case NVME_STOP_QUEUE:
++			blk_mq_quiesce_queue(ns->queue);
++			break;
++		case NVME_START_QUEUE:
++			blk_mq_unquiesce_queue(ns->queue);
++			break;
++		case NVME_SYNC_QUEUE:
++			blk_sync_queue(ns->queue);
++			break;
++		case NVME_KILL_QUEUES:
++			nvme_set_queue_dying(ns);
++			break;
++		default:
++			pr_warn("invalid %s op 0x%x\n", __func__, op);
++			break;
++		}
++	}
+ }
+-EXPORT_SYMBOL_GPL(nvme_unfreeze);
++EXPORT_SYMBOL_GPL(nvme_queue_act);
+ 
+ void nvme_wait_freeze_timeout(struct nvme_ctrl *ctrl, long timeout)
+ {
+@@ -4496,56 +4512,6 @@ void nvme_wait_freeze_timeout(struct nvme_ctrl *ctrl, long timeout)
+ }
+ EXPORT_SYMBOL_GPL(nvme_wait_freeze_timeout);
+ 
+-void nvme_wait_freeze(struct nvme_ctrl *ctrl)
+-{
+-	struct nvme_ns *ns;
+-	unsigned long idx;
+-
+-	xa_for_each(&ctrl->namespaces, idx, ns)
+-		blk_mq_freeze_queue_wait(ns->queue);
+-}
+-EXPORT_SYMBOL_GPL(nvme_wait_freeze);
+-
+-void nvme_start_freeze(struct nvme_ctrl *ctrl)
+-{
+-	struct nvme_ns *ns;
+-	unsigned long idx;
+-
+-	xa_for_each(&ctrl->namespaces, idx, ns)
+-		blk_freeze_queue_start(ns->queue);
+-}
+-EXPORT_SYMBOL_GPL(nvme_start_freeze);
+-
+-void nvme_stop_queues(struct nvme_ctrl *ctrl)
+-{
+-	struct nvme_ns *ns;
+-	unsigned long idx;
+-
+-	xa_for_each(&ctrl->namespaces, idx, ns)
+-		blk_mq_quiesce_queue(ns->queue);
+-}
+-EXPORT_SYMBOL_GPL(nvme_stop_queues);
+-
+-void nvme_start_queues(struct nvme_ctrl *ctrl)
+-{
+-	struct nvme_ns *ns;
+-	unsigned long idx;
+-
+-	xa_for_each(&ctrl->namespaces, idx, ns)
+-		blk_mq_unquiesce_queue(ns->queue);
+-}
+-EXPORT_SYMBOL_GPL(nvme_start_queues);
+-
+-void nvme_sync_queues(struct nvme_ctrl *ctrl)
+-{
+-	struct nvme_ns *ns;
+-	unsigned long idx;
+-
+-	xa_for_each(&ctrl->namespaces, idx, ns)
+-		blk_sync_queue(ns->queue);
+-}
+-EXPORT_SYMBOL_GPL(nvme_sync_queues);
+-
+ /*
+  * Check we didn't inadvertently grow the command structure sizes:
+  */
+diff --git a/drivers/nvme/host/fc.c b/drivers/nvme/host/fc.c
+index 6aa30bb5a762..a08d6ef85789 100644
+--- a/drivers/nvme/host/fc.c
++++ b/drivers/nvme/host/fc.c
+@@ -3120,7 +3120,7 @@ nvme_fc_delete_association(struct nvme_fc_ctrl *ctrl)
+ 	 * (but with error status).
+ 	 */
+ 	if (ctrl->ctrl.queue_count > 1) {
+-		nvme_stop_queues(&ctrl->ctrl);
++		nvme_queue_act(&ctrl->ctrl, NVME_STOP_QUEUE);
+ 		blk_mq_tagset_busy_iter(&ctrl->tag_set,
+ 				nvme_fc_terminate_exchange, &ctrl->ctrl);
+ 		blk_mq_tagset_wait_completed_request(&ctrl->tag_set);
+@@ -3192,7 +3192,7 @@ nvme_fc_delete_association(struct nvme_fc_ctrl *ctrl)
+ 	blk_mq_unquiesce_queue(ctrl->ctrl.admin_q);
+ 
+ 	/* resume the io queues so that things will fast fail */
+-	nvme_start_queues(&ctrl->ctrl);
++	nvme_queue_act(&ctrl->ctrl, NVME_START_QUEUE);
+ 
+ 	nvme_fc_ctlr_inactive_on_rport(ctrl);
+ }
+diff --git a/drivers/nvme/host/nvme.h b/drivers/nvme/host/nvme.h
+index 1e8dedee74df..f3bda796764e 100644
+--- a/drivers/nvme/host/nvme.h
++++ b/drivers/nvme/host/nvme.h
+@@ -139,6 +139,16 @@ enum nvme_quirks {
+ 	NVME_QUIRK_NO_TEMP_THRESH_CHANGE	= (1 << 14),
+ };
+ 
++enum nvme_queue_act {
++	NVME_UNFREEZE_QUEUE = 1,
++	NVME_WAIT_FREEZE_QUEUE,
++	NVME_START_FREEZE_QUEUE,
++	NVME_STOP_QUEUE,
++	NVME_START_QUEUE,
++	NVME_SYNC_QUEUE,
++	NVME_KILL_QUEUES,
++};
++
+ /*
+  * Common request structure for NVMe passthrough.  All drivers must have
+  * this structure as the first member of their request-private data.
+@@ -545,14 +555,8 @@ int nvme_sec_submit(void *data, u16 spsp, u8 secp, void *buffer, size_t len,
+ void nvme_complete_async_event(struct nvme_ctrl *ctrl, __le16 status,
+ 		volatile union nvme_result *res);
+ 
+-void nvme_stop_queues(struct nvme_ctrl *ctrl);
+-void nvme_start_queues(struct nvme_ctrl *ctrl);
+-void nvme_kill_queues(struct nvme_ctrl *ctrl);
+-void nvme_sync_queues(struct nvme_ctrl *ctrl);
+-void nvme_unfreeze(struct nvme_ctrl *ctrl);
+-void nvme_wait_freeze(struct nvme_ctrl *ctrl);
++void nvme_queue_act(struct nvme_ctrl *ctrl, enum nvme_queue_act op);
+ void nvme_wait_freeze_timeout(struct nvme_ctrl *ctrl, long timeout);
+-void nvme_start_freeze(struct nvme_ctrl *ctrl);
+ 
+ #define NVME_QID_ANY -1
+ struct request *nvme_alloc_request(struct request_queue *q,
+diff --git a/drivers/nvme/host/pci.c b/drivers/nvme/host/pci.c
+index 19e27dd17108..66a808c8a1a8 100644
+--- a/drivers/nvme/host/pci.c
++++ b/drivers/nvme/host/pci.c
+@@ -2405,7 +2405,8 @@ static void nvme_dev_disable(struct nvme_dev *dev, bool shutdown)
+ 		if (dev->ctrl.state == NVME_CTRL_LIVE ||
+ 		    dev->ctrl.state == NVME_CTRL_RESETTING) {
+ 			freeze = true;
+-			nvme_start_freeze(&dev->ctrl);
++			nvme_queue_act(&dev->ctrl, NVME_START_FREEZE_QUEUE);
++
+ 		}
+ 		dead = !!((csts & NVME_CSTS_CFS) || !(csts & NVME_CSTS_RDY) ||
+ 			pdev->error_state  != pci_channel_io_normal);
+@@ -2418,7 +2419,7 @@ static void nvme_dev_disable(struct nvme_dev *dev, bool shutdown)
+ 	if (!dead && shutdown && freeze)
+ 		nvme_wait_freeze_timeout(&dev->ctrl, NVME_IO_TIMEOUT);
+ 
+-	nvme_stop_queues(&dev->ctrl);
++	nvme_queue_act(&dev->ctrl, NVME_STOP_QUEUE);
+ 
+ 	if (!dead && dev->ctrl.queue_count > 0) {
+ 		nvme_disable_io_queues(dev);
+@@ -2440,7 +2441,7 @@ static void nvme_dev_disable(struct nvme_dev *dev, bool shutdown)
+ 	 * deadlocking blk-mq hot-cpu notifier.
+ 	 */
+ 	if (shutdown) {
+-		nvme_start_queues(&dev->ctrl);
++		nvme_queue_act(&dev->ctrl, NVME_START_QUEUE);
+ 		if (dev->ctrl.admin_q && !blk_queue_dying(dev->ctrl.admin_q))
+ 			blk_mq_unquiesce_queue(dev->ctrl.admin_q);
+ 	}
+@@ -2509,7 +2510,7 @@ static void nvme_remove_dead_ctrl(struct nvme_dev *dev)
+ 	nvme_change_ctrl_state(&dev->ctrl, NVME_CTRL_DELETING);
+ 	nvme_get_ctrl(&dev->ctrl);
+ 	nvme_dev_disable(dev, false);
+-	nvme_kill_queues(&dev->ctrl);
++	nvme_queue_act(&dev->ctrl, NVME_KILL_QUEUES);
+ 	if (!queue_work(nvme_wq, &dev->remove_work))
+ 		nvme_put_ctrl(&dev->ctrl);
+ }
+@@ -2532,7 +2533,7 @@ static void nvme_reset_work(struct work_struct *work)
+ 	 */
+ 	if (dev->ctrl.ctrl_config & NVME_CC_ENABLE)
+ 		nvme_dev_disable(dev, false);
+-	nvme_sync_queues(&dev->ctrl);
++	nvme_queue_act(&dev->ctrl, NVME_SYNC_QUEUE);
+ 
+ 	mutex_lock(&dev->shutdown_lock);
+ 	result = nvme_pci_enable(dev);
+@@ -2617,14 +2618,14 @@ static void nvme_reset_work(struct work_struct *work)
+ 	 */
+ 	if (dev->online_queues < 2) {
+ 		dev_warn(dev->ctrl.device, "IO queues not created\n");
+-		nvme_kill_queues(&dev->ctrl);
++		nvme_queue_act(&dev->ctrl, NVME_KILL_QUEUES);
+ 		nvme_remove_namespaces(&dev->ctrl);
+ 		nvme_free_tagset(dev);
+ 	} else {
+-		nvme_start_queues(&dev->ctrl);
+-		nvme_wait_freeze(&dev->ctrl);
++		nvme_queue_act(&dev->ctrl, NVME_START_QUEUE);
++		nvme_queue_act(&dev->ctrl, NVME_WAIT_FREEZE_QUEUE);
+ 		nvme_dev_add(dev);
+-		nvme_unfreeze(&dev->ctrl);
++		nvme_queue_act(&dev->ctrl, NVME_UNFREEZE_QUEUE);
+ 	}
+ 
+ 	/*
+@@ -2859,7 +2860,7 @@ static void nvme_reset_prepare(struct pci_dev *pdev)
+ 	 * with ->remove().
+ 	 */
+ 	nvme_disable_prepare_reset(dev, false);
+-	nvme_sync_queues(&dev->ctrl);
++	nvme_queue_act(&dev->ctrl, NVME_SYNC_QUEUE);
+ }
+ 
+ static void nvme_reset_done(struct pci_dev *pdev)
+@@ -2963,9 +2964,9 @@ static int nvme_suspend(struct device *dev)
+ 	    (ndev->ctrl.quirks & NVME_QUIRK_SIMPLE_SUSPEND))
+ 		return nvme_disable_prepare_reset(ndev, true);
+ 
+-	nvme_start_freeze(ctrl);
+-	nvme_wait_freeze(ctrl);
+-	nvme_sync_queues(ctrl);
++	nvme_queue_act(ctrl, NVME_START_QUEUE);
++	nvme_queue_act(ctrl, NVME_WAIT_FREEZE_QUEUE);
++	nvme_queue_act(ctrl, NVME_SYNC_QUEUE);
+ 
+ 	if (ctrl->state != NVME_CTRL_LIVE)
+ 		goto unfreeze;
+@@ -2997,7 +2998,7 @@ static int nvme_suspend(struct device *dev)
+ 		ctrl->npss = 0;
+ 	}
+ unfreeze:
+-	nvme_unfreeze(ctrl);
++	nvme_queue_act(ctrl, NVME_UNFREEZE_QUEUE);
+ 	return ret;
+ }
+ 
+diff --git a/drivers/nvme/host/rdma.c b/drivers/nvme/host/rdma.c
+index e881f879ac63..ea78f08186fb 100644
+--- a/drivers/nvme/host/rdma.c
++++ b/drivers/nvme/host/rdma.c
+@@ -983,7 +983,7 @@ static void nvme_rdma_teardown_io_queues(struct nvme_rdma_ctrl *ctrl,
+ 		bool remove)
+ {
+ 	if (ctrl->ctrl.queue_count > 1) {
+-		nvme_stop_queues(&ctrl->ctrl);
++		nvme_queue_act(&ctrl->ctrl, NVME_STOP_QUEUE);
+ 		nvme_rdma_stop_io_queues(ctrl);
+ 		if (ctrl->ctrl.tagset) {
+ 			blk_mq_tagset_busy_iter(ctrl->ctrl.tagset,
+@@ -991,7 +991,8 @@ static void nvme_rdma_teardown_io_queues(struct nvme_rdma_ctrl *ctrl,
+ 			blk_mq_tagset_wait_completed_request(ctrl->ctrl.tagset);
+ 		}
+ 		if (remove)
+-			nvme_start_queues(&ctrl->ctrl);
++			nvme_queue_act(&ctrl->ctrl, NVME_START_QUEUE);
++
+ 		nvme_rdma_destroy_io_queues(ctrl, remove);
+ 	}
+ }
+@@ -1129,7 +1130,7 @@ static void nvme_rdma_error_recovery_work(struct work_struct *work)
+ 
+ 	nvme_stop_keep_alive(&ctrl->ctrl);
+ 	nvme_rdma_teardown_io_queues(ctrl, false);
+-	nvme_start_queues(&ctrl->ctrl);
++	nvme_queue_act(&ctrl->ctrl, NVME_START_QUEUE);
+ 	nvme_rdma_teardown_admin_queue(ctrl, false);
+ 	blk_mq_unquiesce_queue(ctrl->ctrl.admin_q);
+ 
+diff --git a/drivers/nvme/host/tcp.c b/drivers/nvme/host/tcp.c
+index b2e73e19ef01..a2a48dedb1c2 100644
+--- a/drivers/nvme/host/tcp.c
++++ b/drivers/nvme/host/tcp.c
+@@ -1884,7 +1884,7 @@ static void nvme_tcp_teardown_io_queues(struct nvme_ctrl *ctrl,
+ {
+ 	if (ctrl->queue_count <= 1)
+ 		return;
+-	nvme_stop_queues(ctrl);
++	nvme_queue_act(ctrl, NVME_STOP_QUEUE);
+ 	nvme_tcp_stop_io_queues(ctrl);
+ 	if (ctrl->tagset) {
+ 		blk_mq_tagset_busy_iter(ctrl->tagset,
+@@ -1892,7 +1892,8 @@ static void nvme_tcp_teardown_io_queues(struct nvme_ctrl *ctrl,
+ 		blk_mq_tagset_wait_completed_request(ctrl->tagset);
+ 	}
+ 	if (remove)
+-		nvme_start_queues(ctrl);
++		nvme_queue_act(ctrl, NVME_START_QUEUE);
++
+ 	nvme_tcp_destroy_io_queues(ctrl, remove);
+ }
+ 
+@@ -2005,7 +2006,8 @@ static void nvme_tcp_error_recovery_work(struct work_struct *work)
+ 	nvme_stop_keep_alive(ctrl);
+ 	nvme_tcp_teardown_io_queues(ctrl, false);
+ 	/* unquiesce to fail fast pending requests */
+-	nvme_start_queues(ctrl);
++	nvme_queue_act(ctrl, NVME_START_QUEUE);
++
+ 	nvme_tcp_teardown_admin_queue(ctrl, false);
+ 	blk_mq_unquiesce_queue(ctrl->admin_q);
+ 
+diff --git a/drivers/nvme/target/loop.c b/drivers/nvme/target/loop.c
+index f2c80a51985f..017b63208d28 100644
+--- a/drivers/nvme/target/loop.c
++++ b/drivers/nvme/target/loop.c
+@@ -406,7 +406,7 @@ static int nvme_loop_configure_admin_queue(struct nvme_loop_ctrl *ctrl)
+ static void nvme_loop_shutdown_ctrl(struct nvme_loop_ctrl *ctrl)
+ {
+ 	if (ctrl->ctrl.queue_count > 1) {
+-		nvme_stop_queues(&ctrl->ctrl);
++		nvme_queue_act(&ctrl->ctrl, NVME_STOP_QUEUE);
+ 		blk_mq_tagset_busy_iter(&ctrl->tag_set,
+ 					nvme_cancel_request, &ctrl->ctrl);
+ 		blk_mq_tagset_wait_completed_request(&ctrl->tag_set);
+-- 
+2.26.0
+

@@ -1,0 +1,91 @@
+From de34e6a3c749b4458456d2b21f06ec75b3fc414b Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Sat, 22 Aug 2020 16:58:14 -0700
+Subject: [PATCH 2/3] nvme: move get/put ctrl into dev open/release
+
+Introduce nvme_dev_release ctrl file release callback and move ctrl get
+and put operations from target passthru into host core in ctrl open and
+release file operations respectively. This is needed to atomically
+get/put ctrl and get/put ctrl module refcount without using any locks.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/host/core.c       | 12 +++++++++++-
+ drivers/nvme/target/passthru.c |  7 ++-----
+ 2 files changed, 13 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index fa7c0def9184..a1707afcb710 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -3262,6 +3262,16 @@ static int nvme_dev_open(struct inode *inode, struct file *file)
+ 	}
+ 
+ 	file->private_data = ctrl;
++	nvme_get_ctrl(ctrl);
++	return 0;
++}
++
++static int nvme_dev_release(struct inode *inode, struct file *file)
++{
++	struct nvme_ctrl *ctrl =
++		container_of(inode->i_cdev, struct nvme_ctrl, cdev);
++
++	nvme_put_ctrl(ctrl);
+ 	return 0;
+ }
+ 
+@@ -3327,6 +3337,7 @@ static long nvme_dev_ioctl(struct file *file, unsigned int cmd,
+ static const struct file_operations nvme_dev_fops = {
+ 	.owner		= THIS_MODULE,
+ 	.open		= nvme_dev_open,
++	.release	= nvme_dev_release,
+ 	.unlocked_ioctl	= nvme_dev_ioctl,
+ 	.compat_ioctl	= compat_ptr_ioctl,
+ };
+@@ -4651,7 +4662,6 @@ struct nvme_ctrl *nvme_ctrl_get_by_file(struct file *f)
+ 	}
+ 
+ 	ctrl = f->private_data;
+-	nvme_get_ctrl(ctrl);
+ 
+ out_close:
+ 	return ctrl;
+diff --git a/drivers/nvme/target/passthru.c b/drivers/nvme/target/passthru.c
+index 14a842408035..9cd8fd2ddc72 100644
+--- a/drivers/nvme/target/passthru.c
++++ b/drivers/nvme/target/passthru.c
+@@ -507,11 +507,11 @@ int nvmet_passthru_ctrl_enable(struct nvmet_subsys *subsys)
+ 			 subsys, GFP_KERNEL);
+ 	if (xa_is_err(old)) {
+ 		ret = xa_err(old);
+-		goto out_put_ctrl;
++		goto out_put_file;
+ 	}
+ 
+ 	if (old)
+-		goto out_put_ctrl;
++		goto out_put_file;
+ 
+ 	subsys->passthru_ctrl = ctrl;
+ 	subsys->ver = ctrl->vs;
+@@ -526,8 +526,6 @@ int nvmet_passthru_ctrl_enable(struct nvmet_subsys *subsys)
+ 	mutex_unlock(&subsys->lock);
+ 	return 0;
+ 
+-out_put_ctrl:
+-	nvme_put_ctrl(ctrl);
+ out_put_file:
+ 	filp_close(subsys->passthru_ctrl_file, NULL);
+ out_unlock:
+@@ -540,7 +538,6 @@ static void __nvmet_passthru_ctrl_disable(struct nvmet_subsys *subsys)
+ 	if (subsys->passthru_ctrl) {
+ 		xa_erase(&passthru_subsystems, subsys->passthru_ctrl->cntlid);
+ 		filp_close(subsys->passthru_ctrl_file, NULL);
+-		nvme_put_ctrl(subsys->passthru_ctrl);
+ 	}
+ 	subsys->passthru_ctrl = NULL;
+ 	subsys->ver = NVMET_DEFAULT_VS;
+-- 
+2.22.1
+

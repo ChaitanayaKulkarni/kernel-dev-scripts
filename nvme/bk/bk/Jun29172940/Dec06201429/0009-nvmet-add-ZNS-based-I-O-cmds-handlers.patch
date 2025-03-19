@@ -1,0 +1,36 @@
+From 290b29e643d743ba2856d8390886e586701298e9 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Fri, 27 Nov 2020 22:02:26 -0800
+Subject: [PATCH 9/9] nvmet: add ZNS based I/O cmds handlers
+
+Add zone-mgmt-send, zone-mgmt-recv and zone-zppend handlers for the
+bdev backend so that it can support zbd.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/io-cmd-bdev.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/drivers/nvme/target/io-cmd-bdev.c b/drivers/nvme/target/io-cmd-bdev.c
+index e1f6d59dd341..25dcd0544d5d 100644
+--- a/drivers/nvme/target/io-cmd-bdev.c
++++ b/drivers/nvme/target/io-cmd-bdev.c
+@@ -453,6 +453,15 @@ u16 nvmet_bdev_parse_io_cmd(struct nvmet_req *req)
+ 	case nvme_cmd_write_zeroes:
+ 		req->execute = nvmet_bdev_execute_write_zeroes;
+ 		return 0;
++	case nvme_cmd_zone_append:
++		req->execute = nvmet_bdev_execute_zone_append;
++		return 0;
++	case nvme_cmd_zone_mgmt_recv:
++		req->execute = nvmet_bdev_execute_zone_mgmt_recv;
++		return 0;
++	case nvme_cmd_zone_mgmt_send:
++		req->execute = nvmet_bdev_execute_zone_mgmt_send;
++		return 0;
+ 	default:
+ 		pr_err("unhandled cmd %d on qid %d\n", cmd->common.opcode,
+ 		       req->sq->qid);
+-- 
+2.22.1
+

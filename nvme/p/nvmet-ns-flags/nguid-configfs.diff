@@ -1,0 +1,29 @@
+diff --git a/drivers/nvme/target/configfs.c b/drivers/nvme/target/configfs.c
+index 463ae31d5d71..dc4c0f643d16 100644
+--- a/drivers/nvme/target/configfs.c
++++ b/drivers/nvme/target/configfs.c
+@@ -452,7 +452,7 @@ static ssize_t nvmet_ns_device_nguid_store(struct config_item *item,
+ {
+ 	struct nvmet_ns *ns = to_nvmet_ns(item);
+ 	struct nvmet_subsys *subsys = ns->subsys;
+-	u8 nguid[16];
++	u8 nguid[NVME_NIDT_NGUID_LEN];
+ 	const char *p = page;
+ 	int i;
+ 	int ret = 0;
+@@ -463,12 +463,14 @@ static ssize_t nvmet_ns_device_nguid_store(struct config_item *item,
+ 		goto out_unlock;
+ 	}
+ 
+-	for (i = 0; i < 16; i++) {
++	for (i = 0; i < NVME_NIDT_NGUID_LEN; i++) {
+ 		if (p + 2 > page + count) {
++			pr_err("%s: invalid lenght %zu\n", __func__, count);
+ 			ret = -EINVAL;
+ 			goto out_unlock;
+ 		}
+ 		if (!isxdigit(p[0]) || !isxdigit(p[1])) {
++			pr_err("%s: only hex values allowed\n", __func__);
+ 			ret = -EINVAL;
+ 			goto out_unlock;
+ 		}

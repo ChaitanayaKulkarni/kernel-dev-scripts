@@ -1,0 +1,59 @@
+From e647f074fe90199d86e4b9876f37f530b95b0bc5 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Thu, 8 Feb 2024 01:44:50 -0800
+Subject: [PATCH 2/4] nvme-fabrics: add macro to define connect flags
+
+The connect command flags for admin and I/O command are same. Instead
+of hardcding all three flags define a macro that makes it easy to search
+for respective behaviour.
+
+Please note that this is nothing new but follows existing code for :-
+QUEUE_FLAG_MQ_DEFAULT, NVME_AEN_SUPPORTED, NVME_RDMA_DATA_SGL_SIZE,
+NVMF_ALLOWED_OPTS, NVMF_REQUIRED_OPTS etc.
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/host/fabrics.c | 13 +++++--------
+ 1 file changed, 5 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/nvme/host/fabrics.c b/drivers/nvme/host/fabrics.c
+index 8016addce8bd..1bc0fd89a1f1 100644
+--- a/drivers/nvme/host/fabrics.c
++++ b/drivers/nvme/host/fabrics.c
+@@ -415,6 +415,9 @@ static void nvmf_connect_cmd_prep(struct nvme_ctrl *ctrl, u16 qid,
+ 		cmd->connect.cattr |= NVME_CONNECT_DISABLE_SQFLOW;
+ }
+ 
++#define NVMF_DEF_CONNECT_FLAGS (NVME_SUBMIT_AT_HEAD | NVME_SUBMIT_RESERVED |\
++				NVME_SUBMIT_NOWAIT)
++
+ /**
+  * nvmf_connect_admin_queue() - NVMe Fabrics Admin Queue "Connect"
+  *				API function.
+@@ -450,10 +453,7 @@ int nvmf_connect_admin_queue(struct nvme_ctrl *ctrl)
+ 		return -ENOMEM;
+ 
+ 	ret = __nvme_submit_sync_cmd(ctrl->fabrics_q, &cmd, &res,
+-			data, sizeof(*data), NVME_QID_ANY,
+-			NVME_SUBMIT_AT_HEAD |
+-			NVME_SUBMIT_NOWAIT |
+-			NVME_SUBMIT_RESERVED);
++			data, sizeof(*data), NVME_QID_ANY, NVME_CONNECT_FLAGS);
+ 	if (ret) {
+ 		nvmf_log_connect_error(ctrl, ret, le32_to_cpu(res.u32),
+ 				       &cmd, data);
+@@ -503,10 +503,7 @@ int nvmf_connect_io_queue(struct nvme_ctrl *ctrl, u16 qid)
+ 		return -ENOMEM;
+ 
+ 	ret = __nvme_submit_sync_cmd(ctrl->connect_q, &cmd, &res,
+-			data, sizeof(*data), qid,
+-			NVME_SUBMIT_AT_HEAD |
+-			NVME_SUBMIT_RESERVED |
+-			NVME_SUBMIT_NOWAIT);
++			data, sizeof(*data), qid, NVME_CONNECT_FLAGS);
+ 	if (ret) {
+ 		nvmf_log_connect_error(ctrl, ret, le32_to_cpu(res.u32),
+ 				       &cmd, data);
+-- 
+2.40.0
+

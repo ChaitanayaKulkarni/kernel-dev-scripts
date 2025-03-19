@@ -1,0 +1,89 @@
+From a12b17b959b852b1d1a6ea235996d70aeaa9afc7 Mon Sep 17 00:00:00 2001
+From: Anthony Iliopoulos <ailiop@suse.com>
+Date: Tue, 7 Apr 2020 14:11:49 -0700
+Subject: [PATCH V3 1/6] nvmet: add ns revalidation support
+
+Add support for detecting capacity changes on nvmet blockdev and file
+backed namespaces. This allows for emulating and testing online resizing
+of nvme devices and filesystems on top.
+
+Signed-off-by: Anthony Iliopoulos <ailiop@suse.com>
+[Fix comments posted on V1]
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/admin-cmd.c   |  5 +++++
+ drivers/nvme/target/io-cmd-bdev.c |  5 +++++
+ drivers/nvme/target/io-cmd-file.c | 11 +++++++++++
+ drivers/nvme/target/nvmet.h       |  2 ++
+ 4 files changed, 23 insertions(+)
+
+diff --git a/drivers/nvme/target/admin-cmd.c b/drivers/nvme/target/admin-cmd.c
+index 9d6f75cfa77c..4c79aa804887 100644
+--- a/drivers/nvme/target/admin-cmd.c
++++ b/drivers/nvme/target/admin-cmd.c
+@@ -486,6 +486,11 @@ static void nvmet_execute_identify_ns(struct nvmet_req *req)
+ 	if (!ns)
+ 		goto done;
+ 
++	if (ns->bdev)
++		nvmet_bdev_ns_revalidate(ns);
++	else
++		nvmet_file_ns_revalidate(ns);
++
+ 	/*
+ 	 * nuse = ncap = nsze isn't always true, but we have no way to find
+ 	 * that out from the underlying device.
+diff --git a/drivers/nvme/target/io-cmd-bdev.c b/drivers/nvme/target/io-cmd-bdev.c
+index ea0e596be15d..0427e040e3dd 100644
+--- a/drivers/nvme/target/io-cmd-bdev.c
++++ b/drivers/nvme/target/io-cmd-bdev.c
+@@ -75,6 +75,11 @@ void nvmet_bdev_ns_disable(struct nvmet_ns *ns)
+ 	}
+ }
+ 
++void nvmet_bdev_ns_revalidate(struct nvmet_ns *ns)
++{
++	ns->size = i_size_read(ns->bdev->bd_inode);
++}
++
+ static u16 blk_to_nvme_status(struct nvmet_req *req, blk_status_t blk_sts)
+ {
+ 	u16 status = NVME_SC_SUCCESS;
+diff --git a/drivers/nvme/target/io-cmd-file.c b/drivers/nvme/target/io-cmd-file.c
+index cd5670b83118..14364383d2fe 100644
+--- a/drivers/nvme/target/io-cmd-file.c
++++ b/drivers/nvme/target/io-cmd-file.c
+@@ -80,6 +80,17 @@ int nvmet_file_ns_enable(struct nvmet_ns *ns)
+ 	return ret;
+ }
+ 
++void nvmet_file_ns_revalidate(struct nvmet_ns *ns)
++{
++	struct kstat stat;
++
++	if (vfs_getattr(&ns->file->f_path, &stat, STATX_SIZE,
++			AT_STATX_FORCE_SYNC))
++		return;
++
++	ns->size = stat.size;
++}
++
+ static void nvmet_file_init_bvec(struct bio_vec *bv, struct scatterlist *sg)
+ {
+ 	bv->bv_page = sg_page(sg);
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index 421dff3ea143..8b479d932a7b 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -498,6 +498,8 @@ void nvmet_file_ns_disable(struct nvmet_ns *ns);
+ u16 nvmet_bdev_flush(struct nvmet_req *req);
+ u16 nvmet_file_flush(struct nvmet_req *req);
+ void nvmet_ns_changed(struct nvmet_subsys *subsys, u32 nsid);
++void nvmet_bdev_ns_revalidate(struct nvmet_ns *ns);
++void nvmet_file_ns_revalidate(struct nvmet_ns *ns);
+ 
+ static inline u32 nvmet_rw_len(struct nvmet_req *req)
+ {
+-- 
+2.22.1
+

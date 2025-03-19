@@ -1,0 +1,28 @@
+From 836567ce7f745f6897f926069d2ab1691b135810 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Fri, 7 Aug 2020 00:30:01 -0700
+Subject: [PATCH 00/10] *** SUBJECT HERE ***
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+*** BLURB HERE ***
+
+Chaitanya Kulkarni (10):
+  nvmet: add ns tear down label for pt-cmd handling
+  nvmet: fix oops in pt cmd execution
+  nvmet: call blk_mq_free_request() directly
+  nvmet: for pt I/O cmds annotate req->sg_cnt likely
+  nvmet: for pt I/O commands use likely for ns check
+  nvmet: use consistent type with with id->nlbaf
+  nvmet: use consistent type for op_flag
+  nvmet: get rid of the extra variable
+  nvmet: use unlikely for uncommon commands
+  nvmet: use nvme write cmd group setting op_flag
+
+ drivers/nvme/target/passthru.c | 64 +++++++++++++++++++++++-----------
+ 1 file changed, 43 insertions(+), 21 deletions(-)
+
+-- 
+2.22.1
+

@@ -1,0 +1,72 @@
+From 9baf84ad953b37bef393b823316b65134564976d Mon Sep 17 00:00:00 2001
+From: Amit Engel <amit.engel@dell.com>
+Date: Mon, 9 Dec 2019 22:43:37 -0800
+Subject: [PATCH] nvmet: fix per feat data len for get_feature
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+From: Amit Engel <amit.engel@dell.com>
+
+The existing implementation for the get_feature admin-cmd does not
+use per-feature data len. This patch introduces a new helper function
+nvmet_feat_data_len(), which is used to calculate per feature data len.
+Right now we only set data len for fid 0x81 (NVME_FEAT_HOST_ID).
+
+Fixes: commit e9061c397839 ("nvmet: Remove the data_len field from the nvmet_req struct")
+
+Signed-off-by: Amit Engel <amit.engel@dell.com>
+[chaitanya.kulkarni@wdc.com:
+ 1. Don't re-calculate cdw10 nvmet_get_feature(), that also fixes the
+    endianness.
+ 3. Rename nvmet_feature_data_len() -> nvmet_feat_data_len().
+ 4. Get rid of the extra variable feature in nvmet_feat_data_len().
+ 5. Mark nvmet_feat_data_len() staic since we are the only user.
+ 6. Kernel patch style fixes.
+]
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+Hi,
+
+This patch is originally posted by Amit. I've fixed some of the issues
+I found during the review, listed in the commit log.
+
+Regards,
+Chaitanya
+---
+ drivers/nvme/target/admin-cmd.c | 12 +++++++++++-
+ 1 file changed, 11 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/nvme/target/admin-cmd.c b/drivers/nvme/target/admin-cmd.c
+index 56c21b501185..72a7e41f3018 100644
+--- a/drivers/nvme/target/admin-cmd.c
++++ b/drivers/nvme/target/admin-cmd.c
+@@ -24,6 +24,16 @@ u32 nvmet_get_log_page_len(struct nvme_command *cmd)
+ 	return len;
+ }
+ 
++static u32 nvmet_feat_data_len(struct nvmet_req *req, u32 cdw10)
++{
++	switch (cdw10 & 0xff) {
++	case NVME_FEAT_HOST_ID:
++		return sizeof(req->sq->ctrl->hostid);
++	default:
++		return 0;
++	}
++}
++
+ u64 nvmet_get_log_page_offset(struct nvme_command *cmd)
+ {
+ 	return le64_to_cpu(cmd->get_log_page.lpo);
+@@ -778,7 +788,7 @@ static void nvmet_execute_get_features(struct nvmet_req *req)
+ 	u32 cdw10 = le32_to_cpu(req->cmd->common.cdw10);
+ 	u16 status = 0;
+ 
+-	if (!nvmet_check_data_len(req, 0))
++	if (!nvmet_check_data_len(req, nvmet_feat_data_len(req, cdw10)))
+ 		return;
+ 
+ 	switch (cdw10 & 0xff) {
+-- 
+2.22.1
+

@@ -1,0 +1,223 @@
+From b48ca96ee73eef063bb6aae4d6aee44d2ab641ee Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Sat, 12 Dec 2020 15:15:57 -0800
+Subject: [PATCH 2/2] block: add nr_conv_zones and nr_seq_zones helpers
+
+Add two request members that are needed to implement the NVMeOF ZBD
+backend which exports a number of conventional zones and a number of
+sequential zones. Update dm-zoned target with nr_conv_zones and
+nr_seq_zones two properties and update the respective queue members.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ block/blk-sysfs.c              | 14 ++++++++++++++
+ block/blk-zoned.c              |  9 +++++++++
+ drivers/md/dm-table.c          |  2 ++
+ drivers/md/dm-zoned-metadata.c |  6 ++++++
+ drivers/md/dm-zoned-target.c   |  8 ++++++++
+ drivers/md/dm-zoned.h          |  2 ++
+ include/linux/blkdev.h         | 13 +++++++++++++
+ 7 files changed, 54 insertions(+)
+
+diff --git a/block/blk-sysfs.c b/block/blk-sysfs.c
+index b513f1683af0..f10cf45ae177 100644
+--- a/block/blk-sysfs.c
++++ b/block/blk-sysfs.c
+@@ -307,6 +307,16 @@ static ssize_t queue_nr_zones_show(struct request_queue *q, char *page)
+ 	return queue_var_show(blk_queue_nr_zones(q), page);
+ }
+ 
++static ssize_t queue_nr_conv_zones_show(struct request_queue *q, char *page)
++{
++	return queue_var_show(blk_queue_nr_conv_zones(q), page);
++}
++
++static ssize_t queue_nr_seq_zones_show(struct request_queue *q, char *page)
++{
++	return queue_var_show(blk_queue_nr_seq_zones(q), page);
++}
++
+ static ssize_t queue_max_open_zones_show(struct request_queue *q, char *page)
+ {
+ 	return queue_var_show(queue_max_open_zones(q), page);
+@@ -588,6 +598,8 @@ QUEUE_RO_ENTRY(queue_zone_append_max, "zone_append_max_bytes");
+ 
+ QUEUE_RO_ENTRY(queue_zoned, "zoned");
+ QUEUE_RO_ENTRY(queue_nr_zones, "nr_zones");
++QUEUE_RO_ENTRY(queue_nr_conv_zones, "nr_conv_zones");
++QUEUE_RO_ENTRY(queue_nr_seq_zones, "nr_seq_zones");
+ QUEUE_RO_ENTRY(queue_max_open_zones, "max_open_zones");
+ QUEUE_RO_ENTRY(queue_max_active_zones, "max_active_zones");
+ 
+@@ -642,6 +654,8 @@ static struct attribute *queue_attrs[] = {
+ 	&queue_nonrot_entry.attr,
+ 	&queue_zoned_entry.attr,
+ 	&queue_nr_zones_entry.attr,
++	&queue_nr_conv_zones_entry.attr,
++	&queue_nr_seq_zones_entry.attr,
+ 	&queue_max_open_zones_entry.attr,
+ 	&queue_max_active_zones_entry.attr,
+ 	&queue_nomerges_entry.attr,
+diff --git a/block/blk-zoned.c b/block/blk-zoned.c
+index 6817a673e5ce..ea38c7928e41 100644
+--- a/block/blk-zoned.c
++++ b/block/blk-zoned.c
+@@ -390,6 +390,8 @@ struct blk_revalidate_zone_args {
+ 	unsigned long	*conv_zones_bitmap;
+ 	unsigned long	*seq_zones_wlock;
+ 	unsigned int	nr_zones;
++	unsigned int	nr_conv_zones;
++	unsigned int	nr_seq_zones;
+ 	sector_t	zone_sectors;
+ 	sector_t	sector;
+ };
+@@ -449,6 +451,7 @@ static int blk_revalidate_zone_cb(struct blk_zone *zone, unsigned int idx,
+ 				return -ENOMEM;
+ 		}
+ 		set_bit(idx, args->conv_zones_bitmap);
++		args->nr_conv_zones++;
+ 		break;
+ 	case BLK_ZONE_TYPE_SEQWRITE_REQ:
+ 	case BLK_ZONE_TYPE_SEQWRITE_PREF:
+@@ -458,6 +461,7 @@ static int blk_revalidate_zone_cb(struct blk_zone *zone, unsigned int idx,
+ 			if (!args->seq_zones_wlock)
+ 				return -ENOMEM;
+ 		}
++		args->nr_seq_zones++;
+ 		break;
+ 	default:
+ 		pr_warn("%s: Invalid zone type 0x%x at sectors %llu\n",
+@@ -489,6 +493,9 @@ int blk_revalidate_disk_zones(struct gendisk *disk,
+ 	struct request_queue *q = disk->queue;
+ 	struct blk_revalidate_zone_args args = {
+ 		.disk		= disk,
++		/* just for redability */
++		.nr_conv_zones	= 0,
++		.nr_seq_zones	= 0,
+ 	};
+ 	unsigned int noio_flag;
+ 	int ret;
+@@ -519,6 +526,8 @@ int blk_revalidate_disk_zones(struct gendisk *disk,
+ 	if (ret >= 0) {
+ 		blk_queue_chunk_sectors(q, args.zone_sectors);
+ 		q->nr_zones = args.nr_zones;
++		q->nr_conv_zones = args.nr_conv_zones;
++		q->nr_seq_zones = args.nr_seq_zones;
+ 		swap(q->seq_zones_wlock, args.seq_zones_wlock);
+ 		swap(q->conv_zones_bitmap, args.conv_zones_bitmap);
+ 		if (update_driver_data)
+diff --git a/drivers/md/dm-table.c b/drivers/md/dm-table.c
+index ce543b761be7..d5a939c2410d 100644
+--- a/drivers/md/dm-table.c
++++ b/drivers/md/dm-table.c
+@@ -1897,6 +1897,8 @@ void dm_table_set_restrictions(struct dm_table *t, struct request_queue *q,
+ 	if (blk_queue_is_zoned(q)) {
+ 		WARN_ON_ONCE(queue_is_mq(q));
+ 		q->nr_zones = blkdev_nr_zones(t->md->disk);
++		q->nr_conv_zones = blk_queue_nr_conv_zones(t->md->disk->queue);
++		q->nr_seq_zones = blk_queue_nr_seq_zones(t->md->disk->queue);
+ 	}
+ #endif
+ 
+diff --git a/drivers/md/dm-zoned-metadata.c b/drivers/md/dm-zoned-metadata.c
+index b298fefb022e..21e35480ca1a 100644
+--- a/drivers/md/dm-zoned-metadata.c
++++ b/drivers/md/dm-zoned-metadata.c
+@@ -162,6 +162,8 @@ struct dmz_metadata {
+ 	unsigned int		nr_map_blocks;
+ 
+ 	unsigned int		nr_zones;
++	unsigned int		nr_conv_zones;
++	unsigned int		nr_seq_zones;
+ 	unsigned int		nr_useable_zones;
+ 	unsigned int		nr_meta_blocks;
+ 	unsigned int		nr_meta_zones;
+@@ -1495,11 +1497,15 @@ static int dmz_init_zones(struct dmz_metadata *zmd)
+ 
+ 	/* Allocate zone array */
+ 	zmd->nr_zones = 0;
++	zmd->nr_conv_zones = 0;
++	zmd->nr_seq_zones = 0;
+ 	for (i = 0; i < zmd->nr_devs; i++) {
+ 		struct dmz_dev *dev = &zmd->dev[i];
+ 
+ 		dev->metadata = zmd;
+ 		zmd->nr_zones += dev->nr_zones;
++		zmd->nr_conv_zones += dev->nr_conv_zones;
++		zmd->nr_seq_zones += dev->nr_seq_zones;
+ 
+ 		atomic_set(&dev->unmap_nr_rnd, 0);
+ 		INIT_LIST_HEAD(&dev->unmap_rnd_list);
+diff --git a/drivers/md/dm-zoned-target.c b/drivers/md/dm-zoned-target.c
+index 697f9de37355..b50fc4fff7b1 100644
+--- a/drivers/md/dm-zoned-target.c
++++ b/drivers/md/dm-zoned-target.c
+@@ -797,6 +797,10 @@ static int dmz_fixup_devices(struct dm_target *ti)
+ 			zoned_dev->zone_nr_sectors = zone_nr_sectors;
+ 			zoned_dev->nr_zones =
+ 				blkdev_nr_zones(zoned_dev->bdev->bd_disk);
++			zoned_dev->nr_conv_zones =
++				blk_queue_nr_conv_zones(zoned_dev->bdev->bd_disk->queue);
++			zoned_dev->nr_seq_zones =
++				blk_queue_nr_seq_zones(zoned_dev->bdev->bd_disk->queue);
+ 		}
+ 	} else {
+ 		reg_dev = NULL;
+@@ -808,6 +812,10 @@ static int dmz_fixup_devices(struct dm_target *ti)
+ 		q = bdev_get_queue(zoned_dev->bdev);
+ 		zoned_dev->zone_nr_sectors = blk_queue_zone_sectors(q);
+ 		zoned_dev->nr_zones = blkdev_nr_zones(zoned_dev->bdev->bd_disk);
++		zoned_dev->nr_conv_zones =
++			blk_queue_nr_conv_zones(zoned_dev->bdev->bd_disk->queue);
++		zoned_dev->nr_seq_zones =
++			blk_queue_nr_seq_zones(zoned_dev->bdev->bd_disk->queue);
+ 	}
+ 
+ 	if (reg_dev) {
+diff --git a/drivers/md/dm-zoned.h b/drivers/md/dm-zoned.h
+index 22f11440b423..d45b7acef35b 100644
+--- a/drivers/md/dm-zoned.h
++++ b/drivers/md/dm-zoned.h
+@@ -64,6 +64,8 @@ struct dmz_dev {
+ 	unsigned int		dev_idx;
+ 
+ 	unsigned int		nr_zones;
++	unsigned int		nr_conv_zones;
++	unsigned int		nr_seq_zones;
+ 	unsigned int		zone_offset;
+ 
+ 	unsigned int		flags;
+diff --git a/include/linux/blkdev.h b/include/linux/blkdev.h
+index 2bdaa7cacfa3..697ded01e049 100644
+--- a/include/linux/blkdev.h
++++ b/include/linux/blkdev.h
+@@ -526,6 +526,9 @@ struct request_queue {
+ 	unsigned long		*seq_zones_wlock;
+ 	unsigned int		max_open_zones;
+ 	unsigned int		max_active_zones;
++	unsigned int		nr_conv_zones;
++	unsigned int		nr_seq_zones;
++
+ #endif /* CONFIG_BLK_DEV_ZONED */
+ 
+ 	/*
+@@ -726,6 +729,16 @@ static inline unsigned int blk_queue_nr_zones(struct request_queue *q)
+ 	return blk_queue_is_zoned(q) ? q->nr_zones : 0;
+ }
+ 
++static inline unsigned int blk_queue_nr_conv_zones(struct request_queue *q)
++{
++	return blk_queue_is_zoned(q) ? q->nr_conv_zones : 0;
++}
++
++static inline unsigned int blk_queue_nr_seq_zones(struct request_queue *q)
++{
++	return blk_queue_is_zoned(q) ? q->nr_seq_zones : 0;
++}
++
+ static inline unsigned int blk_queue_zone_no(struct request_queue *q,
+ 					     sector_t sector)
+ {
+-- 
+2.22.1
+

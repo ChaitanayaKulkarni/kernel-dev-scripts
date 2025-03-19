@@ -1,0 +1,124 @@
+From 1b545d356b71ccc0241a9634a61ca0ade08d3536 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Mon, 22 May 2023 04:20:24 -0700
+Subject: [PATCH 3/3] nvme-fabrics: factor out common for auth
+
+nvmf_connect_admin_queue and nvmf_connect_io_queue() shares common code
+for post connect command authentication processing that includes,
+returning appropriate NVMe authentication status based on the
+command result, authentication negotiation per qid, waiting on
+negotiation per qid.
+
+Add a common helper function to reduce the code duplication with
+necessary aruments.
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/host/fabrics.c | 77 +++++++++++++++----------------------
+ 1 file changed, 31 insertions(+), 46 deletions(-)
+
+diff --git a/drivers/nvme/host/fabrics.c b/drivers/nvme/host/fabrics.c
+index 9d3df63eb49a..f1920d0e0e22 100644
+--- a/drivers/nvme/host/fabrics.c
++++ b/drivers/nvme/host/fabrics.c
+@@ -433,6 +433,35 @@ static void nvmf_connect_cmd_prep(struct nvme_ctrl *ctrl, u16 qid,
+ 		cmd->connect.cattr |= NVME_CONNECT_DISABLE_SQFLOW;
+ }
+ 
++static u16 nvmf_auth_post_queue_connect(struct nvme_ctrl *ctrl, u16 qid,
++					u16 result)
++{
++	int ret;
++
++	if (!(result & (NVME_CONNECT_AUTHREQ_ATR | NVME_CONNECT_AUTHREQ_ASCR)))
++		return NVME_SC_SUCCESS;
++
++	/* Secure concatenation is not implemented */
++	if (result & NVME_CONNECT_AUTHREQ_ASCR) {
++		dev_warn(ctrl->device,
++			  "qid %d: secure concatenation is not supported\n",
++			  qid);
++		return NVME_SC_AUTH_REQUIRED;
++	}
++	/* Authentication required */
++	ret = nvme_auth_negotiate(ctrl, qid);
++	if (ret) {
++		dev_warn(ctrl->device,
++			 "qid %d: authentication setup failed\n", qid);
++		return NVME_SC_AUTH_REQUIRED;
++	}
++	ret = nvme_auth_wait(ctrl, qid);
++	if (ret)
++		dev_warn(ctrl->device,
++			 "qid %u: authentication failed\n", qid);
++	return NVME_SC_SUCCESS;
++}
++
+ /**
+  * nvmf_connect_admin_queue() - NVMe Fabrics Admin Queue "Connect"
+  *				API function.
+@@ -478,30 +507,7 @@ int nvmf_connect_admin_queue(struct nvme_ctrl *ctrl)
+ 
+ 	result = le32_to_cpu(res.u32);
+ 	ctrl->cntlid = result & 0xFFFF;
+-	if (result & (NVME_CONNECT_AUTHREQ_ATR | NVME_CONNECT_AUTHREQ_ASCR)) {
+-		/* Secure concatenation is not implemented */
+-		if (result & NVME_CONNECT_AUTHREQ_ASCR) {
+-			dev_warn(ctrl->device,
+-				 "qid 0: secure concatenation is not supported\n");
+-			ret = NVME_SC_AUTH_REQUIRED;
+-			goto out_free_data;
+-		}
+-		/* Authentication required */
+-		ret = nvme_auth_negotiate(ctrl, 0);
+-		if (ret) {
+-			dev_warn(ctrl->device,
+-				 "qid 0: authentication setup failed\n");
+-			ret = NVME_SC_AUTH_REQUIRED;
+-			goto out_free_data;
+-		}
+-		ret = nvme_auth_wait(ctrl, 0);
+-		if (ret)
+-			dev_warn(ctrl->device,
+-				 "qid 0: authentication failed\n");
+-		else
+-			dev_info(ctrl->device,
+-				 "qid 0: authenticated\n");
+-	}
++	ret = nvmf_auth_post_queue_connect(ctrl, 0, result);
+ out_free_data:
+ 	kfree(data);
+ 	return ret;
+@@ -551,28 +557,7 @@ int nvmf_connect_io_queue(struct nvme_ctrl *ctrl, u16 qid)
+ 		goto out_free_data;
+ 	}
+ 	result = le32_to_cpu(res.u32);
+-	if (result & (NVME_CONNECT_AUTHREQ_ATR | NVME_CONNECT_AUTHREQ_ASCR)) {
+-		/* Secure concatenation is not implemented */
+-		if (result & NVME_CONNECT_AUTHREQ_ASCR) {
+-			dev_warn(ctrl->device,
+-				 "qid %d: secure concatenation is not supported\n",
+-				 qid);
+-			ret = NVME_SC_AUTH_REQUIRED;
+-			goto out_free_data;
+-		}
+-		/* Authentication required */
+-		ret = nvme_auth_negotiate(ctrl, qid);
+-		if (ret) {
+-			dev_warn(ctrl->device,
+-				 "qid %d: authentication setup failed\n", qid);
+-			ret = NVME_SC_AUTH_REQUIRED;
+-		} else {
+-			ret = nvme_auth_wait(ctrl, qid);
+-			if (ret)
+-				dev_warn(ctrl->device,
+-					 "qid %u: authentication failed\n", qid);
+-		}
+-	}
++	ret = nvmf_auth_post_queue_connect(ctrl, qid, result);
+ out_free_data:
+ 	kfree(data);
+ 	return ret;
+-- 
+2.40.0
+

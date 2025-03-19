@@ -1,0 +1,78 @@
+From 7e63a60b82ad0115edb9d54a5451f29f1e9bce23 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Tue, 17 Nov 2020 11:31:56 -0800
+Subject: [PATCH 9/9] nvmet: add ZNS based I/O cmds handlers
+
+Add zone-mgmt-send, zone-mgmt-recv and zone-zppend handlers for the
+bdev backend so that it can support zbd.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/Makefile      | 3 +--
+ drivers/nvme/target/io-cmd-bdev.c | 9 +++++++++
+ drivers/nvme/target/zns.c         | 6 +++---
+ 3 files changed, 13 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/nvme/target/Makefile b/drivers/nvme/target/Makefile
+index bc147ff2df5d..15307b1cc713 100644
+--- a/drivers/nvme/target/Makefile
++++ b/drivers/nvme/target/Makefile
+@@ -10,9 +10,8 @@ obj-$(CONFIG_NVME_TARGET_FCLOOP)	+= nvme-fcloop.o
+ obj-$(CONFIG_NVME_TARGET_TCP)		+= nvmet-tcp.o
+ 
+ nvmet-y		+= core.o configfs.o admin-cmd.o fabrics-cmd.o \
+-			discovery.o io-cmd-file.o io-cmd-bdev.o
++		   zns.o discovery.o io-cmd-file.o io-cmd-bdev.o
+ nvmet-$(CONFIG_NVME_TARGET_PASSTHRU)	+= passthru.o
+-nvmet-$(CONFIG_BLK_DEV_ZONED)		+= zns.o
+ 
+ nvme-loop-y	+= loop.o
+ nvmet-rdma-y	+= rdma.o
+diff --git a/drivers/nvme/target/io-cmd-bdev.c b/drivers/nvme/target/io-cmd-bdev.c
+index f8a500983abd..4fcc8374b857 100644
+--- a/drivers/nvme/target/io-cmd-bdev.c
++++ b/drivers/nvme/target/io-cmd-bdev.c
+@@ -453,6 +453,15 @@ u16 nvmet_bdev_parse_io_cmd(struct nvmet_req *req)
+ 	case nvme_cmd_write_zeroes:
+ 		req->execute = nvmet_bdev_execute_write_zeroes;
+ 		return 0;
++	case nvme_cmd_zone_append:
++		req->execute = nvmet_bdev_execute_zone_append;
++		return 0;
++	case nvme_cmd_zone_mgmt_recv:
++		req->execute = nvmet_bdev_execute_zone_mgmt_recv;
++		return 0;
++	case nvme_cmd_zone_mgmt_send:
++		req->execute = nvmet_bdev_execute_zone_mgmt_send;
++		return 0;
+ 	default:
+ 		pr_err("unhandled cmd %d on qid %d\n", cmd->common.opcode,
+ 		       req->sq->qid);
+diff --git a/drivers/nvme/target/zns.c b/drivers/nvme/target/zns.c
+index 8ea6641a55e3..efd11d7a6f96 100644
+--- a/drivers/nvme/target/zns.c
++++ b/drivers/nvme/target/zns.c
+@@ -361,17 +361,17 @@ void nvmet_bdev_execute_zone_append(struct nvmet_req *req)
+ }
+ 
+ #else  /* CONFIG_BLK_DEV_ZONED */
+-static void nvmet_execute_identify_cns_cs_ctrl(struct nvmet_req *req)
++void nvmet_execute_identify_cns_cs_ctrl(struct nvmet_req *req)
+ {
+ }
+-static void nvmet_execute_identify_cns_cs_ns(struct nvmet_req *req)
++void nvmet_execute_identify_cns_cs_ns(struct nvmet_req *req)
+ {
+ }
+ u16 nvmet_process_zns_cis(struct nvmet_req *req, off_t *off)
+ {
+ 	return 0;
+ }
+-static bool nvmet_bdev_zns_config(struct nvmet_ns *ns)
++bool nvmet_bdev_zns_config(struct nvmet_ns *ns)
+ {
+ 	return false;
+ }
+-- 
+2.22.1
+

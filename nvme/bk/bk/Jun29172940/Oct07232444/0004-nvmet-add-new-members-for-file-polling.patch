@@ -1,0 +1,29 @@
+From f4d8a6e2abb5ca71ed272680e18a3fc73edee0a4 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Wed, 2 Oct 2019 00:19:37 -0700
+Subject: [PATCH 4/6] nvmet: add new members for file-polling
+
+This patch adds new structure members required to implement (file-ns)
+file backed namespace polling.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/nvmet.h | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index 6f5d017961e0..ccda1f40b29b 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -305,6 +305,8 @@ struct nvmet_req {
+ 			struct kiocb            iocb;
+ 			struct bio_vec          *bvec;
+ 			struct work_struct      work;
++			struct completion	waiting;
++			bool			polled;
+ 		} f;
+ 	};
+ 	int			sg_cnt;
+-- 
+2.22.1
+

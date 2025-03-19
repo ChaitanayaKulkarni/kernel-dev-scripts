@@ -1,0 +1,60 @@
+From 00fbbcb778c4f3ffdb688ffbc0d2829249eabeff Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Fri, 7 Apr 2023 17:40:51 -0700
+Subject: [PATCH 2/2] nvmet: allow file-ns to be cleared on enable
+
+Signed-off-by: Chaitanya Kulkarni <kch@nvidia.com>
+---
+ drivers/nvme/target/core.c        | 3 +++
+ drivers/nvme/target/io-cmd-file.c | 8 ++++++++
+ drivers/nvme/target/nvmet.h       | 1 +
+ 3 files changed, 12 insertions(+)
+
+diff --git a/drivers/nvme/target/core.c b/drivers/nvme/target/core.c
+index cce17ab6ecbb..b40c7d100d47 100644
+--- a/drivers/nvme/target/core.c
++++ b/drivers/nvme/target/core.c
+@@ -554,6 +554,9 @@ int nvmet_clear_ns(struct nvmet_ns *ns)
+ 	if (ns->bdev)
+ 		return nvmet_bdev_ns_clear(ns);
+ 
++	if (ns->file)
++		return nvmet_file_ns_clear(ns);
++
+ 	return -ENOTSUPP;
+ }
+ 
+diff --git a/drivers/nvme/target/io-cmd-file.c b/drivers/nvme/target/io-cmd-file.c
+index 2d068439b129..993f628bc548 100644
+--- a/drivers/nvme/target/io-cmd-file.c
++++ b/drivers/nvme/target/io-cmd-file.c
+@@ -18,6 +18,14 @@ void nvmet_file_ns_revalidate(struct nvmet_ns *ns)
+ 	ns->size = i_size_read(ns->file->f_mapping->host);
+ }
+ 
++int nvmet_file_ns_clear(struct nvmet_ns *ns)
++{
++	int mode = FALLOC_FL_ZERO_RANGE | FALLOC_FL_KEEP_SIZE;
++
++	pr_info("%s %d\n", __func__, __LINE__);
++	return vfs_fallocate(ns->file, mode, 0, ns->size);
++}
++
+ void nvmet_file_ns_disable(struct nvmet_ns *ns)
+ {
+ 	if (ns->file) {
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index 7b7778f413ee..6b451b9bc139 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -579,6 +579,7 @@ void nvmet_ns_changed(struct nvmet_subsys *subsys, u32 nsid);
+ void nvmet_bdev_ns_revalidate(struct nvmet_ns *ns);
+ void nvmet_file_ns_revalidate(struct nvmet_ns *ns);
+ int nvmet_bdev_ns_clear(struct nvmet_ns *ns);
++int nvmet_file_ns_clear(struct nvmet_ns *ns);
+ bool nvmet_ns_revalidate(struct nvmet_ns *ns);
+ u16 blk_to_nvme_status(struct nvmet_req *req, blk_status_t blk_sts);
+ 
+-- 
+2.29.0
+

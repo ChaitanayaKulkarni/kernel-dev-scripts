@@ -1,0 +1,43 @@
+From 5dd812536bc86ebffdf3a09f60e64521ee98403d Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Mon, 9 Nov 2020 21:22:25 -0800
+Subject: [PATCH] null_blk: return index of the last reported zone
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+In the function null_report_zone() right now it returns the nr_zones
+which is the maximum number of zones to be reported based on the user
+input.
+
+The report zone entry parsing loop can fail if the user-provided
+callback returns an error, in that case, number of zones which are
+actually reported by each call to callback function are less than the 
+number of zones provided by the user input.
+
+Instead of returning the nr_zones, return zno which has the highest
+reported zone's index so that caller of the report zone would know
+the index of the last reported zones can parse the partially reported 
+zone entries.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/block/null_blk_zoned.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/block/null_blk_zoned.c b/drivers/block/null_blk_zoned.c
+index beb34b4f76b0..d9d5578321d8 100644
+--- a/drivers/block/null_blk_zoned.c
++++ b/drivers/block/null_blk_zoned.c
+@@ -192,7 +192,7 @@ int null_report_zones(struct gendisk *disk, sector_t sector,
+ 			return error;
+ 	}
+ 
+-	return nr_zones;
++	return zno;
+ }
+ 
+ /*
+-- 
+2.22.1
+

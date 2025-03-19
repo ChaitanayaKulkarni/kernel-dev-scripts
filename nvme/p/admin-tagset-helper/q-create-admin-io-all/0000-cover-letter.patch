@@ -1,0 +1,34 @@
+From e9539f92b5745ffa1ff47cb9878c0a9d53ed086c Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Sun, 23 Jan 2022 17:07:19 -0800
+Subject: [PATCH 00/14] *** SUBJECT HERE ***
+
+*** BLURB HERE ***
+
+Chaitanya Kulkarni (14):
+  nvme-fc: add a helper to initialize connect_q
+  nvme-rdma: use helper to initialize connect_q
+  nvme-tcp: use helper to initialize connect_q
+  nvme-loop: use helper to initialize connect_q
+  nvme-fc: centralize admin tagset initialization
+  nvme-pci: use helper for tagset initialization
+  nvme-rdma: use helper for tagset initialization
+  nvme-tcp: use helper for tagset initialization
+  nvme-loop: use helper for tagset initialization
+  nvme-loop: centralize io tagset initialization
+  nvme-rdma: use io tagset initialization helper
+  nvme-tcp: use io tagset initialization helper
+  nvme-pci: use io tagset initialization helper
+  nvme: move io/admin tagset common code to helper
+
+ drivers/nvme/host/fc.c     | 17 ++++----------
+ drivers/nvme/host/nvme.h   | 48 ++++++++++++++++++++++++++++++++++++++
+ drivers/nvme/host/pci.c    | 24 +++++++------------
+ drivers/nvme/host/rdma.c   | 32 ++++++++-----------------
+ drivers/nvme/host/tcp.c    | 32 ++++++++-----------------
+ drivers/nvme/target/loop.c | 34 +++++++++------------------
+ 6 files changed, 92 insertions(+), 95 deletions(-)
+
+-- 
+2.29.0
+

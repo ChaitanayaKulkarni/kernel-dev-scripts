@@ -1,0 +1,17 @@
+/*
+ * VFIO Migration State transition diagram
+ * dot -Tps vfio-migration-state-machine.dot -o vfio-migration-state-machine.pdf
+ */
+digraph vfio_migration_State_Machine {
+RESUMING -> STOP
+STOP -> RESUMING
+RUNNING -> STOP
+STOP -> RUNNING
+STOP_COPY -> STOP
+STOP -> STOP_COPY
+
+RESUMING [shape=polygon,sides=5,peripheries=3,color=lightblue,style=filled]
+RUNNING [color=green,style=filled]
+STOP [color=red,style=filled]
+STOP_COPY [shape=polygon,sides=5,peripheries=3,color=maroon,style=filled]
+}

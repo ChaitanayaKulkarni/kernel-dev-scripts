@@ -1,0 +1,17 @@
+From 97c7687c904890dcdd952cad3b9bda7eb6765572 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Sun, 25 Jun 2023 18:26:48 -0700
+Subject: [PATCH 0/2] *** SUBJECT HERE ***
+
+*** BLURB HERE ***
+
+Chaitanya Kulkarni (2):
+  nvme-fabrics: don't repeat HCTX_TYPE_DEFAULT code
+  nvme-fabrics: err our on request_module failure
+
+ drivers/nvme/host/fabrics.c | 20 ++++++++++----------
+ 1 file changed, 10 insertions(+), 10 deletions(-)
+
+-- 
+2.40.0
+

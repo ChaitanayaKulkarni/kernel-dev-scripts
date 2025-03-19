@@ -1,0 +1,105 @@
+From 12b4af360fc6649ab25cd3d6e12009768314408a Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Sat, 11 Apr 2020 23:59:04 -0700
+Subject: [PATCH V3 4/6] nvmet: export resize thread sched attributes
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/configfs.c | 60 ++++++++++++++++++++++++++++++++++
+ drivers/nvme/target/nvmet.h    |  2 ++
+ 2 files changed, 62 insertions(+)
+
+diff --git a/drivers/nvme/target/configfs.c b/drivers/nvme/target/configfs.c
+index df14df8edecb..be4818b10b43 100644
+--- a/drivers/nvme/target/configfs.c
++++ b/drivers/nvme/target/configfs.c
+@@ -1050,6 +1050,64 @@ static struct configfs_group_operations nvmet_subsystems_group_ops = {
+ 	.make_group		= nvmet_subsys_make,
+ };
+ 
++static ssize_t nvmet_control_group_control_resize_sched_priority_show(
++		struct config_item *item, char *page)
++{
++	return snprintf(page, PAGE_SIZE, "%u\n",
++			to_nvmet_control(item)->sched_priority);
++}
++
++static ssize_t nvmet_control_group_control_resize_sched_priority_store(
++		struct config_item *item, const char *page, size_t count)
++{
++	struct nvmet_control_configfs *control = to_nvmet_control(item);
++	u32 sched_priority;
++	ssize_t ret;
++
++	ret = kstrtou32(page, 10, &sched_priority);
++	if (ret < 0)
++		goto out;
++
++	mutex_lock(&monitor->control_lock);
++	control->sched_priority = sched_priority;
++	monitor->sched_priority = sched_priority;
++	mutex_unlock(&monitor->control_lock);
++
++out:
++	return ret ? ret : count;
++}
++
++CONFIGFS_ATTR(nvmet_control_group_, control_resize_sched_priority);
++
++static ssize_t nvmet_control_group_control_resize_sched_policy_show(
++		struct config_item *item, char *page)
++{
++	return snprintf(page, PAGE_SIZE, "%u\n",
++			to_nvmet_control(item)->sched_policy);
++}
++
++static ssize_t nvmet_control_group_control_resize_sched_policy_store(
++		struct config_item *item, const char *page, size_t count)
++{
++	struct nvmet_control_configfs *control = to_nvmet_control(item);
++	u32 sched_policy;
++	ssize_t ret;
++
++	ret = kstrtou32(page, 10, &sched_policy);
++	if (ret < 0)
++		goto out;
++
++	mutex_lock(&monitor->control_lock);
++	control->sched_policy = sched_policy;
++	monitor->sched_policy = sched_policy;
++	mutex_unlock(&monitor->control_lock);
++
++out:
++	return ret ? ret : count;
++}
++
++CONFIGFS_ATTR(nvmet_control_group_, control_resize_sched_policy);
++
+ static ssize_t nvmet_control_group_control_resize_refresh_show(
+ 		struct config_item *item, char *page)
+ {
+@@ -1111,6 +1169,8 @@ static ssize_t nvmet_control_group_control_resize_timeout_store(
+ CONFIGFS_ATTR(nvmet_control_group_, control_resize_timeout);
+ 
+ static struct configfs_attribute *nvmet_control_group_attrs[] = {
++	&nvmet_control_group_attr_control_resize_sched_priority,
++	&nvmet_control_group_attr_control_resize_sched_policy,
+ 	&nvmet_control_group_attr_control_resize_refresh,
+ 	&nvmet_control_group_attr_control_resize_timeout,
+ 	NULL,
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index 7ddc39c83aa5..aec29e1ae6e8 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -63,6 +63,8 @@ struct nvmet_resize_monitor {
+ extern struct nvmet_resize_monitor *monitor;
+ 
+ struct nvmet_control_configfs {
++	u32			sched_priority;
++	u32			sched_policy;
+ 	bool                    enable;
+ 	struct config_group     group;
+ 	u8			msec;
+-- 
+2.22.1
+

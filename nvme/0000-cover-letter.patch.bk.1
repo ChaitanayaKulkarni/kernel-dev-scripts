@@ -1,0 +1,62 @@
+From 24b6e9ae064b38ff52685174e46825a85fa2ba20 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Sat, 12 Sep 2020 22:19:33 -0700
+Subject: [PATCH V3 0/7] nvme-core: timeout related fixes and cleanup
+
+Hi,
+
+This patch series uses NVME_IO_TIMEOUT for the sync request submission
+and user request submission when the timeout is not specified by the caller
+and request queue data is set to NULL which is true for admin queue.
+
+Also in this version, I've added timeout values setting for the NVMeOF
+passthru controller given that passthru VUCs (both admin and I/O VUCs)
+can differ in execution time than general-purpose admin and I/O command
+set.
+
+The last patch is just my personal preference, feel free to ignore it.
+
+Regards,
+Chaitanya
+
+* Changes from V2:-
+
+1. Introduce nvme_defalt_timeout() helper and use it in host/core.c.
+2. Use nvme_default_timeout() in the lightnvme.c
+
+* Changes from V1:-
+
+1. Instead of using qid to decide IO or ADMIN timeout use request
+   queue's queuedata whch we only set for non admin queue
+   __nvme_submit_sync_cmd().
+2. Add second patch to set IO timeout for nvme_submit_user_cmd().
+3. Set the NVMeOF passthru ctrl timeout values with default values from
+   nvme-core module.
+4. Add admin and I/O timeout configfs attributes for NVMeOF passthru
+   controller.
+
+Chaitanya Kulkarni (7):
+  nvme-core: use I/O timeout in submit sync cmd
+  nvme-core: use I/O timeout in nvme_submit_user_cmd
+  lightnvm: use I/O timeout in nvm submit user cmd
+  nvmet: set default timeout for passthru requests
+  nvmet: add passthru admin timeout value attr
+  nvmet: add passthru io timeout value attr
+  nvme: use consistent macro name for timeout
+
+ drivers/nvme/host/core.c       |  6 +--
+ drivers/nvme/host/fc.c         |  2 +-
+ drivers/nvme/host/lightnvm.c   |  2 +-
+ drivers/nvme/host/nvme.h       | 17 ++++++++-
+ drivers/nvme/host/pci.c        |  8 ++--
+ drivers/nvme/host/rdma.c       |  2 +-
+ drivers/nvme/host/tcp.c        |  2 +-
+ drivers/nvme/target/configfs.c | 68 ++++++++++++++++++++++++++++++++++
+ drivers/nvme/target/loop.c     |  2 +-
+ drivers/nvme/target/nvmet.h    |  2 +
+ drivers/nvme/target/passthru.c | 10 +++++
+ 11 files changed, 108 insertions(+), 13 deletions(-)
+
+-- 
+2.22.1
+

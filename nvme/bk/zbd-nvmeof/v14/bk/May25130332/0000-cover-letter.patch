@@ -1,0 +1,48 @@
+From 7e8def6e863db731f16d49a1b800d4aefcdb896b Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Wed, 19 May 2021 22:07:18 -0700
+Subject: [PATCH V14 0/4] nvmet: add ZBD backend support
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Hi Damien,
+
+Here is the updated version of the ZBD NVMeOF with the fixes you have
+suggested.
+
+Regarding your comment (on PATCH 4) : "return
+NVME_SC_ZONE_INVALID_TRANSITION instead of -EINVAL when handling
+zone-mgmt-send from report zone call back ". Here is more context :-
+	        
+The report zone callback's parent function already returns the right
+status NVME_SC_ZONE_INVALID_TRANSITION so even if we return 
+NVME_SC_ZONE_INVALID_TRANSITION from report zone callback 
+nvmet_bdev_zmgmt_send_cb() it will not have any effects on
+the libznd testcase(s).
+
+Let's continue the discussion on this series.
+
+-ck
+
+
+Chaitanya Kulkarni (4):
+  nvmet: add req cns error complete helper
+  nvmet: add nvmet_req_bio put helper for backends
+  nvmet: add Command Set Identifier support
+  nvmet: add ZBD over ZNS backend support
+
+ drivers/nvme/target/Makefile      |   1 +
+ drivers/nvme/target/admin-cmd.c   | 121 +++++-
+ drivers/nvme/target/core.c        |  32 +-
+ drivers/nvme/target/io-cmd-bdev.c |  29 +-
+ drivers/nvme/target/nvmet.h       |  28 ++
+ drivers/nvme/target/passthru.c    |   3 +-
+ drivers/nvme/target/zns.c         | 593 ++++++++++++++++++++++++++++++
+ include/linux/nvme.h              |   8 +
+ 8 files changed, 780 insertions(+), 35 deletions(-)
+ create mode 100644 drivers/nvme/target/zns.c
+
+-- 
+2.22.1
+

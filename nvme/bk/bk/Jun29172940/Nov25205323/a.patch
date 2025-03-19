@@ -1,0 +1,83 @@
+
+
+On Thu, Nov 21, 2019 at 11:41:53PM -0800, Chaitanya Kulkarni wrote:
+> This patch adds a new target subsys attribute which allows user to
+> optionally specify target controller IDs which then used in the
+> nvmet_execute_identify_ctrl() to fill up the nvme_id_ctrl structure.
+>
+> For example, when using a cluster setup with two nodes, with a dual
+> ported NVMe drive and exporting the drive from both the nodes,
+> The connection to the host fails due to the same controller ID and
+> results in the following error message:-
+>
+> "nvme nvmeX: Duplicate cntlid XXX with nvmeX, rejecting"
+>
+> With this patch now user can partition the controller IDs for each
+> subsystem by setting up the cntlid_min and cntlid_max. These values
+> will be used at the time of the controller ID creation. By partitioning
+> the ctrl-ids for each subsystem results in the unique ctrl-id space
+> which avoids the collision.
+>
+> When new attribute is not specified target will fall back to original
+> cntlid calculation method.
+>
+> Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+> ---
+> Changes from V1:-
+> 1. Add cntlid max and min configfs attributes.
+> 2. Use simple if .. else statements instead of ternary operators.
+> ---
+>  drivers/nvme/target/configfs.c | 65 ++++++++++++++++++++++++++++++++++
+>  drivers/nvme/target/core.c     |  8 +++--
+>  drivers/nvme/target/nvmet.h    |  2 ++
+>  3 files changed, 73 insertions(+), 2 deletions(-)
+>
+> diff --git a/drivers/nvme/target/configfs.c b/drivers/nvme/target/configfs.c
+> index 98613a45bd3b..5316cdb1b271 100644
+> --- a/drivers/nvme/target/configfs.c
+> +++ b/drivers/nvme/target/configfs.c
+> @@ -862,10 +862,75 @@ static ssize_t nvmet_subsys_attr_serial_store(struct config_item *item,
+>  }
+>  CONFIGFS_ATTR(nvmet_subsys_, attr_serial);
+>  
+> +static bool nvmet_subsys_cntlid_store(struct nvmet_subsys *s, const char *page,
+> +				      bool min)
+> +{
+> +	bool ret = true;
+> +	u16 cid;
+> +
+> +	down_write(&nvmet_config_sem);
+> +	if (sscanf(page, "%hu\n", &cid) != 1) {
+> +		ret = false;
+> +		goto out;
+> +	}
+
+No need to take the lock over the sscant.  That also means you can
+directly return false here and don't need the ret variable or the
+out label.  Also the rest of the function is so simple that I'd rather
+duplicate it over the slightly confusing min parameter.
+
+> +static ssize_t nvmet_subsys_cntlid_show(struct nvmet_subsys *s, char *page,
+> +					bool min)
+> +{
+> +	if (min)
+> +		return snprintf(page, PAGE_SIZE, "%u\n", s->cntlid_min);
+> +
+> +	return snprintf(page, PAGE_SIZE, "%u\n",  s->cntlid_max);
+
+Just opencode the snprints in the two callers, which is going to
+be much simpler.
+
+> index 28438b833c1b..990ad4c7bdfd 100644
+> --- a/drivers/nvme/target/core.c
+> +++ b/drivers/nvme/target/core.c
+> @@ -1267,8 +1267,11 @@ u16 nvmet_alloc_ctrl(const char *subsysnqn, const char *hostnqn,
+>  	if (!ctrl->sqs)
+>  		goto out_free_cqs;
+>  
+> +	if (subsys->cntlid_min > subsys->cntlid_max)
+> +		goto out_free_cqs;
+
+Shouldn't this check go into the store functions?
+
+

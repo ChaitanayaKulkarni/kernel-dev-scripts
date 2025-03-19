@@ -1,0 +1,87 @@
+From 88fd099ab1d627f7a6ab15d90e17be06f1c5b121 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Wed, 15 Apr 2020 16:38:17 -0700
+Subject: [PATCH 3/6] nvmet: use type-name map for ana states
+
+Now that we have a generic type to name map for configfs, get rid of
+the nvmet_ana_state_names structure and replace it with
+nvmet_type_name_map. This also now allows us to get rid of the found
+goto label which exists in current code and align code with
+for-loop-compare-success-return pattern.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/configfs.c | 37 ++++++++++++++++------------------
+ 1 file changed, 17 insertions(+), 20 deletions(-)
+
+diff --git a/drivers/nvme/target/configfs.c b/drivers/nvme/target/configfs.c
+index 67e8d53c714d..bb0810f28541 100644
+--- a/drivers/nvme/target/configfs.c
++++ b/drivers/nvme/target/configfs.c
+@@ -1149,10 +1149,7 @@ static const struct config_item_type nvmet_referrals_type = {
+ 	.ct_group_ops	= &nvmet_referral_group_ops,
+ };
+ 
+-static struct {
+-	enum nvme_ana_state	state;
+-	const char		*name;
+-} nvmet_ana_state_names[] = {
++struct nvmet_type_name_map nvmet_ana_state[] = {
+ 	{ NVME_ANA_OPTIMIZED,		"optimized" },
+ 	{ NVME_ANA_NONOPTIMIZED,	"non-optimized" },
+ 	{ NVME_ANA_INACCESSIBLE,	"inaccessible" },
+@@ -1167,10 +1164,9 @@ static ssize_t nvmet_ana_group_ana_state_show(struct config_item *item,
+ 	enum nvme_ana_state state = grp->port->ana_state[grp->grpid];
+ 	int i;
+ 
+-	for (i = 0; i < ARRAY_SIZE(nvmet_ana_state_names); i++) {
+-		if (state != nvmet_ana_state_names[i].state)
+-			continue;
+-		return sprintf(page, "%s\n", nvmet_ana_state_names[i].name);
++	for (i = 0; i < ARRAY_SIZE(nvmet_ana_state); i++) {
++		if (state == nvmet_ana_state[i].type)
++			return sprintf(page, "%s\n", nvmet_ana_state[i].name);
+ 	}
+ 
+ 	return sprintf(page, "\n");
+@@ -1180,24 +1176,25 @@ static ssize_t nvmet_ana_group_ana_state_store(struct config_item *item,
+ 		const char *page, size_t count)
+ {
+ 	struct nvmet_ana_group *grp = to_ana_group(item);
++	enum nvme_ana_state *ana_state = grp->port->ana_state;
+ 	int i;
+ 
+-	for (i = 0; i < ARRAY_SIZE(nvmet_ana_state_names); i++) {
+-		if (sysfs_streq(page, nvmet_ana_state_names[i].name))
+-			goto found;
++	for (i = 0; i < ARRAY_SIZE(nvmet_ana_state); i++) {
++		if (sysfs_streq(page, nvmet_ana_state[i].name)) {
++			u8 state = nvmet_ana_state[i].type;
++
++			down_write(&nvmet_ana_sem);
++			/* makes static type checker happy */
++			ana_state[grp->grpid] = (enum nvme_ana_state) state;
++			nvmet_ana_chgcnt++;
++			up_write(&nvmet_ana_sem);
++			nvmet_port_send_ana_event(grp->port);
++			return count;
++		}
+ 	}
+ 
+ 	pr_err("Invalid value '%s' for ana_state\n", page);
+ 	return -EINVAL;
+-
+-found:
+-	down_write(&nvmet_ana_sem);
+-	grp->port->ana_state[grp->grpid] = nvmet_ana_state_names[i].state;
+-	nvmet_ana_chgcnt++;
+-	up_write(&nvmet_ana_sem);
+-
+-	nvmet_port_send_ana_event(grp->port);
+-	return count;
+ }
+ 
+ CONFIGFS_ATTR(nvmet_ana_group_, ana_state);
+-- 
+2.22.1
+

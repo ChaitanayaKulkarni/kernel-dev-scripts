@@ -1,0 +1,83 @@
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index 7eb67c6e41eb..e493b0a34f33 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -3822,51 +3822,35 @@ static ssize_t nvme_dhchap_secret_store_common(struct nvme_ctrl *ctrl,
+ 	return count;
+ }
+ 
+-static ssize_t nvme_ctrl_dhchap_secret_show(struct device *dev,
+-		struct device_attribute *attr, char *buf)
+-{
+-	struct nvme_ctrl *ctrl = dev_get_drvdata(dev);
+-	struct nvmf_ctrl_options *opts = ctrl->opts;
+-
+-	if (!opts->dhchap_secret)
+-		return sysfs_emit(buf, "none\n");
+-	return sysfs_emit(buf, "%s\n", opts->dhchap_secret);
+-}
+-
+-static ssize_t nvme_ctrl_dhchap_secret_store(struct device *dev,
+-		struct device_attribute *attr, const char *buf, size_t count)
+-{
+-	struct nvme_ctrl *ctrl = dev_get_drvdata(dev);
+-
+-	return nvme_dhchap_secret_store_common(ctrl, &ctrl->opts->dhchap_secret,
+-			&ctrl->host_key, buf, count);
+-}
+-
+-static DEVICE_ATTR(dhchap_secret, S_IRUGO | S_IWUSR,
+-	nvme_ctrl_dhchap_secret_show, nvme_ctrl_dhchap_secret_store);
+-
+-static ssize_t nvme_ctrl_dhchap_ctrl_secret_show(struct device *dev,
+-		struct device_attribute *attr, char *buf)
+-{
+-	struct nvme_ctrl *ctrl = dev_get_drvdata(dev);
+-	struct nvmf_ctrl_options *opts = ctrl->opts;
+-
+-	if (!opts->dhchap_ctrl_secret)
+-		return sysfs_emit(buf, "none\n");
+-	return sysfs_emit(buf, "%s\n", opts->dhchap_ctrl_secret);
+-}
++#define NVME_AUTH_DEVICE_ATTR(NAME)					\
++static ssize_t nvme_ctrl_##NAME##_show(struct device *dev,		\
++		struct device_attribute *attr, char *buf)		\
++{									\
++	struct nvme_ctrl *ctrl = dev_get_drvdata(dev);			\
++	struct nvmf_ctrl_options *opts = ctrl->opts;			\
++									\
++	if (!opts->NAME)						\
++		return sysfs_emit(buf, "none\n");			\
++	return sysfs_emit(buf, "%s\n", opts->NAME);			\
++}									\
++									\
++static ssize_t nvme_ctrl_##NAME##_store(struct device *dev,		\
++		struct device_attribute *attr, const char *buf, 	\
++		size_t count)						\
++{									\
++	struct nvme_ctrl *ctrl = dev_get_drvdata(dev);			\
++									\
++	return nvme_dhchap_secret_store_common(ctrl,			\
++			&ctrl->opts->NAME,				\
++			&ctrl->host_key, buf, count);			\
++}									\
++									\
++static DEVICE_ATTR(NAME, S_IRUGO | S_IWUSR,			\
++	nvme_ctrl_##NAME##_show, nvme_ctrl_##NAME##_store);			\
+ 
+-static ssize_t nvme_ctrl_dhchap_ctrl_secret_store(struct device *dev,
+-		struct device_attribute *attr, const char *buf, size_t count)
+-{
+-	struct nvme_ctrl *ctrl = dev_get_drvdata(dev);
++NVME_AUTH_DEVICE_ATTR(dhchap_secret);
++NVME_AUTH_DEVICE_ATTR(dhchap_ctrl_secret);
+ 
+-	return nvme_dhchap_secret_store_common(ctrl,
+-			&ctrl->opts->dhchap_ctrl_secret, &ctrl->ctrl_key, buf,
+-			count);
+-}
+-static DEVICE_ATTR(dhchap_ctrl_secret, S_IRUGO | S_IWUSR,
+-	nvme_ctrl_dhchap_ctrl_secret_show, nvme_ctrl_dhchap_ctrl_secret_store);
+ #endif
+ 
+ static struct attribute *nvme_dev_attrs[] = {

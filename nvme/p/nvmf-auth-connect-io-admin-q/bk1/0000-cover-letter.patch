@@ -1,0 +1,19 @@
+From ea204cd80c1c892d9c9ce597ab34dc7f36e5a967 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <kch@nvidia.com>
+Date: Mon, 22 May 2023 04:54:01 -0700
+Subject: [PATCH 0/4] *** SUBJECT HERE ***
+
+*** BLURB HERE ***
+
+Chaitanya Kulkarni (4):
+  nvme-fabrics: fix qid in error message
+  nvme-fabrics: error out when connect I/O fails
+  nvme-fabrics: set NVME_SC_AUTH_REQUIRED on error
+  nvme-fabrics: factor out common for auth
+
+ drivers/nvme/host/fabrics.c | 77 +++++++++++++++----------------------
+ 1 file changed, 32 insertions(+), 45 deletions(-)
+
+-- 
+2.40.0
+

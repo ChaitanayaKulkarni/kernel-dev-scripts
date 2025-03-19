@@ -1,0 +1,55 @@
+From 4be3f3a73658804f55d502661c33b15e205bf880 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Sun, 3 Jan 2021 22:13:30 -0800
+Subject: [PATCH V9 9/9] nvme-core: add a helper to print css related error
+
+Right now there are two functions which are printing same error if
+multi css is not supported by the namespace in the question.
+
+Add a helper so that we don't have to repeat the code, that also avoids
+not so nice multiple line dev_warn() calls.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/host/core.c | 11 ++++++-----
+ 1 file changed, 6 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index 25ebeaa6963d..4f824f58c5ea 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -93,6 +93,10 @@ static void nvme_put_subsystem(struct nvme_subsystem *subsys);
+ static void nvme_remove_invalid_namespaces(struct nvme_ctrl *ctrl,
+ 					   unsigned nsid);
+ 
++static void nvme_ns_css_print_err(struct nvme_ctrl *ctrl, unsigned int nsid)
++{
++	dev_warn(ctrl->device, "Command set not reported for nsid:%u\n", nsid);
++}
+ /*
+  * Prepare a queue for teardown.
+  *
+@@ -1374,8 +1378,7 @@ static int nvme_identify_ns_descs(struct nvme_ctrl *ctrl, unsigned nsid,
+ 	}
+ 
+ 	if (nvme_multi_css(ctrl) && !csi_seen) {
+-		dev_warn(ctrl->device, "Command set not reported for nsid:%d\n",
+-			 nsid);
++		nvme_ns_css_print_err(ctrl, nsid);
+ 		status = -EINVAL;
+ 	}
+ 
+@@ -2165,9 +2168,7 @@ static int nvme_update_ns_info(struct nvme_ns *ns, struct nvme_id_ns *id)
+ 
+ 	if (ns->head->ids.csi == NVME_CSI_ZNS) {
+ 		if (!nvme_multi_css(ns->ctrl)) {
+-			dev_warn(ns->ctrl->device,
+-				"Command set not reported for nsid:%d\n",
+-			ns->head->ns_id);
++			nvme_ns_css_print_err(ns->ctrl, ns->head->ns_id);
+ 			ret = -EINVAL;
+ 			goto out_unfreeze;
+ 		}
+-- 
+2.22.1
+

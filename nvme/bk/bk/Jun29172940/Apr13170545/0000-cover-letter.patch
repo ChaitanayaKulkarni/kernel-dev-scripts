@@ -1,0 +1,32 @@
+From 0482a47bce347d44426f6453b59cdfaa8e7947e6 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Mon, 13 Apr 2020 17:06:07 -0700
+Subject: [PATCH V3 0/6] *** SUBJECT HERE ***
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+*** BLURB HERE ***
+
+Anthony Iliopoulos (1):
+  nvmet: add ns revalidation support
+
+Chaitanya Kulkarni (5):
+  nvmet: add global thread for ns-resize AEN
+  nvmet: export resize thread enable-disable attr
+  nvmet: export resize thread rescan refresh attr
+  nvmet: export resize thread sched attr
+  nvmet: add async event tracing support
+
+ drivers/nvme/target/admin-cmd.c   |   4 +
+ drivers/nvme/target/configfs.c    | 116 +++++++++++++++++++++++++-
+ drivers/nvme/target/core.c        | 131 ++++++++++++++++++++++++++++++
+ drivers/nvme/target/io-cmd-bdev.c |  12 +++
+ drivers/nvme/target/io-cmd-file.c |  16 ++++
+ drivers/nvme/target/nvmet.h       |  36 +++++++-
+ drivers/nvme/target/trace.h       |  28 +++++++
+ 7 files changed, 341 insertions(+), 2 deletions(-)
+
+-- 
+2.22.1
+

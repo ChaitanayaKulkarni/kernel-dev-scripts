@@ -1,0 +1,128 @@
+From d9a73beb5a6dda84fb99f4016296a3728e4ecb59 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Mon, 14 Jun 2021 21:12:08 -0700
+Subject: [PATCH 1/4] nvmet: change the type of the ns->readonly
+
+Change the type of the ns->readonly attribute from bool to
+enum nvme_ns_wp_state & rename it to write_protect so we can store the
+state of the ns write protection.
+
+This is needed to store the ns write protection permanent state since in
+the next patch we allow user to set the write protection from the
+configfs ns attr to export the read-only snapshots such that host should
+not change the write protect value when it is set to permanent from
+configfs.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/admin-cmd.c | 26 ++++++++++++++++----------
+ drivers/nvme/target/core.c      |  3 ++-
+ drivers/nvme/target/nvmet.h     |  2 +-
+ include/linux/nvme.h            |  2 +-
+ 4 files changed, 20 insertions(+), 13 deletions(-)
+
+diff --git a/drivers/nvme/target/admin-cmd.c b/drivers/nvme/target/admin-cmd.c
+index c8c4a7ba4958..40bc1603f9d9 100644
+--- a/drivers/nvme/target/admin-cmd.c
++++ b/drivers/nvme/target/admin-cmd.c
+@@ -524,8 +524,17 @@ static void nvmet_execute_identify_ns(struct nvmet_req *req)
+ 		id->lbaf[0].ms = cpu_to_le16(req->ns->metadata_size);
+ 	}
+ 
+-	if (req->ns->readonly)
++	switch (req->ns->write_protect) {
++	case NVME_NS_NO_WRITE_PROTECT:
++		id->nsattr |= 0;
++		break;
++	case NVME_NS_WRITE_PROTECT:
+ 		id->nsattr |= (1 << 0);
++		break;
++	default:
++		break;
++	}
++
+ done:
+ 	if (!status)
+ 		status = nvmet_copy_to_sgl(req, 0, id, sizeof(*id));
+@@ -685,13 +694,14 @@ static u16 nvmet_set_feat_write_protect(struct nvmet_req *req)
+ 	mutex_lock(&subsys->lock);
+ 	switch (write_protect) {
+ 	case NVME_NS_WRITE_PROTECT:
+-		req->ns->readonly = true;
+ 		status = nvmet_write_protect_flush_sync(req);
+-		if (status)
+-			req->ns->readonly = false;
++		if (status == NVME_SC_SUCCESS)
++			req->ns->write_protect = NVME_NS_WRITE_PROTECT;
++		else
++			req->ns->write_protect = NVME_NS_NO_WRITE_PROTECT;
+ 		break;
+ 	case NVME_NS_NO_WRITE_PROTECT:
+-		req->ns->readonly = false;
++		req->ns->write_protect = NVME_NS_NO_WRITE_PROTECT;
+ 		status = 0;
+ 		break;
+ 	default:
+@@ -786,11 +796,7 @@ static u16 nvmet_get_feat_write_protect(struct nvmet_req *req)
+ 		return result;
+ 
+ 	mutex_lock(&subsys->lock);
+-	if (req->ns->readonly == true)
+-		result = NVME_NS_WRITE_PROTECT;
+-	else
+-		result = NVME_NS_NO_WRITE_PROTECT;
+-	nvmet_set_result(req, result);
++	nvmet_set_result(req, req->ns->write_protect);
+ 	mutex_unlock(&subsys->lock);
+ 
+ 	return 0;
+diff --git a/drivers/nvme/target/core.c b/drivers/nvme/target/core.c
+index 146909486b8f..d001fbce8537 100644
+--- a/drivers/nvme/target/core.c
++++ b/drivers/nvme/target/core.c
+@@ -692,6 +692,7 @@ struct nvmet_ns *nvmet_ns_alloc(struct nvmet_subsys *subsys, u32 nsid)
+ 
+ 	uuid_gen(&ns->uuid);
+ 	ns->buffered_io = false;
++	ns->write_protect = NVME_NS_NO_WRITE_PROTECT;
+ 
+ 	return ns;
+ }
+@@ -848,7 +849,7 @@ static inline u16 nvmet_check_ana_state(struct nvmet_port *port,
+ 
+ static inline u16 nvmet_io_cmd_check_access(struct nvmet_req *req)
+ {
+-	if (unlikely(req->ns->readonly)) {
++	if (unlikely(req->ns->write_protect)) {
+ 		switch (req->cmd->common.opcode) {
+ 		case nvme_cmd_read:
+ 		case nvme_cmd_flush:
+diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
+index bd0a0b91d843..212073f17ff8 100644
+--- a/drivers/nvme/target/nvmet.h
++++ b/drivers/nvme/target/nvmet.h
+@@ -59,7 +59,7 @@ struct nvmet_ns {
+ 	struct percpu_ref	ref;
+ 	struct block_device	*bdev;
+ 	struct file		*file;
+-	bool			readonly;
++	enum nvme_ns_wp_state	write_protect;
+ 	u32			nsid;
+ 	u32			blksize_shift;
+ 	loff_t			size;
+diff --git a/include/linux/nvme.h b/include/linux/nvme.h
+index edcbd60b88b9..bf56b86dd838 100644
+--- a/include/linux/nvme.h
++++ b/include/linux/nvme.h
+@@ -1087,7 +1087,7 @@ enum {
+ };
+ 
+ /* NVMe Namespace Write Protect State */
+-enum {
++enum nvme_ns_wp_state {
+ 	NVME_NS_NO_WRITE_PROTECT = 0,
+ 	NVME_NS_WRITE_PROTECT,
+ 	NVME_NS_WRITE_PROTECT_POWER_CYCLE,
+-- 
+2.22.1
+

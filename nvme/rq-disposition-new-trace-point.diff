@@ -1,0 +1,121 @@
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index f586a4808e6e..bfc89184573b 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -337,20 +337,17 @@ static void nvme_log_error(struct request *req)
+ 			   nr->status & NVME_SC_DNR  ? "DNR "  : "");
+ }
+ 
+-enum nvme_disposition {
+-	COMPLETE,
+-	RETRY,
+-	FAILOVER,
+-	AUTHENTICATE,
+-};
+-
+ static inline enum nvme_disposition nvme_decide_disposition(struct request *req)
+ {
+-	if (likely(nvme_req(req)->status == 0))
++	if (likely(nvme_req(req)->status == 0)) {
++		trace_nvme_complete_rq(req);
+ 		return COMPLETE;
++	}
+ 
+-	if ((nvme_req(req)->status & 0x7ff) == NVME_SC_AUTH_REQUIRED)
++	if ((nvme_req(req)->status & 0x7ff) == NVME_SC_AUTH_REQUIRED) {
++		trace_nvme_complete_rq_disposition(req, AUTHENTICATE);
+ 		return AUTHENTICATE;
++	}
+ 
+ 	if (blk_noretry_request(req) ||
+ 	    (nvme_req(req)->status & NVME_SC_DNR) ||
+@@ -359,13 +356,18 @@ static inline enum nvme_disposition nvme_decide_disposition(struct request *req)
+ 
+ 	if (req->cmd_flags & REQ_NVME_MPATH) {
+ 		if (nvme_is_path_error(nvme_req(req)->status) ||
+-		    blk_queue_dying(req->q))
++		    blk_queue_dying(req->q)) {
++			trace_nvme_complete_rq_disposition(req, FAILOVER);
+ 			return FAILOVER;
++		}
+ 	} else {
+-		if (blk_queue_dying(req->q))
++		if (blk_queue_dying(req->q)) {
++			trace_nvme_complete_rq(req);
+ 			return COMPLETE;
++		}
+ 	}
+ 
++	trace_nvme_complete_rq_disposition(req, RETRY);
+ 	return RETRY;
+ }
+ 
+@@ -394,7 +396,6 @@ void nvme_complete_rq(struct request *req)
+ {
+ 	struct nvme_ctrl *ctrl = nvme_req(req)->ctrl;
+ 
+-	trace_nvme_complete_rq(req);
+ 	nvme_cleanup_cmd(req);
+ 
+ 	if (ctrl->kas)
+diff --git a/drivers/nvme/host/nvme.h b/drivers/nvme/host/nvme.h
+index f0a84e390a55..b45d45079e09 100644
+--- a/drivers/nvme/host/nvme.h
++++ b/drivers/nvme/host/nvme.h
+@@ -151,6 +151,13 @@ enum nvme_quirks {
+ 	NVME_QUIRK_BOGUS_NID			= (1 << 18),
+ };
+ 
++enum nvme_disposition {
++	COMPLETE,
++	RETRY,
++	FAILOVER,
++	AUTHENTICATE,
++};
++
+ /*
+  * Common request structure for NVMe passthrough.  All drivers must have
+  * this structure as the first member of their request-private data.
+diff --git a/drivers/nvme/host/trace.h b/drivers/nvme/host/trace.h
+index 4fb5922ffdac..ee030414ef25 100644
+--- a/drivers/nvme/host/trace.h
++++ b/drivers/nvme/host/trace.h
+@@ -109,7 +109,38 @@ TRACE_EVENT(nvme_complete_rq,
+ 		      __entry->ctrl_id, __print_disk_name(__entry->disk),
+ 		      __entry->qid, __entry->cid, __entry->result,
+ 		      __entry->retries, __entry->flags, __entry->status)
++);
+ 
++TRACE_EVENT(nvme_complete_rq_disposition,
++		TP_PROTO(struct request *req, u8 disposition),
++		TP_ARGS(req, disposition),
++	    TP_STRUCT__entry(
++		__array(char, disk, DISK_NAME_LEN)
++		__field(int, ctrl_id)
++		__field(int, qid)
++		__field(int, cid)
++		__field(u64, result)
++		__field(u8, retries)
++		__field(u8, flags)
++		__field(u8, disposition)
++		__field(u16, status)
++	    ),
++	    TP_fast_assign(
++		__entry->ctrl_id = nvme_req(req)->ctrl->instance;
++		__entry->qid = nvme_req_qid(req);
++		__entry->cid = nvme_req(req)->cmd->common.command_id;
++		__entry->result = le64_to_cpu(nvme_req(req)->result.u64);
++		__entry->retries = nvme_req(req)->retries;
++		__entry->flags = nvme_req(req)->flags;
++		__entry->status = nvme_req(req)->status;
++		__entry->disposition = disposition;
++		__assign_disk_name(__entry->disk, req->q->disk);
++	    ),
++            TP_printk("nvme%d: %sqid=%d, cmdid=%u, res=%#llx, retries=%u, flags=0x%x, status=%#x entry->disposition=%x",
++		      __entry->ctrl_id, __print_disk_name(__entry->disk),
++		      __entry->qid, __entry->cid, __entry->result,
++		      __entry->retries, __entry->flags, __entry->status,
++		      __entry->disposition)
+ );
+ 
+ #define aer_name(aer) { aer, #aer }

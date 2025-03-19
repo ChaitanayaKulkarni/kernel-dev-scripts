@@ -1,0 +1,67 @@
+diff --git a/drivers/nvme/target/loop.c b/drivers/nvme/target/loop.c
+index 0d6008cf66a2..f3747aa5f39f 100644
+--- a/drivers/nvme/target/loop.c
++++ b/drivers/nvme/target/loop.c
+@@ -15,6 +15,11 @@
+ 
+ #define NVME_LOOP_MAX_SEGMENTS		256
+ 
++#define NVME_LOOP_DATA_SGL_SIZE \
++	(sizeof(struct scatterlist) * NVME_INLINE_SG_CNT)
++#define NVME_LOOP_METADATA_SGL_SIZE \
++	(sizeof(struct scatterlist) * NVME_INLINE_METADATA_SG_CNT)
++
+ struct nvme_loop_iod {
+ 	struct nvme_request	nvme_req;
+ 	struct nvme_command	cmd;
+@@ -22,6 +27,7 @@ struct nvme_loop_iod {
+ 	struct nvmet_req	req;
+ 	struct nvme_loop_queue	*queue;
+ 	struct work_struct	work;
++	struct sg_table		meta_sg_table;
+ 	struct sg_table		sg_table;
+ 	struct scatterlist	first_sgl[];
+ };
+@@ -75,6 +81,7 @@ static void nvme_loop_complete_rq(struct request *req)
+ {
+ 	struct nvme_loop_iod *iod = blk_mq_rq_to_pdu(req);
+ 
++	sg_free_table_chained(&iod->meta_sg_table, NVME_INLINE_METADATA_SG_CNT);
+ 	sg_free_table_chained(&iod->sg_table, NVME_INLINE_SG_CNT);
+ 	nvme_complete_rq(req);
+ }
+@@ -166,6 +173,24 @@ static blk_status_t nvme_loop_queue_rq(struct blk_mq_hw_ctx *hctx,
+ 		iod->req.transfer_len = blk_rq_payload_bytes(req);
+ 	}
+ 
++	if (blk_integrity_rq(rq)) {
++		struct bio *bio = req->bio;
++
++		if (sg_alloc_table_chained(&iod->meta_sg_table,
++				blk_rq_count_integrity_sg(rq->q, rq->bio),
++				req->meta_sgl_table.sgl,
++				NVME_INLINE_METADATA_SG_CNT)) {
++			return BLK_STS_RESOURCE;
++		}
++
++		iod->req.metadata_sg_cnt = blk_rq_map_integrity_sg(rq->q,
++				rq->bio, iod->meta_sgl_table.sgl);
++		iod->req.metadata_sg = &req->meta_sgl_table.sgl;
++		iod->req.metadata_len =
++			blk_integrity_bytes(blk_get_integrity(bio->bi_disk),
++					    bio_sectors(bio));
++	}
++
+ 	schedule_work(&iod->work);
+ 	return BLK_STS_OK;
+ }
+@@ -515,6 +540,9 @@ static int nvme_loop_create_io_queues(struct nvme_loop_ctrl *ctrl)
+ 	ctrl->tag_set.flags = BLK_MQ_F_SHOULD_MERGE;
+ 	ctrl->tag_set.cmd_size = sizeof(struct nvme_loop_iod) +
+ 		NVME_INLINE_SG_CNT * sizeof(struct scatterlist);
++	if (ctrl->ctrl.max_integrity_segments)
++		ctrl->tag_set.cmd_size += NVME_LOOP_METADATA_SGL_SIZE * ;
++
+ 	ctrl->tag_set.driver_data = ctrl;
+ 	ctrl->tag_set.nr_hw_queues = ctrl->ctrl.queue_count - 1;
+ 	ctrl->tag_set.timeout = NVME_IO_TIMEOUT;

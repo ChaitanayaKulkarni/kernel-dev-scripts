@@ -1,0 +1,75 @@
+From 836567ce7f745f6897f926069d2ab1691b135810 Mon Sep 17 00:00:00 2001
+From: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+Date: Fri, 7 Aug 2020 00:04:04 -0700
+Subject: [PATCH 10/10] nvmet: use nvme write cmd group setting op_flag
+
+The function nvme_is_write() only checks the last bit of the opcode to
+determine if command is a write command or not based on that it sets
+the bio->bi_opf for passthru bio.
+
+The condition is true for nvme_cmd_write, but there are commands
+present in the NVMe command set and are part for NVM Write Group but
+doesn't have a last bit set. e.g. nvme_cmd_write_zeroes 0x08.
+
+For passthru backend introduce a nvmet_write_cmd_group() and use the
+commands from NVMe 1.4 spec write command group to set the REQ_SYNC
+flag for passthru bio and update nvmet_passthru_map_sg accordingly.
+
+Signed-off-by: Chaitanya Kulkarni <chaitanya.kulkarni@wdc.com>
+---
+ drivers/nvme/target/passthru.c | 31 ++++++++++++++++++++++++++++---
+ 1 file changed, 28 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/nvme/target/passthru.c b/drivers/nvme/target/passthru.c
+index 00270e20c83a..487e23173960 100644
+--- a/drivers/nvme/target/passthru.c
++++ b/drivers/nvme/target/passthru.c
+@@ -178,6 +178,29 @@ static void nvmet_passthru_req_done(struct request *rq,
+ 	blk_mq_free_request(rq);
+ }
+ 
++static inline bool nvmet_write_cmd_group(__u8 opcode)
++{
++	bool ret;
++
++	/* NVM Express Revision 1.4 Figure 462. */
++	switch (opcode) {
++	case nvme_admin_format_nvm:
++	case nvme_admin_ns_attach:
++	case nvme_admin_ns_mgmt:
++	case nvme_admin_sanitize_nvm:
++	case nvme_admin_security_send:
++	case nvme_cmd_write_zeroes:
++	case nvme_cmd_write_uncor:
++		ret = true;
++		break;
++	default:
++		ret = false;
++		break;
++	}
++
++	return ret;
++}
++
+ static int nvmet_passthru_map_sg(struct nvmet_req *req, struct request *rq)
+ {
+ 	unsigned int op_flags = 0;
+@@ -186,10 +209,12 @@ static int nvmet_passthru_map_sg(struct nvmet_req *req, struct request *rq)
+ 	struct bio *bio;
+ 	int i, ret;
+ 
+-	if (req->cmd->common.opcode == nvme_cmd_flush)
+-		op_flags = REQ_FUA;
+-	else if (nvme_is_write(req->cmd))
++	if (nvme_is_write(req->cmd))
+ 		op_flags = REQ_SYNC | REQ_IDLE;
++	else if (nvmet_write_cmd_group(req->cmd->common.opcode))
++		op_flags = REQ_SYNC;
++	else if (unlikely(req->cmd->common.opcode == nvme_cmd_flush))
++		op_flags = REQ_FUA;
+ 
+ 	bio = bio_alloc(GFP_KERNEL, min(sg_cnt, BIO_MAX_PAGES));
+ 	bio->bi_end_io = bio_put;
+-- 
+2.22.1
+
